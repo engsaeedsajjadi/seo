@@ -1,14 +1,28 @@
 /**
  * RankForge — MCP Server (Production)
  * Real PostgreSQL, tenant-isolated, no memoryDB
+ * Self-contained
  */
 
 import express from 'express';
 import cors from 'cors';
 import { Pool } from 'pg';
-import { config } from '../../api/src/config/index.js';
 
 const PORT = parseInt(process.env.MCP_PORT || '3002', 10);
+
+const config = {
+  database: {
+    url: process.env.DATABASE_URL || '',
+  },
+  isProduction: process.env.NODE_ENV === 'production',
+  providers: {
+    dataforseo: { login: process.env.DATAFORSEO_LOGIN || '' },
+    openai: process.env.OPENAI_API_KEY || '',
+    anthropic: process.env.ANTHROPIC_API_KEY || '',
+    stripe: { secretKey: process.env.STRIPE_SECRET_KEY || '' },
+    google: { clientId: process.env.GOOGLE_CLIENT_ID || '' },
+  },
+};
 
 let pool: Pool | null = null;
 
@@ -220,7 +234,6 @@ app.post('/mcp/call', async (req, res) => {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'organizationId and userId required for tenant isolation' } });
     }
 
-    // Verify membership
     try {
       const memberCheck = await query('SELECT id FROM organization_members WHERE organization_id = $1 AND user_id = $2', [organizationId, userId]);
       if (memberCheck.rows.length === 0) {

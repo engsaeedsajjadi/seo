@@ -15,6 +15,6 @@
     "noEmitOnError": false,
     "types": ["node"]
   },
-  "include": ["src/**/*", "../api/src/config/index.ts", "../api/src/lib/crawler.ts", "../api/src/lib/audit.ts", "../api/src/lib/ssrf.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

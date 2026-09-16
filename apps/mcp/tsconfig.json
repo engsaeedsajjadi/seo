@@ -15,6 +15,6 @@
     "noEmitOnError": false,
     "types": ["node"]
   },
-  "include": ["src/**/*", "../api/src/config/index.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }
