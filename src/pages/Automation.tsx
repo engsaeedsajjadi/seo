@@ -1,32 +1,57 @@
+import { useState, useEffect } from 'react';
 import {
   Zap, Clock, Play, Pause, CheckCircle2, XCircle,
-  AlertCircle, Calendar, RefreshCw, Settings, Plus
+  RefreshCw, Settings, Plus, Activity
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
-import type { JobType, JobStatus } from '../lib/types';
+import { api } from '../lib/api';
+import type { Job, JobStatus } from '../lib/types';
 
 export default function Automation() {
   const { state } = useAppState();
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const scheduledJobs = [
-    { type: 'SITE_CRAWL', schedule: 'Daily at 2:00 AM', lastRun: '6 hours ago', nextRun: 'Tomorrow 2:00 AM', status: 'active' as const },
-    { type: 'RANK_CHECK', schedule: 'Every 6 hours', lastRun: '2 hours ago', nextRun: '4 hours', status: 'active' as const },
-    { type: 'GSC_SYNC', schedule: 'Daily at 6:00 AM', lastRun: '18 hours ago', nextRun: 'Tomorrow 6:00 AM', status: 'active' as const },
-    { type: 'PAGESPEED_CHECK', schedule: 'Weekly (Monday)', lastRun: '3 days ago', nextRun: '4 days', status: 'active' as const },
-    { type: 'BACKLINK_REFRESH', schedule: 'Weekly (Wednesday)', lastRun: '5 days ago', nextRun: '2 days', status: 'active' as const },
-    { type: 'COMPETITOR_CHECK', schedule: 'Weekly (Friday)', lastRun: '1 day ago', nextRun: '6 days', status: 'paused' as const },
-    { type: 'AI_VISIBILITY_CHECK', schedule: 'Daily at 8:00 AM', lastRun: '14 hours ago', nextRun: 'Tomorrow 8:00 AM', status: 'active' as const },
-    { type: 'REPORT_GENERATION', schedule: 'Monthly (1st)', lastRun: '28 days ago', nextRun: '3 days', status: 'active' as const },
-  ];
+  useEffect(() => {
+    async function loadJobs() {
+      if (!state.currentProject) {
+        setLoading(false);
+        return;
+      }
 
-  const recentJobs = [
-    { type: 'SITE_CRAWL', status: 'completed' as JobStatus, duration: '4m 32s', pages: 450, startedAt: '6 hours ago' },
-    { type: 'RANK_CHECK', status: 'completed' as JobStatus, duration: '1m 15s', pages: null, startedAt: '2 hours ago' },
-    { type: 'GSC_SYNC', status: 'completed' as JobStatus, duration: '45s', pages: null, startedAt: '18 hours ago' },
-    { type: 'PAGESPEED_CHECK', status: 'failed' as JobStatus, duration: '30s', pages: null, startedAt: '3 days ago', error: 'Provider timeout' },
-    { type: 'REPORT_GENERATION', status: 'completed' as JobStatus, duration: '2m 10s', pages: null, startedAt: '28 days ago' },
-    { type: 'KEYWORD_REFRESH', status: 'running' as JobStatus, duration: '...', pages: null, startedAt: 'Just now' },
-  ];
+      try {
+        const data = await api.getJobs(state.currentProject.id);
+        setJobs(data);
+      } catch (error) {
+        console.error('Failed to load jobs:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadJobs();
+  }, [state.currentProject]);
+
+  if (!state.currentProject) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+        <Zap className="w-12 h-12 text-slate-500 mb-4" />
+        <h2 className="text-xl font-bold text-white mb-2">No Project Selected</h2>
+        <p className="text-slate-400">Select or create a project to manage automation.</p>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-400">Loading jobs...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -43,119 +68,64 @@ export default function Automation() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-          <p className="text-xs text-slate-400">Active Schedules</p>
-          <p className="text-2xl font-bold text-accent-green mt-1">{scheduledJobs.filter(j => j.status === 'active').length}</p>
+          <p className="text-xs text-slate-400">Total Jobs</p>
+          <p className="text-2xl font-bold text-white mt-1">{jobs.length}</p>
         </div>
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-          <p className="text-xs text-slate-400">Jobs Today</p>
-          <p className="text-2xl font-bold text-white mt-1">14</p>
+          <p className="text-xs text-slate-400">Running</p>
+          <p className="text-2xl font-bold text-brand-400 mt-1">{jobs.filter(j => j.status === 'running').length}</p>
         </div>
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-          <p className="text-xs text-slate-400">Success Rate</p>
-          <p className="text-2xl font-bold text-accent-green mt-1">94%</p>
+          <p className="text-xs text-slate-400">Completed</p>
+          <p className="text-2xl font-bold text-accent-green mt-1">{jobs.filter(j => j.status === 'completed').length}</p>
         </div>
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-          <p className="text-xs text-slate-400">Failed (7d)</p>
-          <p className="text-2xl font-bold text-accent-red mt-1">2</p>
-        </div>
-      </div>
-
-      {/* Scheduled Jobs */}
-      <div className="bg-surface-2 border border-surface-3/50 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-surface-3/50">
-          <h3 className="text-sm font-semibold text-white">Scheduled Jobs</h3>
-        </div>
-        <div className="divide-y divide-surface-3/20">
-          {scheduledJobs.map((job, i) => (
-            <div key={i} className="flex items-center justify-between p-4 hover:bg-surface-3/20">
-              <div className="flex items-center gap-4">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                  job.status === 'active' ? 'bg-accent-green/20' : 'bg-surface-3/50'
-                }`}>
-                  {job.status === 'active' ? (
-                    <Play className="w-4 h-4 text-accent-green" />
-                  ) : (
-                    <Pause className="w-4 h-4 text-slate-400" />
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-white">{job.type.replace(/_/g, ' ')}</p>
-                  <p className="text-xs text-slate-400">{job.schedule}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-6">
-                <div className="text-right">
-                  <p className="text-xs text-slate-300">Last: {job.lastRun}</p>
-                  <p className="text-xs text-slate-400">Next: {job.nextRun}</p>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button className="p-1.5 rounded hover:bg-surface-3/50 text-slate-400 hover:text-white" title="Run now">
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </button>
-                  <button className="p-1.5 rounded hover:bg-surface-3/50 text-slate-400 hover:text-white" title="Settings">
-                    <Settings className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+          <p className="text-xs text-slate-400">Failed</p>
+          <p className="text-2xl font-bold text-accent-red mt-1">{jobs.filter(j => j.status === 'failed').length}</p>
         </div>
       </div>
 
       {/* Recent Job Executions */}
       <div className="bg-surface-2 border border-surface-3/50 rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-surface-3/50">
-          <h3 className="text-sm font-semibold text-white">Recent Executions</h3>
+          <h3 className="text-sm font-semibold text-white">Job History</h3>
         </div>
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-surface-3/50">
-              <th className="text-left px-4 py-2 text-xs font-medium text-slate-400">Job</th>
-              <th className="text-left px-4 py-2 text-xs font-medium text-slate-400">Status</th>
-              <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">Duration</th>
-              <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">Details</th>
-              <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">Started</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recentJobs.map((job, i) => (
-              <tr key={i} className="border-b border-surface-3/20 hover:bg-surface-3/20">
-                <td className="px-4 py-2.5 text-sm text-white">{job.type.replace(/_/g, ' ')}</td>
-                <td className="px-4 py-2.5">
-                  <JobStatusBadge status={job.status} />
-                </td>
-                <td className="px-4 py-2.5 text-right text-xs text-slate-300">{job.duration}</td>
-                <td className="px-4 py-2.5 text-right text-xs text-slate-400">
-                  {job.pages ? `${job.pages} pages` : job.error || '—'}
-                </td>
-                <td className="px-4 py-2.5 text-right text-xs text-slate-400">{job.startedAt}</td>
+        {jobs.length === 0 ? (
+          <div className="p-12 text-center">
+            <Activity className="w-12 h-12 text-slate-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-white mb-2">No Jobs Yet</h3>
+            <p className="text-sm text-slate-400">Jobs will appear here when you run audits, crawls, or other operations.</p>
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-surface-3/50">
+                <th className="text-left px-4 py-2 text-xs font-medium text-slate-400">Job</th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-slate-400">Status</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">Started</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">Completed</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">Attempts</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Worker Architecture */}
-      <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-white mb-3">Worker Architecture</h3>
-        <p className="text-xs text-slate-400 mb-4">
-          Jobs are processed by a dedicated worker process using PostgreSQL-native job queue (pg-boss).
-          Features: automatic retries with exponential backoff, dead-letter handling, idempotency,
-          concurrency limits, and provider rate limiting.
-        </p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { label: 'Queue Depth', value: '2', color: 'text-accent-green' },
-            { label: 'Workers Active', value: '3', color: 'text-brand-400' },
-            { label: 'Avg Duration', value: '2m 15s', color: 'text-white' },
-            { label: 'Dead Letters', value: '0', color: 'text-accent-green' },
-          ].map((stat, i) => (
-            <div key={i} className="bg-surface/50 rounded-lg p-3 text-center">
-              <p className={`text-lg font-bold ${stat.color}`}>{stat.value}</p>
-              <p className="text-[10px] text-slate-400">{stat.label}</p>
-            </div>
-          ))}
-        </div>
+            </thead>
+            <tbody>
+              {jobs.map((job) => (
+                <tr key={job.id} className="border-b border-surface-3/20 hover:bg-surface-3/20">
+                  <td className="px-4 py-2.5 text-sm text-white">{job.type.replace(/_/g, ' ')}</td>
+                  <td className="px-4 py-2.5">
+                    <JobStatusBadge status={job.status} />
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-xs text-slate-400">
+                    {job.startedAt ? new Date(job.startedAt).toLocaleString() : '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-xs text-slate-400">
+                    {job.completedAt ? new Date(job.completedAt).toLocaleString() : '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-xs text-slate-300">{job.attempts}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

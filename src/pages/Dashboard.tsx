@@ -1,39 +1,74 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Globe, Search, BarChart3, Shield, AlertTriangle, TrendingUp,
-  TrendingDown, Minus, ArrowRight, Zap, Clock, CheckCircle2,
-  XCircle, ExternalLink, Activity
+  TrendingDown, ArrowRight, Zap, Clock, Activity, CheckCircle2,
+  XCircle
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
+import { api } from '../lib/api';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-
-const visibilityData = [
-  { date: 'Jan', visibility: 42 },
-  { date: 'Feb', visibility: 45 },
-  { date: 'Mar', visibility: 48 },
-  { date: 'Apr', visibility: 52 },
-  { date: 'May', visibility: 55 },
-  { date: 'Jun', visibility: 58 },
-  { date: 'Jul', visibility: 61 },
-];
-
-const auditCategoryData = [
-  { category: 'Technical', score: 72 },
-  { category: 'Content', score: 65 },
-  { category: 'Performance', score: 81 },
-  { category: 'Indexability', score: 88 },
-  { category: 'Links', score: 54 },
-  { category: 'Schema', score: 43 },
-];
+import type { AuditFinding, Job } from '../lib/types';
 
 export default function Dashboard() {
   const { state } = useAppState();
+  const [auditFindings, setAuditFindings] = useState<AuditFinding[]>([]);
+  const [recentJobs, setRecentJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const hasProject = state.currentProject !== null;
+
+  useEffect(() => {
+    async function loadData() {
+      if (!state.currentProject) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const [findings, jobs] = await Promise.all([
+          api.getAuditFindings(state.currentProject.id),
+          api.getJobs(state.currentProject.id),
+        ]);
+        setAuditFindings(findings);
+        setRecentJobs(jobs.slice(0, 5));
+      } catch (error) {
+        console.error('Failed to load dashboard data:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadData();
+  }, [state.currentProject]);
 
   if (!hasProject) {
     return <EmptyState />;
   }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-400">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Calculate real SEO score from audit findings
+  const severityCounts = {
+    critical: auditFindings.filter(f => f.severity === 'critical').length,
+    high: auditFindings.filter(f => f.severity === 'high').length,
+    medium: auditFindings.filter(f => f.severity === 'medium').length,
+    low: auditFindings.filter(f => f.severity === 'low').length,
+    notice: auditFindings.filter(f => f.severity === 'notice').length,
+  };
+
+  const seoScore = auditFindings.length > 0
+    ? Math.max(0, Math.round(100 - (severityCounts.critical * 10 + severityCounts.high * 5 + severityCounts.medium * 2 + severityCounts.low * 1)))
+    : null;
 
   return (
     <div className="space-y-6">
@@ -48,12 +83,17 @@ export default function Dashboard() {
         <div className="flex items-center gap-3">
           <span className="text-xs text-slate-500 flex items-center gap-1">
             <Clock className="w-3 h-3" />
-            Last updated: 2 hours ago
+            {state.currentProject?.lastCrawlAt 
+              ? `Last crawl: ${new Date(state.currentProject.lastCrawlAt).toLocaleDateString()}`
+              : 'No crawl data yet'}
           </span>
-          <button className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2">
+          <Link
+            to="/audit"
+            className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2"
+          >
             <Zap className="w-4 h-4" />
             Run Audit
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -61,149 +101,108 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <div className="lg:col-span-1 bg-gradient-to-br from-brand-600/20 to-brand-800/20 border border-brand-600/30 rounded-xl p-6">
           <p className="text-xs font-medium text-brand-300 uppercase tracking-wider">SEO Score</p>
-          <div className="mt-3 flex items-end gap-2">
-            <span className="text-5xl font-bold text-white">67</span>
-            <span className="text-sm text-slate-400 mb-2">/100</span>
-          </div>
-          <div className="mt-3 flex items-center gap-1 text-sm">
-            <TrendingUp className="w-4 h-4 text-accent-green" />
-            <span className="text-accent-green">+5</span>
-            <span className="text-slate-400">vs last month</span>
-          </div>
+          {seoScore !== null ? (
+            <>
+              <div className="mt-3 flex items-end gap-2">
+                <span className="text-5xl font-bold text-white">{seoScore}</span>
+                <span className="text-sm text-slate-400 mb-2">/100</span>
+              </div>
+              <p className="text-xs text-slate-400 mt-2">Based on {auditFindings.length} audit findings</p>
+            </>
+          ) : (
+            <>
+              <div className="mt-3">
+                <span className="text-2xl font-bold text-slate-400">No Data</span>
+              </div>
+              <p className="text-xs text-slate-400 mt-2">Run an audit to calculate score</p>
+            </>
+          )}
           <Link to="/audit" className="mt-4 inline-flex items-center gap-1 text-xs text-brand-400 hover:text-brand-300">
             View audit details <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
 
         <StatCard
-          title="Organic Keywords"
-          value="1,247"
-          change={+124}
-          changeLabel="new this month"
-          icon={Search}
-          link="/keywords"
-        />
-        <StatCard
-          title="Avg. Position"
-          value="14.3"
-          change={-2.1}
-          changeLabel="improved"
-          icon={BarChart3}
-          link="/rankings"
-          positive={true}
-        />
-        <StatCard
-          title="Critical Issues"
-          value="8"
-          change={-3}
-          changeLabel="resolved"
-          icon={AlertTriangle}
+          title="Audit Findings"
+          value={auditFindings.length.toString()}
+          subtitle={`${severityCounts.critical} critical, ${severityCounts.high} high`}
+          icon={Shield}
           link="/audit"
-          positive={true}
+        />
+        <StatCard
+          title="Active Jobs"
+          value={recentJobs.filter(j => j.status === 'running' || j.status === 'pending').length.toString()}
+          subtitle={`${recentJobs.filter(j => j.status === 'completed').length} completed recently`}
+          icon={Activity}
+          link="/automation"
+        />
+        <StatCard
+          title="Provider Status"
+          value={`${Object.values(state.providerStatus).filter(s => s === 'connected').length}/${Object.keys(state.providerStatus).length}`}
+          subtitle="Integrations connected"
+          icon={CheckCircle2}
+          link="/integrations"
         />
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Visibility Chart */}
-        <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-white">Search Visibility</h3>
-            <span className="text-xs text-slate-400">Last 7 months</span>
-          </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={visibilityData}>
-              <defs>
-                <linearGradient id="visibilityGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <Tooltip
-                contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                labelStyle={{ color: '#e2e8f0' }}
-              />
-              <Area type="monotone" dataKey="visibility" stroke="#3b82f6" fill="url(#visibilityGradient)" strokeWidth={2} />
-            </AreaChart>
-          </ResponsiveContainer>
+      {/* Recent Audit Findings */}
+      <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-white">Recent Audit Findings</h3>
+          <Link to="/audit" className="text-xs text-brand-400 hover:text-brand-300">View all →</Link>
         </div>
-
-        {/* Audit Categories */}
-        <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-white">Audit Categories</h3>
-            <Link to="/audit" className="text-xs text-brand-400 hover:text-brand-300">View all →</Link>
+        {auditFindings.length === 0 ? (
+          <div className="text-center py-8">
+            <Shield className="w-12 h-12 text-slate-500 mx-auto mb-3" />
+            <p className="text-sm text-slate-400">No audit findings yet</p>
+            <p className="text-xs text-slate-500 mt-1">Run a site audit to identify SEO issues</p>
           </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={auditCategoryData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <YAxis type="category" dataKey="category" tick={{ fontSize: 11, fill: '#94a3b8' }} width={80} />
-              <Tooltip
-                contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                labelStyle={{ color: '#e2e8f0' }}
-              />
-              <Bar dataKey="score" fill="#3b82f6" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Recent Activity & Jobs */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Recent Findings */}
-        <div className="lg:col-span-2 bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-white">Recent Audit Findings</h3>
-            <Link to="/audit" className="text-xs text-brand-400 hover:text-brand-300">View all →</Link>
-          </div>
+        ) : (
           <div className="space-y-3">
-            {[
-              { severity: 'critical', title: 'Missing HTTPS redirect', urls: 1, category: 'Security' },
-              { severity: 'high', title: 'Duplicate title tags detected', urls: 12, category: 'Metadata' },
-              { severity: 'high', title: 'Pages without meta description', urls: 8, category: 'Metadata' },
-              { severity: 'medium', title: 'Images missing alt attributes', urls: 23, category: 'Images' },
-              { severity: 'medium', title: 'Slow page load (>3s)', urls: 5, category: 'Performance' },
-              { severity: 'low', title: 'Missing structured data', urls: 15, category: 'Structured Data' },
-            ].map((finding, i) => (
-              <div key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-3/30">
+            {auditFindings.slice(0, 6).map((finding) => (
+              <div key={finding.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-3/30">
                 <SeverityBadge severity={finding.severity} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-slate-200 truncate">{finding.title}</p>
-                  <p className="text-xs text-slate-500">{finding.category} · {finding.urls} URL{finding.urls > 1 ? 's' : ''}</p>
+                  <p className="text-xs text-slate-500">{finding.category} · {finding.affectedUrls.length} URL{finding.affectedUrls.length !== 1 ? 's' : ''}</p>
                 </div>
                 <ArrowRight className="w-4 h-4 text-slate-500" />
               </div>
             ))}
           </div>
-        </div>
+        )}
+      </div>
 
-        {/* Active Jobs */}
-        <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-white">Active Jobs</h3>
-            <Link to="/automation" className="text-xs text-brand-400 hover:text-brand-300">View all →</Link>
+      {/* Active Jobs */}
+      <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-white">Recent Jobs</h3>
+          <Link to="/automation" className="text-xs text-brand-400 hover:text-brand-300">View all →</Link>
+        </div>
+        {recentJobs.length === 0 ? (
+          <div className="text-center py-8">
+            <Activity className="w-12 h-12 text-slate-500 mx-auto mb-3" />
+            <p className="text-sm text-slate-400">No jobs yet</p>
+            <p className="text-xs text-slate-500 mt-1">Jobs will appear here when you run audits, crawls, or other operations</p>
           </div>
+        ) : (
           <div className="space-y-3">
-            {[
-              { type: 'SITE_CRAWL', status: 'running', progress: '67%' },
-              { type: 'RANK_CHECK', status: 'pending', progress: 'Queued' },
-              { type: 'GSC_SYNC', status: 'completed', progress: 'Done' },
-              { type: 'PAGESPEED_CHECK', status: 'completed', progress: 'Done' },
-            ].map((job, i) => (
-              <div key={i} className="flex items-center gap-3 p-2 rounded-lg">
+            {recentJobs.map((job) => (
+              <div key={job.id} className="flex items-center gap-3 p-2 rounded-lg">
                 <JobStatusIcon status={job.status} />
                 <div className="flex-1">
                   <p className="text-xs font-medium text-slate-200">{job.type.replace(/_/g, ' ')}</p>
-                  <p className="text-[10px] text-slate-500">{job.progress}</p>
+                  <p className="text-[10px] text-slate-500">
+                    {job.status === 'running' && 'Running...'}
+                    {job.status === 'completed' && `Completed ${job.completedAt ? new Date(job.completedAt).toLocaleString() : ''}`}
+                    {job.status === 'failed' && `Failed: ${job.error || 'Unknown error'}`}
+                    {job.status === 'pending' && 'Queued'}
+                  </p>
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        )}
       </div>
 
       {/* Provider Status Banner */}
@@ -236,16 +235,13 @@ export default function Dashboard() {
   );
 }
 
-function StatCard({ title, value, change, changeLabel, icon: Icon, link, positive }: {
+function StatCard({ title, value, subtitle, icon: Icon, link }: {
   title: string;
   value: string;
-  change: number;
-  changeLabel: string;
+  subtitle: string;
   icon: React.ElementType;
   link: string;
-  positive?: boolean;
 }) {
-  const isPositive = positive !== undefined ? positive : change > 0;
   return (
     <Link to={link} className="bg-surface-2 border border-surface-3/50 rounded-xl p-5 hover:border-brand-600/30 transition-colors">
       <div className="flex items-center justify-between">
@@ -253,17 +249,7 @@ function StatCard({ title, value, change, changeLabel, icon: Icon, link, positiv
         <Icon className="w-4 h-4 text-slate-500" />
       </div>
       <p className="text-2xl font-bold text-white mt-2">{value}</p>
-      <div className="mt-2 flex items-center gap-1 text-xs">
-        {isPositive ? (
-          <TrendingUp className="w-3 h-3 text-accent-green" />
-        ) : (
-          <TrendingDown className="w-3 h-3 text-accent-red" />
-        )}
-        <span className={isPositive ? 'text-accent-green' : 'text-accent-red'}>
-          {change > 0 ? '+' : ''}{change}
-        </span>
-        <span className="text-slate-500">{changeLabel}</span>
-      </div>
+      <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
     </Link>
   );
 }
@@ -301,22 +287,13 @@ function EmptyState() {
         Create your first project to start monitoring your website's SEO performance, 
         track rankings, and automate your SEO workflow.
       </p>
-      <div className="flex items-center gap-3">
-        <Link
-          to="/projects"
-          className="px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white font-medium rounded-lg flex items-center gap-2"
-        >
-          <Globe className="w-4 h-4" />
-          Create Project
-        </Link>
-        <Link
-          to="/integrations"
-          className="px-6 py-3 bg-surface-3/50 hover:bg-surface-3 text-white font-medium rounded-lg flex items-center gap-2"
-        >
-          <ExternalLink className="w-4 h-4" />
-          Configure Providers
-        </Link>
-      </div>
+      <Link
+        to="/projects"
+        className="px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white font-medium rounded-lg flex items-center gap-2"
+      >
+        <Globe className="w-4 h-4" />
+        Create Project
+      </Link>
 
       <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl">
         {[

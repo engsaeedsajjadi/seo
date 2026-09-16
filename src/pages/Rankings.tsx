@@ -1,38 +1,40 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  BarChart3, TrendingUp, TrendingDown, Minus, Calendar,
-  Globe, Monitor, Smartphone, AlertCircle, ExternalLink
+  BarChart3, Calendar, Monitor, Smartphone, AlertCircle
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
-
-const rankingHistory = [
-  { date: 'Week 1', position: 28 },
-  { date: 'Week 2', position: 25 },
-  { date: 'Week 3', position: 22 },
-  { date: 'Week 4', position: 19 },
-  { date: 'Week 5', position: 17 },
-  { date: 'Week 6', position: 14 },
-  { date: 'Week 7', position: 14 },
-  { date: 'Week 8', position: 12 },
-];
-
-const visibilityTrend = [
-  { date: 'Jan', top3: 12, top10: 45, top20: 89, top50: 156 },
-  { date: 'Feb', top3: 14, top10: 48, top20: 92, top50: 160 },
-  { date: 'Mar', top3: 15, top10: 52, top20: 98, top50: 168 },
-  { date: 'Apr', top3: 18, top10: 55, top20: 102, top50: 172 },
-  { date: 'May', top3: 21, top10: 58, top20: 108, top50: 180 },
-  { date: 'Jun', top3: 24, top10: 62, top20: 115, top50: 188 },
-];
+import { api } from '../lib/api';
+import type { RankingEntry } from '../lib/types';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
 export default function Rankings() {
   const { state } = useAppState();
+  const [rankings, setRankings] = useState<RankingEntry[]>([]);
+  const [loading, setLoading] = useState(true);
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
-  const [engine, setEngine] = useState('google');
 
   const hasProject = state.currentProject !== null;
   const providerConfigured = state.providerStatus.dataForSeo === 'connected';
+
+  useEffect(() => {
+    async function loadRankings() {
+      if (!state.currentProject) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const data = await api.getRankings(state.currentProject.id);
+        setRankings(data);
+      } catch (error) {
+        console.error('Failed to load rankings:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadRankings();
+  }, [state.currentProject]);
 
   if (!hasProject) {
     return (
@@ -71,6 +73,37 @@ export default function Rankings() {
     );
   }
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-400">Loading rankings...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Group rankings by keyword for display
+  const keywordRankings = rankings.reduce((acc, r) => {
+    if (!acc[r.keyword]) acc[r.keyword] = [];
+    acc[r.keyword].push(r);
+    return acc;
+  }, {} as Record<string, RankingEntry[]>);
+
+  const latestRankings = Object.entries(keywordRankings).map(([keyword, entries]) => {
+    const sorted = entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const latest = sorted[0];
+    const previous = sorted[1];
+    return {
+      keyword,
+      position: latest.position,
+      change: latest.position && previous?.position ? previous.position - latest.position : null,
+      url: latest.url,
+      best: Math.min(...entries.map(e => e.position || 100).filter(p => p > 0)),
+    };
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -101,115 +134,85 @@ export default function Rankings() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-          <p className="text-xs text-slate-400">Top 3</p>
-          <p className="text-2xl font-bold text-accent-green mt-1">24</p>
-          <p className="text-xs text-accent-green mt-1">+3 this week</p>
+      {rankings.length === 0 ? (
+        <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-12 text-center">
+          <BarChart3 className="w-12 h-12 text-slate-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-white mb-2">No Ranking Data</h3>
+          <p className="text-sm text-slate-400 mb-4">Add keywords and run a rank check to start tracking positions.</p>
         </div>
-        <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-          <p className="text-xs text-slate-400">Top 10</p>
-          <p className="text-2xl font-bold text-brand-400 mt-1">62</p>
-          <p className="text-xs text-accent-green mt-1">+4 this week</p>
-        </div>
-        <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-          <p className="text-xs text-slate-400">Top 20</p>
-          <p className="text-2xl font-bold text-accent-yellow mt-1">115</p>
-          <p className="text-xs text-accent-green mt-1">+7 this week</p>
-        </div>
-        <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-          <p className="text-xs text-slate-400">Avg. Position</p>
-          <p className="text-2xl font-bold text-white mt-1">14.3</p>
-          <p className="text-xs text-accent-green mt-1">-2.1 improved</p>
-        </div>
-      </div>
+      ) : (
+        <>
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
+              <p className="text-xs text-slate-400">Top 3</p>
+              <p className="text-2xl font-bold text-accent-green mt-1">
+                {latestRankings.filter(r => r.position !== null && r.position <= 3).length}
+              </p>
+            </div>
+            <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
+              <p className="text-xs text-slate-400">Top 10</p>
+              <p className="text-2xl font-bold text-brand-400 mt-1">
+                {latestRankings.filter(r => r.position !== null && r.position <= 10).length}
+              </p>
+            </div>
+            <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
+              <p className="text-xs text-slate-400">Top 20</p>
+              <p className="text-2xl font-bold text-accent-yellow mt-1">
+                {latestRankings.filter(r => r.position !== null && r.position <= 20).length}
+              </p>
+            </div>
+            <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
+              <p className="text-xs text-slate-400">Tracked Keywords</p>
+              <p className="text-2xl font-bold text-white mt-1">{latestRankings.length}</p>
+            </div>
+          </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-white mb-4">Keyword Distribution Over Time</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={visibilityTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} />
-              <Area type="monotone" dataKey="top3" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.3} />
-              <Area type="monotone" dataKey="top10" stackId="1" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.3} />
-              <Area type="monotone" dataKey="top20" stackId="1" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.3} />
-              <Area type="monotone" dataKey="top50" stackId="1" stroke="#64748b" fill="#64748b" fillOpacity={0.3} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-white mb-4">Average Position Trend</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={rankingHistory}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <YAxis reversed tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} />
-              <Line type="monotone" dataKey="position" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6' }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Rankings Table */}
-      <div className="bg-surface-2 border border-surface-3/50 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-surface-3/50 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white">Keyword Positions</h3>
-          <span className="text-xs text-slate-400">
-            <Calendar className="w-3 h-3 inline mr-1" />
-            Last checked: 2 hours ago
-          </span>
-        </div>
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-surface-3/50">
-              <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Keyword</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Position</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Change</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">URL</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Best</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              { keyword: 'rank tracker software', position: 5, change: 1, url: '/rank-tracker', best: 3 },
-              { keyword: 'seo automation', position: 8, change: -2, url: '/automation', best: 6 },
-              { keyword: 'keyword research tool', position: 12, change: 4, url: '/keywords', best: 10 },
-              { keyword: 'site audit tool', position: 14, change: 3, url: '/audit', best: 11 },
-              { keyword: 'backlink checker', position: 23, change: -8, url: '/backlinks', best: 15 },
-              { keyword: 'seo reporting', position: 31, change: 5, url: '/reports', best: 28 },
-              { keyword: 'competitor analysis', position: 7, change: 2, url: '/competitors', best: 5 },
-              { keyword: 'technical seo audit', position: 19, change: -1, url: '/technical-seo', best: 16 },
-            ].map((row, i) => (
-              <tr key={i} className="border-b border-surface-3/20 hover:bg-surface-3/20">
-                <td className="px-4 py-3 text-sm text-white font-medium">{row.keyword}</td>
-                <td className="px-4 py-3 text-right">
-                  <span className={`text-sm font-bold ${row.position <= 3 ? 'text-accent-green' : row.position <= 10 ? 'text-brand-400' : row.position <= 20 ? 'text-accent-yellow' : 'text-slate-300'}`}>
-                    {row.position}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  {row.change > 0 ? (
-                    <span className="text-xs text-accent-green flex items-center justify-end gap-0.5"><TrendingUp className="w-3 h-3" />+{row.change}</span>
-                  ) : row.change < 0 ? (
-                    <span className="text-xs text-accent-red flex items-center justify-end gap-0.5"><TrendingDown className="w-3 h-3" />{row.change}</span>
-                  ) : (
-                    <Minus className="w-3 h-3 text-slate-500 ml-auto" />
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right text-xs text-slate-400">{row.url}</td>
-                <td className="px-4 py-3 text-right text-xs text-slate-300">{row.best}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          {/* Rankings Table */}
+          <div className="bg-surface-2 border border-surface-3/50 rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-surface-3/50 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-white">Keyword Positions</h3>
+              <span className="text-xs text-slate-400">
+                <Calendar className="w-3 h-3 inline mr-1" />
+                {rankings.length > 0 && `Last checked: ${new Date(rankings[0].date).toLocaleString()}`}
+              </span>
+            </div>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-surface-3/50">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Keyword</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Position</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Change</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">URL</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Best</th>
+                </tr>
+              </thead>
+              <tbody>
+                {latestRankings.map((row, i) => (
+                  <tr key={i} className="border-b border-surface-3/20 hover:bg-surface-3/20">
+                    <td className="px-4 py-3 text-sm text-white font-medium">{row.keyword}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`text-sm font-bold ${
+                        row.position === null ? 'text-slate-500' :
+                        row.position <= 3 ? 'text-accent-green' : 
+                        row.position <= 10 ? 'text-brand-400' : 
+                        row.position <= 20 ? 'text-accent-yellow' : 'text-slate-300'
+                      }`}>
+                        {row.position ?? '—'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs text-slate-400">
+                      {row.change !== null ? (row.change > 0 ? `+${row.change}` : row.change) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs text-slate-400">{row.url || '—'}</td>
+                    <td className="px-4 py-3 text-right text-xs text-slate-300">{row.best}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }

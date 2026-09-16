@@ -1,27 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Search, Plus, Filter, Download, TrendingUp, TrendingDown,
-  Minus, Target, ArrowUpDown, AlertCircle, ExternalLink
+  Search, Plus, Download, ArrowUpDown, AlertCircle, ExternalLink
 } from 'lucide-react';
-import { useAppState } from '../lib/store';
-import { formatNumber } from '../lib/store';
-
-interface KeywordData {
-  id: string;
-  term: string;
-  volume: number | null;
-  cpc: number | null;
-  difficulty: number | null;
-  intent: string | null;
-  position: number | null;
-  change: number | null;
-  url: string | null;
-  provider: string | null;
-  lastChecked: string | null;
-}
+import { useAppState, formatNumber } from '../lib/store';
+import { api } from '../lib/api';
+import type { Keyword } from '../lib/types';
 
 export default function Keywords() {
   const { state } = useAppState();
+  const [keywords, setKeywords] = useState<Keyword[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [intentFilter, setIntentFilter] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -29,6 +17,26 @@ export default function Keywords() {
 
   const hasProject = state.currentProject !== null;
   const providerConfigured = state.providerStatus.dataForSeo === 'connected';
+
+  useEffect(() => {
+    async function loadKeywords() {
+      if (!state.currentProject) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const data = await api.getKeywords(state.currentProject.id);
+        setKeywords(data);
+      } catch (error) {
+        console.error('Failed to load keywords:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadKeywords();
+  }, [state.currentProject]);
 
   if (!hasProject) {
     return (
@@ -40,7 +48,6 @@ export default function Keywords() {
     );
   }
 
-  // Show provider status when not configured
   if (!providerConfigured) {
     return (
       <div className="space-y-6">
@@ -68,6 +75,21 @@ export default function Keywords() {
             <ExternalLink className="w-4 h-4" />
             Configure Provider
           </a>
+        </div>
+      </div>
+    );
+  }
+
+  const filteredKeywords = keywords
+    .filter(k => k.term.toLowerCase().includes(searchQuery.toLowerCase()))
+    .filter(k => intentFilter === 'all' || k.intent === intentFilter);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-400">Loading keywords...</p>
         </div>
       </div>
     );
@@ -130,54 +152,57 @@ export default function Keywords() {
       </div>
 
       {/* Keywords Table */}
-      <div className="bg-surface-2 border border-surface-3/50 rounded-xl overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-surface-3/50">
-              <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Keyword</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Intent</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Volume</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">CPC</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">KD</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Position</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Change</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              { term: 'seo automation tool', intent: 'commercial', volume: 2400, cpc: 12.5, kd: 67, position: 14, change: 3 },
-              { term: 'keyword research platform', intent: 'commercial', volume: 1800, cpc: 15.2, kd: 72, position: 8, change: -2 },
-              { term: 'site audit checker', intent: 'transactional', volume: 3200, cpc: 8.9, kd: 58, position: 23, change: 5 },
-              { term: 'backlink analysis', intent: 'informational', volume: 5400, cpc: 6.3, kd: 45, position: 31, change: -8 },
-              { term: 'rank tracker software', intent: 'transactional', volume: 1200, cpc: 18.7, kd: 78, position: 5, change: 1 },
-              { term: 'how to improve seo', intent: 'informational', volume: 8100, cpc: 3.2, kd: 34, position: 42, change: 12 },
-              { term: 'technical seo checklist', intent: 'informational', volume: 4500, cpc: 4.1, kd: 41, position: 19, change: -1 },
-              { term: 'competitor analysis tool', intent: 'commercial', volume: 2900, cpc: 14.8, kd: 65, position: 11, change: 4 },
-            ]
-            .filter(k => k.term.includes(searchQuery.toLowerCase()))
-            .filter(k => intentFilter === 'all' || k.intent === intentFilter)
-            .map((keyword, i) => (
-              <tr key={i} className="border-b border-surface-3/20 hover:bg-surface-3/20">
-                <td className="px-4 py-3">
-                  <span className="text-sm text-white font-medium">{keyword.term}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <IntentBadge intent={keyword.intent} />
-                </td>
-                <td className="px-4 py-3 text-right text-sm text-slate-300">{formatNumber(keyword.volume)}</td>
-                <td className="px-4 py-3 text-right text-sm text-slate-300">${keyword.cpc.toFixed(2)}</td>
-                <td className="px-4 py-3 text-right">
-                  <DifficultyBadge kd={keyword.kd} />
-                </td>
-                <td className="px-4 py-3 text-right text-sm font-medium text-white">{keyword.position}</td>
-                <td className="px-4 py-3 text-right">
-                  <ChangeIndicator change={keyword.change} />
-                </td>
+      {filteredKeywords.length === 0 ? (
+        <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-12 text-center">
+          <Search className="w-12 h-12 text-slate-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-white mb-2">No Keywords Yet</h3>
+          <p className="text-sm text-slate-400 mb-4">Add keywords to start tracking their performance.</p>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Add Keywords
+          </button>
+        </div>
+      ) : (
+        <div className="bg-surface-2 border border-surface-3/50 rounded-xl overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-surface-3/50">
+                <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Keyword</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Intent</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Volume</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">CPC</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">KD</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Position</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {filteredKeywords.map((keyword) => (
+                <tr key={keyword.id} className="border-b border-surface-3/20 hover:bg-surface-3/20">
+                  <td className="px-4 py-3">
+                    <span className="text-sm text-white font-medium">{keyword.term}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {keyword.intent && <IntentBadge intent={keyword.intent} />}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm text-slate-300">{formatNumber(keyword.volume)}</td>
+                  <td className="px-4 py-3 text-right text-sm text-slate-300">
+                    {keyword.cpc !== null ? `$${keyword.cpc.toFixed(2)}` : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {keyword.difficulty !== null && <DifficultyBadge kd={keyword.difficulty} />}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm font-medium text-white">
+                    {keyword.currentPosition ?? '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Add Keywords Modal */}
       {showAddModal && (
@@ -211,12 +236,6 @@ export default function Keywords() {
                   </select>
                 </div>
               </div>
-              <div className="bg-surface/50 rounded-lg p-3">
-                <p className="text-xs text-slate-400">
-                  <Target className="w-3.5 h-3.5 inline mr-1 text-brand-400" />
-                  This will use 1 credit per seed keyword to fetch data from the provider.
-                </p>
-              </div>
             </div>
             <div className="flex items-center justify-end gap-3 mt-6">
               <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-sm text-slate-400 hover:text-white">Cancel</button>
@@ -248,18 +267,4 @@ function IntentBadge({ intent }: { intent: string }) {
 function DifficultyBadge({ kd }: { kd: number }) {
   const color = kd >= 70 ? 'text-red-400' : kd >= 40 ? 'text-yellow-400' : 'text-green-400';
   return <span className={`text-sm font-medium ${color}`}>{kd}</span>;
-}
-
-function ChangeIndicator({ change }: { change: number }) {
-  if (change > 0) return (
-    <span className="flex items-center justify-end gap-0.5 text-xs text-accent-green">
-      <TrendingUp className="w-3 h-3" />+{change}
-    </span>
-  );
-  if (change < 0) return (
-    <span className="flex items-center justify-end gap-0.5 text-xs text-accent-red">
-      <TrendingDown className="w-3 h-3" />{change}
-    </span>
-  );
-  return <Minus className="w-3 h-3 text-slate-500 ml-auto" />;
 }

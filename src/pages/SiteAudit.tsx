@@ -1,46 +1,42 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Shield, AlertTriangle, CheckCircle2, XCircle, Clock, Play,
-  ChevronDown, ChevronRight, ExternalLink, Filter, Download,
-  ArrowRight, Zap, Globe, AlertCircle
+  ChevronDown, ChevronRight, Download, Filter, AlertCircle, Zap
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
-import type { Severity, AuditCategory } from '../lib/types';
-
-interface AuditRule {
-  id: string;
-  severity: Severity;
-  category: AuditCategory;
-  title: string;
-  description: string;
-  affectedCount: number;
-  recommendation: string;
-  status: 'open' | 'fixed' | 'ignored';
-}
-
-const auditRules: AuditRule[] = [
-  { id: 'R001', severity: 'critical', category: 'security', title: 'Missing HTTPS redirect', description: 'HTTP version of the site does not redirect to HTTPS', affectedCount: 1, recommendation: 'Configure 301 redirect from HTTP to HTTPS', status: 'open' },
-  { id: 'R002', severity: 'critical', category: 'crawlability', title: 'Blocked important resources in robots.txt', description: 'CSS and JS files are blocked from crawling', affectedCount: 3, recommendation: 'Allow crawling of CSS and JS resources', status: 'open' },
-  { id: 'R003', severity: 'high', category: 'metadata', title: 'Duplicate title tags', description: 'Multiple pages share the same title tag', affectedCount: 12, recommendation: 'Create unique, descriptive titles for each page', status: 'open' },
-  { id: 'R004', severity: 'high', category: 'metadata', title: 'Missing meta descriptions', description: 'Pages without meta description tags', affectedCount: 8, recommendation: 'Add compelling meta descriptions (150-160 chars)', status: 'open' },
-  { id: 'R005', severity: 'high', category: 'content', title: 'Thin content pages', description: 'Pages with fewer than 300 words', affectedCount: 6, recommendation: 'Expand content or add noindex to thin pages', status: 'open' },
-  { id: 'R006', severity: 'medium', category: 'images', title: 'Images missing alt attributes', description: 'Images without descriptive alt text', affectedCount: 23, recommendation: 'Add descriptive alt text to all images', status: 'open' },
-  { id: 'R007', severity: 'medium', category: 'performance', title: 'Slow page load times', description: 'Pages taking more than 3 seconds to load', affectedCount: 5, recommendation: 'Optimize images, enable compression, reduce render-blocking resources', status: 'open' },
-  { id: 'R008', severity: 'medium', category: 'links', title: 'Broken internal links', description: 'Internal links pointing to 404 pages', affectedCount: 4, recommendation: 'Fix or remove broken internal links', status: 'open' },
-  { id: 'R009', severity: 'medium', category: 'structured-data', title: 'Missing structured data', description: 'Pages without any structured data markup', affectedCount: 15, recommendation: 'Add relevant schema.org markup (Article, Product, etc.)', status: 'open' },
-  { id: 'R010', severity: 'low', category: 'international', title: 'Missing hreflang tags', description: 'Multilingual pages without hreflang implementation', affectedCount: 7, recommendation: 'Implement hreflang tags for language targeting', status: 'open' },
-  { id: 'R011', severity: 'low', category: 'indexability', title: 'Pages with noindex but linked internally', description: 'Pages marked noindex that receive internal links', affectedCount: 2, recommendation: 'Remove noindex or remove internal links', status: 'open' },
-  { id: 'R012', severity: 'notice', category: 'content', title: 'Duplicate content detected', description: 'Similar content found across multiple URLs', affectedCount: 3, recommendation: 'Consolidate or differentiate content', status: 'open' },
-];
+import { api } from '../lib/api';
+import type { Severity, AuditCategory, AuditFinding } from '../lib/types';
 
 export default function SiteAudit() {
   const { state } = useAppState();
+  const [findings, setFindings] = useState<AuditFinding[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedSeverity, setSelectedSeverity] = useState<Severity | 'all'>('all');
   const [selectedCategory, setSelectedCategory] = useState<AuditCategory | 'all'>('all');
   const [expandedRule, setExpandedRule] = useState<string | null>(null);
   const [showRunCrawl, setShowRunCrawl] = useState(false);
 
   const hasProject = state.currentProject !== null;
+
+  useEffect(() => {
+    async function loadFindings() {
+      if (!state.currentProject) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const data = await api.getAuditFindings(state.currentProject.id);
+        setFindings(data);
+      } catch (error) {
+        console.error('Failed to load audit findings:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadFindings();
+  }, [state.currentProject]);
 
   if (!hasProject) {
     return (
@@ -52,21 +48,34 @@ export default function SiteAudit() {
     );
   }
 
-  const filteredRules = auditRules.filter(r => {
-    if (selectedSeverity !== 'all' && r.severity !== selectedSeverity) return false;
-    if (selectedCategory !== 'all' && r.category !== selectedCategory) return false;
+  const filteredFindings = findings.filter(f => {
+    if (selectedSeverity !== 'all' && f.severity !== selectedSeverity) return false;
+    if (selectedCategory !== 'all' && f.category !== selectedCategory) return false;
     return true;
   });
 
   const severityCounts = {
-    critical: auditRules.filter(r => r.severity === 'critical').length,
-    high: auditRules.filter(r => r.severity === 'high').length,
-    medium: auditRules.filter(r => r.severity === 'medium').length,
-    low: auditRules.filter(r => r.severity === 'low').length,
-    notice: auditRules.filter(r => r.severity === 'notice').length,
+    critical: findings.filter(f => f.severity === 'critical').length,
+    high: findings.filter(f => f.severity === 'high').length,
+    medium: findings.filter(f => f.severity === 'medium').length,
+    low: findings.filter(f => f.severity === 'low').length,
+    notice: findings.filter(f => f.severity === 'notice').length,
   };
 
-  const overallScore = Math.round(100 - (severityCounts.critical * 10 + severityCounts.high * 5 + severityCounts.medium * 2 + severityCounts.low * 1));
+  const overallScore = findings.length > 0
+    ? Math.max(0, Math.round(100 - (severityCounts.critical * 10 + severityCounts.high * 5 + severityCounts.medium * 2 + severityCounts.low * 1)))
+    : null;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-400">Loading audit findings...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -94,109 +103,143 @@ export default function SiteAudit() {
       </div>
 
       {/* Score Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-        <div className="md:col-span-1 bg-surface-2 border border-surface-3/50 rounded-xl p-5 flex flex-col items-center justify-center">
-          <div className={`text-4xl font-bold ${overallScore >= 80 ? 'text-accent-green' : overallScore >= 60 ? 'text-accent-yellow' : 'text-accent-red'}`}>
-            {overallScore}
+      {overallScore !== null ? (
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+          <div className="md:col-span-1 bg-surface-2 border border-surface-3/50 rounded-xl p-5 flex flex-col items-center justify-center">
+            <div className={`text-4xl font-bold ${overallScore >= 80 ? 'text-accent-green' : overallScore >= 60 ? 'text-accent-yellow' : 'text-accent-red'}`}>
+              {overallScore}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">Overall Score</p>
+            <p className="text-[10px] text-slate-500 mt-1">Based on {findings.length} findings</p>
           </div>
-          <p className="text-xs text-slate-400 mt-1">Overall Score</p>
-          <p className="text-[10px] text-slate-500 mt-1">Based on {auditRules.length} rules</p>
+          <SeverityCard severity="critical" count={severityCounts.critical} total={findings.length} />
+          <SeverityCard severity="high" count={severityCounts.high} total={findings.length} />
+          <SeverityCard severity="medium" count={severityCounts.medium} total={findings.length} />
+          <SeverityCard severity="low" count={severityCounts.low} total={findings.length} />
+          <SeverityCard severity="notice" count={severityCounts.notice} total={findings.length} />
         </div>
-        <SeverityCard severity="critical" count={severityCounts.critical} total={auditRules.length} />
-        <SeverityCard severity="high" count={severityCounts.high} total={auditRules.length} />
-        <SeverityCard severity="medium" count={severityCounts.medium} total={auditRules.length} />
-        <SeverityCard severity="low" count={severityCounts.low} total={auditRules.length} />
-        <SeverityCard severity="notice" count={severityCounts.notice} total={auditRules.length} />
-      </div>
+      ) : (
+        <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-8 text-center">
+          <AlertCircle className="w-12 h-12 text-accent-yellow mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-white mb-2">No Audit Data</h3>
+          <p className="text-sm text-slate-400 max-w-md mx-auto mb-4">
+            No audit findings available. Run a site crawl to analyze your website and identify SEO issues.
+          </p>
+          <button
+            onClick={() => setShowRunCrawl(true)}
+            className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2"
+          >
+            <Zap className="w-4 h-4" />
+            Run Crawl
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
-        <Filter className="w-4 h-4 text-slate-400" />
-        <select
-          value={selectedSeverity}
-          onChange={e => setSelectedSeverity(e.target.value as Severity | 'all')}
-          className="px-3 py-1.5 bg-surface-2 border border-surface-3/50 rounded-lg text-xs text-white focus:outline-none focus:border-brand-600/50"
-        >
-          <option value="all">All Severities</option>
-          <option value="critical">Critical</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-          <option value="notice">Notice</option>
-        </select>
-        <select
-          value={selectedCategory}
-          onChange={e => setSelectedCategory(e.target.value as AuditCategory | 'all')}
-          className="px-3 py-1.5 bg-surface-2 border border-surface-3/50 rounded-lg text-xs text-white focus:outline-none focus:border-brand-600/50"
-        >
-          <option value="all">All Categories</option>
-          <option value="crawlability">Crawlability</option>
-          <option value="indexability">Indexability</option>
-          <option value="metadata">Metadata</option>
-          <option value="content">Content</option>
-          <option value="links">Links</option>
-          <option value="images">Images</option>
-          <option value="performance">Performance</option>
-          <option value="security">Security</option>
-          <option value="structured-data">Structured Data</option>
-          <option value="international">International SEO</option>
-        </select>
-        <span className="text-xs text-slate-500 ml-auto">
-          Showing {filteredRules.length} of {auditRules.length} findings
-        </span>
-      </div>
-
-      {/* Findings List */}
-      <div className="space-y-2">
-        {filteredRules.map(rule => (
-          <div key={rule.id} className="bg-surface-2 border border-surface-3/50 rounded-xl overflow-hidden">
-            <button
-              onClick={() => setExpandedRule(expandedRule === rule.id ? null : rule.id)}
-              className="w-full flex items-center gap-4 p-4 hover:bg-surface-3/20 text-left"
+      {findings.length > 0 && (
+        <>
+          <div className="flex items-center gap-3">
+            <Filter className="w-4 h-4 text-slate-400" />
+            <select
+              value={selectedSeverity}
+              onChange={e => setSelectedSeverity(e.target.value as Severity | 'all')}
+              className="px-3 py-1.5 bg-surface-2 border border-surface-3/50 rounded-lg text-xs text-white focus:outline-none focus:border-brand-600/50"
             >
-              <SeverityIcon severity={rule.severity} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-slate-500">{rule.id}</span>
-                  <span className="text-sm font-medium text-white">{rule.title}</span>
-                </div>
-                <p className="text-xs text-slate-400 mt-0.5">{rule.category} · {rule.affectedCount} URL{rule.affectedCount > 1 ? 's' : ''} affected</p>
-              </div>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                rule.status === 'open' ? 'bg-red-500/20 text-red-400' :
-                rule.status === 'fixed' ? 'bg-green-500/20 text-green-400' :
-                'bg-slate-500/20 text-slate-400'
-              }`}>
-                {rule.status}
-              </span>
-              {expandedRule === rule.id ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
-            </button>
-
-            {expandedRule === rule.id && (
-              <div className="px-4 pb-4 border-t border-surface-3/30 pt-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-300 mb-1">Description</h4>
-                    <p className="text-xs text-slate-400">{rule.description}</p>
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-300 mb-1">Recommendation</h4>
-                    <p className="text-xs text-slate-400">{rule.recommendation}</p>
-                  </div>
-                </div>
-                <div className="mt-3 flex items-center gap-2">
-                  <button className="px-3 py-1.5 bg-accent-green/20 text-accent-green text-xs rounded-lg hover:bg-accent-green/30">
-                    Mark as Fixed
-                  </button>
-                  <button className="px-3 py-1.5 bg-surface-3/50 text-slate-300 text-xs rounded-lg hover:bg-surface-3">
-                    Ignore
-                  </button>
-                </div>
-              </div>
-            )}
+              <option value="all">All Severities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+              <option value="notice">Notice</option>
+            </select>
+            <select
+              value={selectedCategory}
+              onChange={e => setSelectedCategory(e.target.value as AuditCategory | 'all')}
+              className="px-3 py-1.5 bg-surface-2 border border-surface-3/50 rounded-lg text-xs text-white focus:outline-none focus:border-brand-600/50"
+            >
+              <option value="all">All Categories</option>
+              <option value="crawlability">Crawlability</option>
+              <option value="indexability">Indexability</option>
+              <option value="metadata">Metadata</option>
+              <option value="content">Content</option>
+              <option value="links">Links</option>
+              <option value="images">Images</option>
+              <option value="performance">Performance</option>
+              <option value="security">Security</option>
+              <option value="structured-data">Structured Data</option>
+              <option value="international">International SEO</option>
+            </select>
+            <span className="text-xs text-slate-500 ml-auto">
+              Showing {filteredFindings.length} of {findings.length} findings
+            </span>
           </div>
-        ))}
-      </div>
+
+          {/* Findings List */}
+          <div className="space-y-2">
+            {filteredFindings.map(finding => (
+              <div key={finding.id} className="bg-surface-2 border border-surface-3/50 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => setExpandedRule(expandedRule === finding.id ? null : finding.id)}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-surface-3/20 text-left"
+                >
+                  <SeverityIcon severity={finding.severity} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-slate-500">{finding.ruleId}</span>
+                      <span className="text-sm font-medium text-white">{finding.title}</span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">{finding.category} · {finding.affectedUrls.length} URL{finding.affectedUrls.length !== 1 ? 's' : ''} affected</p>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                    finding.status === 'open' ? 'bg-red-500/20 text-red-400' :
+                    finding.status === 'fixed' ? 'bg-green-500/20 text-green-400' :
+                    'bg-slate-500/20 text-slate-400'
+                  }`}>
+                    {finding.status}
+                  </span>
+                  {expandedRule === finding.id ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                </button>
+
+                {expandedRule === finding.id && (
+                  <div className="px-4 pb-4 border-t border-surface-3/30 pt-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <h4 className="text-xs font-semibold text-slate-300 mb-1">Description</h4>
+                        <p className="text-xs text-slate-400">{finding.description}</p>
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-semibold text-slate-300 mb-1">Recommendation</h4>
+                        <p className="text-xs text-slate-400">{finding.recommendation}</p>
+                      </div>
+                    </div>
+                    {finding.affectedUrls.length > 0 && (
+                      <div className="mt-3">
+                        <h4 className="text-xs font-semibold text-slate-300 mb-1">Affected URLs</h4>
+                        <div className="max-h-32 overflow-y-auto space-y-1">
+                          {finding.affectedUrls.slice(0, 10).map((url, i) => (
+                            <p key={i} className="text-xs text-slate-400 font-mono truncate">{url}</p>
+                          ))}
+                          {finding.affectedUrls.length > 10 && (
+                            <p className="text-xs text-slate-500">...and {finding.affectedUrls.length - 10} more</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <div className="mt-3 flex items-center gap-2">
+                      <button className="px-3 py-1.5 bg-accent-green/20 text-accent-green text-xs rounded-lg hover:bg-accent-green/30">
+                        Mark as Fixed
+                      </button>
+                      <button className="px-3 py-1.5 bg-surface-3/50 text-slate-300 text-xs rounded-lg hover:bg-surface-3">
+                        Ignore
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* Run Crawl Modal */}
       {showRunCrawl && (
@@ -255,9 +298,11 @@ function SeverityCard({ severity, count, total }: { severity: Severity; count: n
     <div className={`border rounded-xl p-4 ${colors[severity]}`}>
       <p className={`text-2xl font-bold ${textColors[severity]}`}>{count}</p>
       <p className="text-xs text-slate-400 capitalize mt-1">{severity}</p>
-      <div className="mt-2 w-full bg-surface-3/50 rounded-full h-1">
-        <div className={`h-1 rounded-full ${textColors[severity].replace('text-', 'bg-')}`} style={{ width: `${(count / total) * 100}%` }} />
-      </div>
+      {total > 0 && (
+        <div className="mt-2 w-full bg-surface-3/50 rounded-full h-1">
+          <div className={`h-1 rounded-full ${textColors[severity].replace('text-', 'bg-')}`} style={{ width: `${(count / total) * 100}%` }} />
+        </div>
+      )}
     </div>
   );
 }
