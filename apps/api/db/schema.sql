@@ -735,6 +735,22 @@ CREATE TABLE IF NOT EXISTS stripe_events (
 CREATE INDEX IF NOT EXISTS idx_stripe_events_event_id ON stripe_events(event_id);
 CREATE INDEX IF NOT EXISTS idx_stripe_events_type ON stripe_events(type);
 
+CREATE TABLE IF NOT EXISTS backups (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('full','incremental','reports','exports')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','running','completed','failed')),
+  storage_key TEXT,
+  size_bytes BIGINT,
+  config JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_backups_org ON backups(organization_id);
+CREATE INDEX IF NOT EXISTS idx_backups_status ON backups(status);
+CREATE INDEX IF NOT EXISTS idx_backups_created ON backups(created_at);
+
 CREATE TABLE IF NOT EXISTS scheduled_jobs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -839,6 +855,7 @@ ALTER TABLE content_briefs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE webhooks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE webhook_deliveries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stripe_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE backups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scheduled_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_usage ENABLE ROW LEVEL SECURITY;
 ALTER TABLE feature_flags ENABLE ROW LEVEL SECURITY;
@@ -1141,6 +1158,15 @@ DROP POLICY IF EXISTS stripe_events_isolation ON stripe_events;
 CREATE POLICY stripe_events_isolation ON stripe_events
   FOR ALL TO PUBLIC
   USING (true);
+
+DROP POLICY IF EXISTS backups_isolation ON backups;
+CREATE POLICY backups_isolation ON backups
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' AND current_setting('app.current_user_id', true) = '')
+    OR current_setting('app.current_organization_id', true) IS NULL
+  );
 
 DROP POLICY IF EXISTS scheduled_jobs_isolation ON scheduled_jobs;
 CREATE POLICY scheduled_jobs_isolation ON scheduled_jobs
