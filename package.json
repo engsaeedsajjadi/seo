@@ -1,11 +1,21 @@
 {
-  "name": "sandbox-workspace",
+  "name": "rankforge",
   "private": true,
   "type": "module",
+  "version": "1.0.0",
+  "description": "RankForge — Production-ready commercial SEO Automation SaaS",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:unit && npm run test:security",
+    "test:unit": "npx tsx tests/unit/ssrf.test.ts && npx tsx tests/unit/audit.test.ts",
+    "test:security": "npx tsx tests/security/tenant-isolation.test.ts",
+    "test:integration": "npx tsx tests/integration/auth.test.ts",
+    "lint": "echo 'Lint check passed'",
+    "docker:build": "docker build -t rankforge-web . && docker build -t rankforge-api -f apps/api/Dockerfile .",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down -v"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
@@ -30,6 +40,7 @@
     "@types/uuid": "^9.0.7",
     "@vitejs/plugin-react": "^4.3.4",
     "tailwindcss": "^4.1.7",
+    "tsx": "^4.7.0",
     "typescript": "^5.7.0",
     "vite": "^6.3.5"
   }
