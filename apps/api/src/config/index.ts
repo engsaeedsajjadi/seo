@@ -90,6 +90,8 @@ export const config = {
       bucket: getEnv('S3_BUCKET', false, 'rankforge-storage'),
       region: getEnv('S3_REGION', false, 'us-east-1'),
     },
+    sentryDsn: getEnv('SENTRY_DSN', false, ''),
+    posthogKey: getEnv('POSTHOG_KEY', false, ''),
   },
 
   worker: {
