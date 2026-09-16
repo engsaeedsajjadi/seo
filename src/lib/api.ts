@@ -390,6 +390,36 @@ class ApiClient {
     });
   }
 
+  async startCrawl(projectId: string, options: { maxPages?: number; maxDepth?: number; concurrency?: number } = {}): Promise<ApiResult<{ job: Job; crawlRun: any }>> {
+    return this.request(`/api/v1/projects/${encodeURIComponent(projectId)}/crawl`, {
+      method: 'POST',
+      body: JSON.stringify(options),
+    });
+  }
+
+  async getCrawls(projectId: string): Promise<ApiResult<any[]>> {
+    return this.request(`/api/v1/projects/${encodeURIComponent(projectId)}/crawls`);
+  }
+
+  async checkRankings(projectId: string): Promise<ApiResult<{ job: Job }>> {
+    return this.request(`/api/v1/projects/${encodeURIComponent(projectId)}/rankings/check`, {
+      method: 'POST',
+    });
+  }
+
+  async syncBacklinks(projectId: string): Promise<ApiResult<{ job: Job }>> {
+    return this.request(`/api/v1/projects/${encodeURIComponent(projectId)}/backlinks/sync`, {
+      method: 'POST',
+    });
+  }
+
+  async checkPageSpeed(projectId: string, url: string): Promise<ApiResult<{ job: Job }>> {
+    return this.request(`/api/v1/projects/${encodeURIComponent(projectId)}/pagespeed/check`, {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    });
+  }
+
   // ============================================================
   // KEYWORDS
   // ============================================================

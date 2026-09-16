@@ -918,14 +918,63 @@ export function createApp() {
   });
 
   // ============================================================
-  // PLACEHOLDER ENDPOINTS WITH REAL STRUCTURE
+  // REAL ENDPOINTS — Provider-aware, NOT_CONFIGURED explicit, no fake data
   // ============================================================
 
   app.get('/api/v1/projects/:projectId/rankings', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
-      res.json({ success: true, data: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } });
+
+      const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password) || !!config.providers.serpapi;
+      if (!hasProvider) {
+        return res.status(503).json({
+          success: false,
+          error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Rank tracking provider not configured. Configure DataForSEO or SerpApi in Integrations.' },
+          provider: { dataforseo: 'not_configured', serpapi: 'not_configured' },
+          data: [],
+          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+        });
+      }
+
+      const { page, limit } = paginationSchema.parse(req.query);
+      const { query } = await import('./db/client.js');
+      const result = await query(
+        `SELECT id, keyword_id as "keywordId", position, previous_position as "previousPosition", url, search_engine as "searchEngine", country, device, date, provider FROM keyword_rankings WHERE project_id = $1 AND organization_id = $2 ORDER BY date DESC LIMIT $3 OFFSET $4`,
+        [project.id, req.organizationId!, limit, (page - 1) * limit]
+      );
+      const countResult = await query(`SELECT COUNT(*) as total FROM keyword_rankings WHERE project_id = $1 AND organization_id = $2`, [project.id, req.organizationId!]);
+
+      res.json({
+        success: true,
+        data: result.rows,
+        provider: { status: 'configured', message: 'Provider configured, rankings from real SERP provider via RANK_CHECK jobs' },
+        pagination: { page, limit, total: parseInt(countResult.rows[0].total, 10), totalPages: Math.ceil(parseInt(countResult.rows[0].total, 10) / limit) },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/projects/:projectId/rankings/check', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+
+      const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password) || !!config.providers.serpapi;
+      if (!hasProvider) {
+        return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Rank provider not configured' } });
+      }
+
+      const job = await jobRepository.create({
+        organizationId: req.organizationId!,
+        projectId: project.id,
+        type: 'RANK_CHECK',
+        payload: { projectId: project.id },
+        idempotencyKey: `rank_check_${project.id}_${Date.now()}`,
+      });
+
+      res.status(201).json({ success: true, data: { job, message: 'Rank check queued — real provider will be called by worker' } });
     } catch (error) {
       next(error);
     }
@@ -935,8 +984,60 @@ export function createApp() {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
-      res.json({ success: true, data: [] });
+
+      const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password);
+      const providerStatus = hasProvider ? 'configured' : 'not_configured';
+
+      const { query } = await import('./db/client.js');
+      const result = await query(`SELECT id, domain, normalized_domain as "normalizedDomain", visibility_score as "visibilityScore", shared_keywords as "sharedKeywords", source, evidence, last_analyzed_at as "lastAnalyzedAt", created_at as "createdAt" FROM competitors WHERE project_id = $1 AND organization_id = $2 ORDER BY created_at DESC`, [project.id, req.organizationId!]);
+
+      res.json({
+        success: true,
+        data: result.rows,
+        provider: { status: providerStatus, message: hasProvider ? 'Provider configured, competitor discovery via COMPETITOR_CHECK jobs' : 'Provider not configured — showing manual competitors only, no fake data' },
+      });
     } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/projects/:projectId/competitors', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+
+      const schema = z.object({ domain: z.string().min(1).max(255), source: z.string().optional() });
+      const { domain, source } = schema.parse(req.body);
+
+      const normalizedDomain = projectRepository.normalizeDomain(domain);
+      const { validateUrlForSSRF } = await import('./lib/ssrf.js');
+      await validateUrlForSSRF(`https://${normalizedDomain}`);
+
+      const { query } = await import('./db/client.js');
+      const result = await query(
+        `INSERT INTO competitors (project_id, organization_id, domain, normalized_domain, source, evidence) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (project_id, normalized_domain) DO NOTHING RETURNING id, domain, normalized_domain as "normalizedDomain", source, created_at as "createdAt"`,
+        [project.id, req.organizationId!, domain, normalizedDomain, source || 'manual', JSON.stringify({ addedBy: req.userId, timestamp: new Date().toISOString() })]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(409).json({ success: false, error: { code: 'CONFLICT', message: 'Competitor already exists' } });
+      }
+
+      await auditLogRepository.create({
+        organizationId: req.organizationId!,
+        userId: req.userId,
+        action: 'competitor.add',
+        resourceType: 'project',
+        resourceId: project.id,
+        details: { domain: normalizedDomain },
+        ipAddress: req.ip,
+      });
+
+      res.status(201).json({ success: true, data: result.rows[0] });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+      }
       next(error);
     }
   });
@@ -945,7 +1046,45 @@ export function createApp() {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
-      res.json({ success: true, data: [] });
+
+      const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password);
+      if (!hasProvider) {
+        return res.status(503).json({
+          success: false,
+          error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Backlink provider not configured. Configure DataForSEO in Integrations.' },
+          provider: { dataforseo: 'not_configured' },
+          data: [],
+        });
+      }
+
+      const { query } = await import('./db/client.js');
+      const result = await query(`SELECT id, source_url as "sourceUrl", source_domain as "sourceDomain", target_url as "targetUrl", anchor_text as "anchorText", domain_rating as "domainRating", is_nofollow as "isNofollow", status, provider, evidence, first_seen_at as "firstSeenAt", last_seen_at as "lastSeenAt" FROM backlinks WHERE project_id = $1 AND organization_id = $2 ORDER BY last_seen_at DESC LIMIT 100`, [project.id, req.organizationId!]);
+
+      res.json({ success: true, data: result.rows, provider: { status: 'configured' } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/projects/:projectId/backlinks/sync', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+
+      const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password);
+      if (!hasProvider) {
+        return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Backlink provider not configured' } });
+      }
+
+      const job = await jobRepository.create({
+        organizationId: req.organizationId!,
+        projectId: project.id,
+        type: 'BACKLINK_SYNC',
+        payload: { projectId: project.id, domain: project.normalizedDomain },
+        idempotencyKey: `backlink_${project.id}_${Date.now()}`,
+      });
+
+      res.status(201).json({ success: true, data: { job, message: 'Backlink sync queued — real provider will be called' } });
     } catch (error) {
       next(error);
     }
@@ -955,8 +1094,43 @@ export function createApp() {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
-      res.json({ success: true, data: [] });
+
+      const { query } = await import('./db/client.js');
+      const result = await query(`SELECT id, type, title, format, status, storage_key as "storageKey", download_url as "downloadUrl", data_snapshot as "dataSnapshot", created_at as "createdAt", completed_at as "completedAt" FROM reports WHERE project_id = $1 AND organization_id = $2 ORDER BY created_at DESC`, [project.id, req.organizationId!]);
+
+      res.json({ success: true, data: result.rows });
     } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/projects/:projectId/reports', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+
+      const schema = z.object({ type: z.string().min(1), format: z.enum(['pdf','html','csv','json']).default('json'), title: z.string().optional() });
+      const { type, format, title } = schema.parse(req.body);
+
+      const { query } = await import('./db/client.js');
+      const reportResult = await query(
+        `INSERT INTO reports (organization_id, project_id, type, title, format, status, config) VALUES ($1, $2, $3, $4, $5, 'pending', $6) RETURNING id, type, title, format, status, created_at as "createdAt"`,
+        [req.organizationId!, project.id, type, title || `${type} report for ${project.domain}`, format, JSON.stringify({ requestedBy: req.userId })]
+      );
+
+      const job = await jobRepository.create({
+        organizationId: req.organizationId!,
+        projectId: project.id,
+        type: 'REPORT_GENERATION',
+        payload: { reportId: reportResult.rows[0].id, type, format },
+        idempotencyKey: `report_${reportResult.rows[0].id}`,
+      });
+
+      res.status(201).json({ success: true, data: { report: reportResult.rows[0], job, message: 'Report generation queued — real data from persisted project' } });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+      }
       next(error);
     }
   });
@@ -965,11 +1139,115 @@ export function createApp() {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
-      res.json({ success: true, data: [] });
+
+      const { query } = await import('./db/client.js');
+      const result = await query(`SELECT id, rule, type, message, title, severity, data, read, triggered_at as "triggeredAt", created_at as "createdAt" FROM alerts WHERE project_id = $1 AND organization_id = $2 ORDER BY triggered_at DESC LIMIT 100`, [project.id, req.organizationId!]);
+
+      res.json({ success: true, data: result.rows });
     } catch (error) {
       next(error);
     }
   });
+
+  app.get('/api/v1/projects/:projectId/gsc', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+
+      if (!config.providers.google.clientId) {
+        return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Google OAuth not configured — GSC unavailable' }, provider: 'gsc' });
+      }
+
+      const { query } = await import('./db/client.js');
+      const integration = await query(`SELECT id, status, last_sync_at as "lastSyncAt", last_error as "lastError" FROM integrations WHERE organization_id = $1 AND project_id = $2 AND provider = 'gsc'`, [req.organizationId!, project.id]);
+      
+      if (integration.rows.length === 0) {
+        return res.status(200).json({ success: true, data: { status: 'not_connected', message: 'GSC not connected — OAuth required', provider: 'gsc' } });
+      }
+
+      const metrics = await query(`SELECT date, clicks, impressions, ctr, position, query, page, country, device FROM gsc_metrics WHERE project_id = $1 ORDER BY date DESC LIMIT 100`, [project.id]);
+
+      res.json({ success: true, data: { integration: integration.rows[0], metrics: metrics.rows } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/v1/projects/:projectId/ga4', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+
+      if (!config.providers.google.clientId) {
+        return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Google OAuth not configured — GA4 unavailable' }, provider: 'ga4' });
+      }
+
+      const { query } = await import('./db/client.js');
+      const integration = await query(`SELECT id, status, last_sync_at as "lastSyncAt" FROM integrations WHERE organization_id = $1 AND project_id = $2 AND provider = 'ga4'`, [req.organizationId!, project.id]);
+
+      if (integration.rows.length === 0) {
+        return res.status(200).json({ success: true, data: { status: 'not_connected', message: 'GA4 not connected — OAuth required', provider: 'ga4' } });
+      }
+
+      const metrics = await query(`SELECT date, users, sessions, page_views as "pageViews", organic_users as "organicUsers", conversions, landing_page as "landingPage" FROM ga4_metrics WHERE project_id = $1 ORDER BY date DESC LIMIT 100`, [project.id]);
+
+      res.json({ success: true, data: { integration: integration.rows[0], metrics: metrics.rows } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/v1/projects/:projectId/pagespeed', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+
+      if (!config.providers.pagespeed) {
+        return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'PageSpeed API key not configured' }, provider: 'pagespeed' });
+      }
+
+      const { query } = await import('./db/client.js');
+      const results = await query(`SELECT id, url, strategy, performance_score as "performanceScore", accessibility_score as "accessibilityScore", lcp, cls, inp, created_at as "createdAt" FROM pagespeed_results WHERE project_id = $1 ORDER BY created_at DESC LIMIT 20`, [project.id]);
+
+      res.json({ success: true, data: results.rows });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/projects/:projectId/pagespeed/check', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+
+      if (!config.providers.pagespeed) {
+        return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'PageSpeed not configured' } });
+      }
+
+      const schema = z.object({ url: z.string().url() });
+      const { url } = schema.parse(req.body);
+
+      const { validateUrlForSSRF } = await import('./lib/ssrf.js');
+      await validateUrlForSSRF(url);
+
+      const job = await jobRepository.create({
+        organizationId: req.organizationId!,
+        projectId: project.id,
+        type: 'PAGESPEED_CHECK',
+        payload: { url },
+        idempotencyKey: `pagespeed_${project.id}_${url}_${Date.now()}`,
+      });
+
+      res.status(201).json({ success: true, data: { job, message: 'PageSpeed check queued — real API call by worker' } });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+      }
+      next(error);
+    }
+  });
+
+
 
   // ============================================================
   // ERROR HANDLER
