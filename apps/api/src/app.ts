@@ -1149,6 +1149,114 @@ export function createApp() {
     }
   });
 
+  app.post('/api/v1/projects/:projectId/alerts', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+
+      const schema = z.object({
+        type: z.enum(['rank_drop', 'traffic_drop', 'crawl_error', 'broken_link', 'critical_issue', 'keyword_loss', 'provider_failure']).default('critical_issue'),
+        rule: z.string().min(1).max(255).optional(),
+        title: z.string().min(1).max(255),
+        message: z.string().min(1).max(1000),
+        severity: z.enum(['critical', 'high', 'medium', 'low', 'notice']).default('medium'),
+        channels: z.array(z.enum(['email', 'in_app', 'webhook'])).default(['in_app']),
+      });
+      const parsed = schema.parse(req.body);
+
+      const { query } = await import('./db/client.js');
+      const result = await query(
+        `INSERT INTO alerts (organization_id, project_id, type, rule, title, message, severity, data, read, triggered_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, NOW()) RETURNING id, type, rule, title, message, severity, data, read, triggered_at as "triggeredAt", created_at as "createdAt"`,
+        [req.organizationId!, project.id, parsed.type, parsed.rule || parsed.type, parsed.title, parsed.message, parsed.severity, JSON.stringify({ channels: parsed.channels, createdBy: req.userId })]
+      );
+
+      await auditLogRepository.create({
+        organizationId: req.organizationId!,
+        userId: req.userId,
+        action: 'alert.create',
+        resourceType: 'project',
+        resourceId: project.id,
+        details: { alertId: result.rows[0].id, type: parsed.type },
+        ipAddress: req.ip,
+      });
+
+      await jobRepository.create({
+        organizationId: req.organizationId!,
+        projectId: project.id,
+        type: 'ALERT_EVALUATION',
+        payload: { alertId: result.rows[0].id, channels: parsed.channels },
+        idempotencyKey: `alert_${result.rows[0].id}`,
+      });
+
+      res.status(201).json({ success: true, data: result.rows[0] });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+      }
+      next(error);
+    }
+  });
+
+  app.patch('/api/v1/projects/:projectId/alerts/:alertId/read', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const { query } = await import('./db/client.js');
+      const result = await query(`UPDATE alerts SET read = true WHERE id = $1 AND project_id = $2 AND organization_id = $3 RETURNING id`, [req.params.alertId, req.params.projectId, req.organizationId!]);
+      if (result.rows.length === 0) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Alert not found' } });
+      res.json({ success: true, data: { id: result.rows[0].id, read: true } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/v1/projects/:projectId/content/briefs', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+
+      const { query } = await import('./db/client.js');
+      const result = await query(`SELECT id, title, target_keyword as "targetKeyword", intent, status, word_count as "wordCount", outline, created_at as "createdAt" FROM content_briefs WHERE project_id = $1 AND organization_id = $2 ORDER BY created_at DESC`, [project.id, req.organizationId!]);
+      res.json({ success: true, data: result.rows });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/projects/:projectId/content/briefs', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+
+      const hasAI = !!(config.providers.openai || config.providers.anthropic || config.providers.googleAi);
+      if (!hasAI) {
+        return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'AI provider not configured — content brief requires OpenAI/Anthropic/Google AI' } });
+      }
+
+      const schema = z.object({ title: z.string().min(1).max(255), targetKeyword: z.string().min(1).max(255), intent: z.string().optional(), wordCount: z.number().int().min(100).max(5000).optional() });
+      const parsed = schema.parse(req.body);
+
+      const { query } = await import('./db/client.js');
+      const result = await query(
+        `INSERT INTO content_briefs (organization_id, project_id, title, target_keyword, intent, status, word_count, created_by) VALUES ($1, $2, $3, $4, $5, 'draft', $6, $7) RETURNING id, title, target_keyword as "targetKeyword", intent, status, word_count as "wordCount", created_at as "createdAt"`,
+        [req.organizationId!, project.id, parsed.title, parsed.targetKeyword, parsed.intent || 'informational', parsed.wordCount || 1000, req.userId!]
+      );
+
+      const job = await jobRepository.create({
+        organizationId: req.organizationId!,
+        projectId: project.id,
+        type: 'CONTENT_BRIEF',
+        payload: { briefId: result.rows[0].id, targetKeyword: parsed.targetKeyword },
+        idempotencyKey: `brief_${result.rows[0].id}`,
+      });
+
+      res.status(201).json({ success: true, data: { brief: result.rows[0], job, message: 'Content brief queued — AI provider will generate outline with cost metering' } });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+      }
+      next(error);
+    }
+  });
+
   app.get('/api/v1/projects/:projectId/gsc', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
