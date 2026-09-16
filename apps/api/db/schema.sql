@@ -10,7 +10,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Users
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   email VARCHAR(255) UNIQUE NOT NULL,
   email_verified BOOLEAN DEFAULT FALSE,
@@ -22,10 +22,10 @@ CREATE TABLE users (
   deleted_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
 -- Sessions
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   token_hash TEXT NOT NULL,
@@ -35,11 +35,11 @@ CREATE TABLE sessions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_sessions_user ON sessions(user_id);
-CREATE INDEX idx_sessions_token ON sessions(token_hash);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
 
 -- Organizations (Tenants)
-CREATE TABLE organizations (
+CREATE TABLE IF NOT EXISTS organizations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(255) NOT NULL,
   slug VARCHAR(63) UNIQUE NOT NULL,
@@ -51,10 +51,10 @@ CREATE TABLE organizations (
   deleted_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_organizations_slug ON organizations(slug);
+CREATE INDEX IF NOT EXISTS idx_organizations_slug ON organizations(slug);
 
 -- Organization Members
-CREATE TABLE organization_members (
+CREATE TABLE IF NOT EXISTS organization_members (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -63,14 +63,14 @@ CREATE TABLE organization_members (
   UNIQUE(organization_id, user_id)
 );
 
-CREATE INDEX idx_org_members_org ON organization_members(organization_id);
-CREATE INDEX idx_org_members_user ON organization_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_org_members_org ON organization_members(organization_id);
+CREATE INDEX IF NOT EXISTS idx_org_members_user ON organization_members(user_id);
 
 -- ============================================================
 -- PROJECTS
 -- ============================================================
 
-CREATE TABLE projects (
+CREATE TABLE IF NOT EXISTS projects (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
@@ -96,14 +96,14 @@ CREATE TABLE projects (
   UNIQUE(organization_id, normalized_domain)
 );
 
-CREATE INDEX idx_projects_org ON projects(organization_id);
-CREATE INDEX idx_projects_domain ON projects(normalized_domain);
+CREATE INDEX IF NOT EXISTS idx_projects_org ON projects(organization_id);
+CREATE INDEX IF NOT EXISTS idx_projects_domain ON projects(normalized_domain);
 
 -- ============================================================
 -- CRAWL & AUDIT
 -- ============================================================
 
-CREATE TABLE crawls (
+CREATE TABLE IF NOT EXISTS crawls (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -116,10 +116,10 @@ CREATE TABLE crawls (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_crawls_project ON crawls(project_id);
-CREATE INDEX idx_crawls_org ON crawls(organization_id);
+CREATE INDEX IF NOT EXISTS idx_crawls_project ON crawls(project_id);
+CREATE INDEX IF NOT EXISTS idx_crawls_org ON crawls(organization_id);
 
-CREATE TABLE crawl_pages (
+CREATE TABLE IF NOT EXISTS crawl_pages (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   crawl_id UUID NOT NULL REFERENCES crawls(id) ON DELETE CASCADE,
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -144,10 +144,10 @@ CREATE TABLE crawl_pages (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_crawl_pages_crawl ON crawl_pages(crawl_id);
-CREATE INDEX idx_crawl_pages_org ON crawl_pages(organization_id);
+CREATE INDEX IF NOT EXISTS idx_crawl_pages_crawl ON crawl_pages(crawl_id);
+CREATE INDEX IF NOT EXISTS idx_crawl_pages_org ON crawl_pages(organization_id);
 
-CREATE TABLE crawl_issues (
+CREATE TABLE IF NOT EXISTS crawl_issues (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   crawl_id UUID NOT NULL REFERENCES crawls(id) ON DELETE CASCADE,
   page_id UUID REFERENCES crawl_pages(id) ON DELETE SET NULL,
@@ -164,15 +164,15 @@ CREATE TABLE crawl_issues (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_crawl_issues_crawl ON crawl_issues(crawl_id);
-CREATE INDEX idx_crawl_issues_org ON crawl_issues(organization_id);
-CREATE INDEX idx_crawl_issues_severity ON crawl_issues(severity);
+CREATE INDEX IF NOT EXISTS idx_crawl_issues_crawl ON crawl_issues(crawl_id);
+CREATE INDEX IF NOT EXISTS idx_crawl_issues_org ON crawl_issues(organization_id);
+CREATE INDEX IF NOT EXISTS idx_crawl_issues_severity ON crawl_issues(severity);
 
 -- ============================================================
 -- KEYWORDS & RANKINGS
 -- ============================================================
 
-CREATE TABLE keywords (
+CREATE TABLE IF NOT EXISTS keywords (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -190,10 +190,10 @@ CREATE TABLE keywords (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_keywords_project ON keywords(project_id);
-CREATE INDEX idx_keywords_org ON keywords(organization_id);
+CREATE INDEX IF NOT EXISTS idx_keywords_project ON keywords(project_id);
+CREATE INDEX IF NOT EXISTS idx_keywords_org ON keywords(organization_id);
 
-CREATE TABLE keyword_snapshots (
+CREATE TABLE IF NOT EXISTS keyword_snapshots (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   keyword_id UUID NOT NULL REFERENCES keywords(id) ON DELETE CASCADE,
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -206,14 +206,14 @@ CREATE TABLE keyword_snapshots (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_keyword_snapshots_keyword ON keyword_snapshots(keyword_id);
-CREATE INDEX idx_keyword_snapshots_date ON keyword_snapshots(date);
+CREATE INDEX IF NOT EXISTS idx_keyword_snapshots_keyword ON keyword_snapshots(keyword_id);
+CREATE INDEX IF NOT EXISTS idx_keyword_snapshots_date ON keyword_snapshots(date);
 
 -- ============================================================
 -- COMPETITORS & BACKLINKS
 -- ============================================================
 
-CREATE TABLE competitors (
+CREATE TABLE IF NOT EXISTS competitors (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -224,10 +224,10 @@ CREATE TABLE competitors (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_competitors_project ON competitors(project_id);
-CREATE INDEX idx_competitors_org ON competitors(organization_id);
+CREATE INDEX IF NOT EXISTS idx_competitors_project ON competitors(project_id);
+CREATE INDEX IF NOT EXISTS idx_competitors_org ON competitors(organization_id);
 
-CREATE TABLE backlinks (
+CREATE TABLE IF NOT EXISTS backlinks (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -245,14 +245,14 @@ CREATE TABLE backlinks (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_backlinks_project ON backlinks(project_id);
-CREATE INDEX idx_backlinks_org ON backlinks(organization_id);
+CREATE INDEX IF NOT EXISTS idx_backlinks_project ON backlinks(project_id);
+CREATE INDEX IF NOT EXISTS idx_backlinks_org ON backlinks(organization_id);
 
 -- ============================================================
 -- INTEGRATIONS
 -- ============================================================
 
-CREATE TABLE integrations (
+CREATE TABLE IF NOT EXISTS integrations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
@@ -265,10 +265,10 @@ CREATE TABLE integrations (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_integrations_org ON integrations(organization_id);
+CREATE INDEX IF NOT EXISTS idx_integrations_org ON integrations(organization_id);
 
 -- GSC Data
-CREATE TABLE gsc_metrics (
+CREATE TABLE IF NOT EXISTS gsc_metrics (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -284,14 +284,14 @@ CREATE TABLE gsc_metrics (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_gsc_metrics_org ON gsc_metrics(organization_id);
-CREATE INDEX idx_gsc_metrics_date ON gsc_metrics(date);
+CREATE INDEX IF NOT EXISTS idx_gsc_metrics_org ON gsc_metrics(organization_id);
+CREATE INDEX IF NOT EXISTS idx_gsc_metrics_date ON gsc_metrics(date);
 
 -- ============================================================
 -- AI & CONTENT
 -- ============================================================
 
-CREATE TABLE content_briefs (
+CREATE TABLE IF NOT EXISTS content_briefs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -305,9 +305,9 @@ CREATE TABLE content_briefs (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_content_briefs_project ON content_briefs(project_id);
+CREATE INDEX IF NOT EXISTS idx_content_briefs_project ON content_briefs(project_id);
 
-CREATE TABLE ai_usage (
+CREATE TABLE IF NOT EXISTS ai_usage (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
@@ -320,10 +320,10 @@ CREATE TABLE ai_usage (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_ai_usage_org ON ai_usage(organization_id);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_org ON ai_usage(organization_id);
 
 -- GEO/AEO
-CREATE TABLE geo_runs (
+CREATE TABLE IF NOT EXISTS geo_runs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -336,13 +336,13 @@ CREATE TABLE geo_runs (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_geo_runs_project ON geo_runs(project_id);
+CREATE INDEX IF NOT EXISTS idx_geo_runs_project ON geo_runs(project_id);
 
 -- ============================================================
 -- AUTOMATION & JOBS
 -- ============================================================
 
-CREATE TABLE jobs (
+CREATE TABLE IF NOT EXISTS jobs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
@@ -359,11 +359,11 @@ CREATE TABLE jobs (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_jobs_org ON jobs(organization_id);
-CREATE INDEX idx_jobs_status ON jobs(status);
-CREATE INDEX idx_jobs_type ON jobs(type);
+CREATE INDEX IF NOT EXISTS idx_jobs_org ON jobs(organization_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(type);
 
-CREATE TABLE alerts (
+CREATE TABLE IF NOT EXISTS alerts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -375,14 +375,14 @@ CREATE TABLE alerts (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_alerts_org ON alerts(organization_id);
-CREATE INDEX idx_alerts_read ON alerts(read);
+CREATE INDEX IF NOT EXISTS idx_alerts_org ON alerts(organization_id);
+CREATE INDEX IF NOT EXISTS idx_alerts_read ON alerts(read);
 
 -- ============================================================
 -- REPORTS
 -- ============================================================
 
-CREATE TABLE reports (
+CREATE TABLE IF NOT EXISTS reports (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -396,14 +396,14 @@ CREATE TABLE reports (
   completed_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_reports_org ON reports(organization_id);
-CREATE INDEX idx_reports_project ON reports(project_id);
+CREATE INDEX IF NOT EXISTS idx_reports_org ON reports(organization_id);
+CREATE INDEX IF NOT EXISTS idx_reports_project ON reports(project_id);
 
 -- ============================================================
 -- BILLING & CREDITS
 -- ============================================================
 
-CREATE TABLE credit_wallets (
+CREATE TABLE IF NOT EXISTS credit_wallets (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   balance INTEGER DEFAULT 0,
@@ -412,9 +412,9 @@ CREATE TABLE credit_wallets (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX idx_credit_wallets_org ON credit_wallets(organization_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_wallets_org ON credit_wallets(organization_id);
 
-CREATE TABLE credit_transactions (
+CREATE TABLE IF NOT EXISTS credit_transactions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   type VARCHAR(20) NOT NULL, -- grant, consumption, refund, expiry
@@ -426,9 +426,9 @@ CREATE TABLE credit_transactions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_credit_txns_org ON credit_transactions(organization_id);
+CREATE INDEX IF NOT EXISTS idx_credit_txns_org ON credit_transactions(organization_id);
 
-CREATE TABLE usage_records (
+CREATE TABLE IF NOT EXISTS usage_records (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
@@ -439,10 +439,10 @@ CREATE TABLE usage_records (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_usage_org ON usage_records(organization_id);
-CREATE INDEX idx_usage_period ON usage_records(period_start, period_end);
+CREATE INDEX IF NOT EXISTS idx_usage_org ON usage_records(organization_id);
+CREATE INDEX IF NOT EXISTS idx_usage_period ON usage_records(period_start, period_end);
 
-CREATE TABLE invoices (
+CREATE TABLE IF NOT EXISTS invoices (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   stripe_invoice_id TEXT,
@@ -456,13 +456,13 @@ CREATE TABLE invoices (
   paid_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_invoices_org ON invoices(organization_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_org ON invoices(organization_id);
 
 -- ============================================================
 -- API & WEBHOOKS
 -- ============================================================
 
-CREATE TABLE api_keys (
+CREATE TABLE IF NOT EXISTS api_keys (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
@@ -475,10 +475,10 @@ CREATE TABLE api_keys (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_api_keys_org ON api_keys(organization_id);
-CREATE INDEX idx_api_keys_hash ON api_keys(key_hash);
+CREATE INDEX IF NOT EXISTS idx_api_keys_org ON api_keys(organization_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
 
-CREATE TABLE webhooks (
+CREATE TABLE IF NOT EXISTS webhooks (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   url TEXT NOT NULL,
@@ -488,9 +488,9 @@ CREATE TABLE webhooks (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_webhooks_org ON webhooks(organization_id);
+CREATE INDEX IF NOT EXISTS idx_webhooks_org ON webhooks(organization_id);
 
-CREATE TABLE webhook_deliveries (
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   webhook_id UUID NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
   event VARCHAR(100) NOT NULL,
@@ -502,13 +502,13 @@ CREATE TABLE webhook_deliveries (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id);
+CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id);
 
 -- ============================================================
 -- AUDIT LOG
 -- ============================================================
 
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   user_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -521,9 +521,9 @@ CREATE TABLE audit_logs (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_audit_logs_org ON audit_logs(organization_id);
-CREATE INDEX idx_audit_logs_user ON audit_logs(user_id);
-CREATE INDEX idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_org ON audit_logs(organization_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
 
 -- ============================================================
 -- COMPATIBILITY TABLES (for repository naming consistency)
