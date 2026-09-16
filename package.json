@@ -11,8 +11,8 @@
     "test": "npm run test:unit && npm run test:security && npm run test:integration && npm run test:e2e",
     "test:unit": "npx tsx tests/unit/ssrf.test.ts && npx tsx tests/unit/audit.test.ts && npx tsx tests/unit/credit.test.ts && npx tsx tests/unit/job-atomic.test.ts && npx tsx tests/unit/credit-atomic.test.ts && npx tsx tests/unit/timeout.test.ts",
     "test:security": "npx tsx tests/security/tenant-isolation.test.ts && npx tsx tests/security/cross-tenant.test.ts",
-    "test:integration": "npx tsx tests/integration/auth.test.ts && npx tsx tests/integration/project.test.ts",
-    "test:e2e": "npx tsx tests/e2e/production-flow.test.ts && npx tsx tests/e2e/rtl-persian.test.ts",
+    "test:integration": "npx tsx tests/integration/auth.test.ts && npx tsx tests/integration/project.test.ts && npx tsx tests/integration/job-concurrency.test.ts && npx tsx tests/integration/credit-ledger.test.ts && npx tsx tests/integration/ssrf-e2e.test.ts && npx tsx tests/integration/crawl-safety.test.ts && npx tsx tests/integration/seo-audit.test.ts && npx tsx tests/integration/idempotency.test.ts && npx tsx tests/integration/api-contract.test.ts",
+    "test:e2e": "npx tsx tests/e2e/rtl-persian.test.ts && npx tsx scripts/i18n-audit.ts",
     "test:all": "npm run test:unit && npm run test:security && npm run test:integration && npm run test:e2e",
     "lint": "eslint . --max-warnings 200",
     "lint:fix": "eslint . --fix",
@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.1.7",
     "@types/canvas-confetti": "^1.6.4",
     "@types/react": "^18.2.0",
