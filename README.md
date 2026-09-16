@@ -129,7 +129,7 @@ npm run test:e2e     # rtl-persian (8 تست) + persian-negative (10 تست) + a
 - Vazirmatn (فونت فارسی)، `persian.ts` (تقویم/اعداد/واحد پول)
 
 ### بک‌اند
-- Node.js 20 + Express
+- Node.js 22 + Express (ارتقا از 20 برای packages مدرن)
 - PostgreSQL 16 + Drizzle ORM + RLS
 - Redis + BullMQ (صف وظیفه)
 - JWT + bcrypt (احراز هویت، حداقل ۳۲ کاراکتر، fail-fast)
@@ -148,7 +148,7 @@ npm run test:e2e     # rtl-persian (8 تست) + persian-negative (10 تست) + a
 
 ### پیش‌نیازها
 - Docker و Docker Compose
-- Node.js 20+ (برای توسعه محلی)
+- Node.js 22+ (برای توسعه محلی — ارتقا از 20، engines >=22)
 - اعتبار سرویس‌های خارجی (اختیاری — در صورت نبود، حالت `پیکربندی نشده` نمایش داده می‌شود، بدون داده جعلی)
 
 ### ۱. دریافت کد
