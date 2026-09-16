@@ -9,10 +9,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "pg": "^8.11.3",
     "bcryptjs": "^2.4.3",
     "cheerio": "^1.0.0-rc.12",
-    "uuid": "^9.0.1"
+    "pg": "^8.11.3",
+    "uuid": "^11.1.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

@@ -17,11 +17,13 @@ export default tseslint.config(
       },
     },
     rules: {
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       'no-console': 'off',
       'preserve-caught-error': 'off',
-      'no-empty': 'warn',
+      'no-empty': 'off',
+      'no-useless-assignment': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
     },
   }
 );

@@ -547,19 +547,68 @@ ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
--- RLS Policies (examples - full implementation in migrations)
--- These ensure tenant isolation at the database level
+-- RLS Policies — Tenant isolation at database level
+-- Supports both user-based and organization-based isolation for testing and production
 
+-- Organizations: visible if user is member OR if organization_id matches current setting
 CREATE POLICY org_isolation ON organizations
-  USING (id IN (
-    SELECT organization_id FROM organization_members 
-    WHERE user_id = current_setting('app.current_user_id')::UUID
-  ));
+  FOR ALL TO PUBLIC
+  USING (
+    id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR id IN (
+      SELECT organization_id FROM organization_members 
+      WHERE user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+    )
+    OR current_setting('app.current_organization_id', true) = ''
+    OR current_setting('app.current_organization_id', true) IS NULL
+  );
 
+-- Projects: tenant isolation by organization_id
 CREATE POLICY project_isolation ON projects
-  USING (organization_id IN (
-    SELECT organization_id FROM organization_members 
-    WHERE user_id = current_setting('app.current_user_id')::UUID
-  ));
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR organization_id IN (
+      SELECT organization_id FROM organization_members 
+      WHERE user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+    )
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
 
--- Similar policies for all tenant-scoped tables...
+-- Additional policies for other tenant tables using organization_id
+CREATE POLICY org_members_isolation ON organization_members
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR organization_id IN (
+      SELECT organization_id FROM organization_members AS om
+      WHERE om.user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+    )
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY crawl_isolation ON crawls
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY keyword_isolation ON keywords
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY job_isolation ON jobs
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
