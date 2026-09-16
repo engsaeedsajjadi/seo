@@ -2,15 +2,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - main
-      - production-ready-seo-saas-aca82
-      - arena/01a0ab8c-seo
+    branches: [main, production-ready-seo-saas-aca82, arena/01a0ab8c-seo]
   pull_request:
-    branches:
-      - main
-      - production-ready-seo-saas-aca82
-      - arena/01a0ab8c-seo
+    branches: [main, production-ready-seo-saas-aca82, arena/01a0ab8c-seo]
 
 permissions:
   contents: read
@@ -79,7 +73,7 @@ jobs:
         working-directory: apps/mcp
 
   integration:
-    name: Integration & Security Tests
+    name: Integration & Database Security Tests
     runs-on: ubuntu-latest
     needs: [api, worker, mcp]
     services:
@@ -89,22 +83,16 @@ jobs:
           POSTGRES_USER: rankforge
           POSTGRES_PASSWORD: rankforge
           POSTGRES_DB: rankforge_test
-        ports:
-          - 5432:5432
+        ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U rankforge -d rankforge_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-interval 10s --health-timeout 5s --health-retries 5
       redis:
         image: redis:7
-        ports:
-          - 6379:6379
+        ports: ['6379:6379']
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-interval 10s --health-timeout 5s --health-retries 5
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://rankforge:rankforge@localhost:5432/rankforge_test
@@ -118,9 +106,15 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint -- --max-warnings=0
-      - run: npm run test
       - run: npm run db:migrate
         working-directory: apps/api
+      - name: Create non-owner RLS test role
+        run: |
+          PGPASSWORD=rankforge psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE rankforge_app LOGIN PASSWORD 'rankforge_app'" || true
+          PGPASSWORD=rankforge psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO rankforge_app; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO rankforge_app; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO rankforge_app;"
+      - name: Verify PostgreSQL RLS with non-owner role
+        run: PGPASSWORD=rankforge_app psql "postgresql://rankforge_app:rankforge_app@localhost:5432/rankforge_test" -v ON_ERROR_STOP=1 -f tests/security/rls-postgres.sql
+      - run: npm run test
 
   docker:
     name: Docker Build
