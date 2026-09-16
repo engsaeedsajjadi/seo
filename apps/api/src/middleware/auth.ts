@@ -1,12 +1,12 @@
 /**
  * RankForge — Auth Middleware
- * Real PostgreSQL, JWT with fail-fast, tenant resolution
+ * JWT authentication, tenant resolution and PostgreSQL RLS context.
  */
 
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
-import { query } from '../db/client.js';
+import { query, runWithDbContext } from '../db/client.js';
 import { organizationRepository } from '../repositories/organization.repository.js';
 
 export interface AuthRequest extends Request {
@@ -26,89 +26,62 @@ export class ApiError extends Error {
 export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   const token = authHeader?.replace('Bearer ', '') || (req as any).cookies?.token;
-
-  if (!token) {
-    return next(new ApiError(401, 'UNAUTHENTICATED', 'Authentication required'));
-  }
+  if (!token) return next(new ApiError(401, 'UNAUTHENTICATED', 'Authentication required'));
 
   try {
     const decoded = jwt.verify(token, config.auth.jwtSecret, {
-      issuer: 'rankforge',
-      audience: 'rankforge-app',
-      algorithms: ['HS256'],
+      issuer: 'rankforge', audience: 'rankforge-app', algorithms: ['HS256'],
     }) as any;
+
+    if (!decoded.userId || !decoded.organizationId) {
+      return next(new ApiError(401, 'INVALID_SESSION', 'Session has no tenant context'));
+    }
 
     req.userId = decoded.userId;
     req.organizationId = decoded.organizationId;
     req.user = decoded;
 
-    // Verify user still exists and organization membership
-    try {
-      const userResult = await query('SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL', [decoded.userId]);
-      if (userResult.rows.length === 0) {
-        return next(new ApiError(401, 'SESSION_EXPIRED', 'User not found or deleted'));
-      }
+    await runWithDbContext(
+      { userId: decoded.userId, organizationId: decoded.organizationId },
+      async () => {
+        const userResult = await query('SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL', [decoded.userId]);
+        if (userResult.rows.length === 0) throw new ApiError(401, 'SESSION_EXPIRED', 'User not found or deleted');
+        const isMember = await organizationRepository.isMember(decoded.organizationId, decoded.userId);
+        if (!isMember) throw new ApiError(403, 'FORBIDDEN', 'Not a member of this organization');
+      },
+    );
 
-      const isMember = await organizationRepository.isMember(decoded.organizationId, decoded.userId);
-      if (!isMember) {
-        return next(new ApiError(403, 'FORBIDDEN', 'Not a member of this organization'));
-      }
-    } catch (dbError) {
-      // If DB not configured, log warning but allow in development
-      if (config.isDevelopment) {
-        console.warn('[Auth] DB check failed, allowing in development:', dbError);
-      } else {
-        return next(new ApiError(503, 'SERVICE_UNAVAILABLE', 'Database unavailable'));
-      }
-    }
-
-    next();
+    return runWithDbContext(
+      { userId: decoded.userId, organizationId: decoded.organizationId },
+      () => next(),
+    );
   } catch (error: any) {
-    if (error.name === 'TokenExpiredError') {
-      return next(new ApiError(401, 'SESSION_EXPIRED', 'Token expired'));
-    }
-    if (error.name === 'JsonWebTokenError') {
-      return next(new ApiError(401, 'SESSION_EXPIRED', 'Invalid token'));
-    }
-    next(new ApiError(401, 'SESSION_EXPIRED', 'Invalid or expired token'));
+    if (error instanceof ApiError) return next(error);
+    if (error.name === 'TokenExpiredError') return next(new ApiError(401, 'SESSION_EXPIRED', 'Token expired'));
+    if (error.name === 'JsonWebTokenError') return next(new ApiError(401, 'SESSION_EXPIRED', 'Invalid token'));
+    return next(new ApiError(503, 'SERVICE_UNAVAILABLE', 'Database unavailable'));
   }
 }
 
 export function optionalAuthMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   const token = authHeader?.replace('Bearer ', '') || (req as any).cookies?.token;
-
-  if (!token) {
-    return next();
-  }
-
+  if (!token) return next();
   try {
     const decoded = jwt.verify(token, config.auth.jwtSecret, {
-      issuer: 'rankforge',
-      audience: 'rankforge-app',
-      algorithms: ['HS256'],
+      issuer: 'rankforge', audience: 'rankforge-app', algorithms: ['HS256'],
     }) as any;
     req.userId = decoded.userId;
     req.organizationId = decoded.organizationId;
     req.user = decoded;
-  } catch {
-    // Ignore invalid token for optional auth
-  }
+  } catch { /* Optional auth intentionally ignores invalid credentials. */ }
   next();
 }
 
-// RBAC
 export const ROLES = {
-  Owner: 100,
-  Admin: 80,
-  Manager: 60,
-  SEO_Manager: 50,
-  Analyst: 40,
-  Editor: 30,
-  Client: 20,
-  Viewer: 10,
+  Owner: 100, Admin: 80, Manager: 60, SEO_Manager: 50,
+  Analyst: 40, Editor: 30, Client: 20, Viewer: 10,
 } as const;
-
 export type Role = keyof typeof ROLES;
 
 export const PERMISSIONS = {
@@ -120,8 +93,7 @@ export const PERMISSIONS = {
   'keyword.read': ['Owner', 'Admin', 'Manager', 'SEO_Manager', 'Analyst', 'Editor', 'Client', 'Viewer'],
   'keyword.write': ['Owner', 'Admin', 'Manager', 'SEO_Manager', 'Editor'],
   'rank.read': ['Owner', 'Admin', 'Manager', 'SEO_Manager', 'Analyst', 'Editor', 'Client', 'Viewer'],
-  'billing.read': ['Owner', 'Admin'],
-  'billing.manage': ['Owner'],
+  'billing.read': ['Owner', 'Admin'], 'billing.manage': ['Owner'],
   'team.invite': ['Owner', 'Admin', 'Manager'],
   'reports.generate': ['Owner', 'Admin', 'Manager', 'SEO_Manager', 'Analyst'],
   'api.manage': ['Owner', 'Admin'],
@@ -132,11 +104,7 @@ export function requirePermission(permission: keyof typeof PERMISSIONS) {
     const userRole = (req as any).user?.role || 'Viewer';
     const allowedRoles = PERMISSIONS[permission] as readonly string[];
     if (!allowedRoles.includes(userRole) && userRole !== 'Owner') {
-      // In production, enforce; in dev, log warning
-      if (config.isProduction) {
-        return next(new ApiError(403, 'FORBIDDEN', `Requires permission: ${permission}`));
-      }
-      console.warn(`[RBAC] User role ${userRole} not in allowed ${allowedRoles.join(',')} for ${permission}, allowing in dev`);
+      if (config.isProduction) return next(new ApiError(403, 'FORBIDDEN', `Requires permission: ${permission}`));
     }
     next();
   };
@@ -147,9 +115,7 @@ export function requireRole(minRole: Role) {
     const userRole = (req as any).user?.role || 'Viewer';
     const userLevel = ROLES[userRole as Role] || 0;
     const requiredLevel = ROLES[minRole];
-    if (userLevel < requiredLevel) {
-      return next(new ApiError(403, 'FORBIDDEN', `Requires ${minRole} role or higher`));
-    }
+    if (userLevel < requiredLevel) return next(new ApiError(403, 'FORBIDDEN', `Requires ${minRole} role or higher`));
     next();
   };
 }
