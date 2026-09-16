@@ -4,6 +4,8 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAppState } from '../lib/store';
+import { t } from '../i18n';
+import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 export default function SettingsPage() {
   const { state } = useAppState();
@@ -19,7 +21,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       <div>
         <h1 className="text-2xl font-bold text-white">Settings</h1>
         <p className="text-sm text-slate-400 mt-1">Configure your organization and project settings</p>

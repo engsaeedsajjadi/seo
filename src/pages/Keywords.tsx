@@ -5,6 +5,8 @@ import {
 import { useAppState, formatNumber } from '../lib/store';
 import { api } from '../lib/api';
 import type { Keyword } from '../lib/types';
+import { t } from '../i18n';
+import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 export default function Keywords() {
   const { state } = useAppState();
@@ -70,9 +72,9 @@ export default function Keywords() {
 
   if (!hasProject) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center" dir="rtl">
         <Search className="w-12 h-12 text-slate-500 mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">No Project Selected</h2>
+        <h2 className="text-xl font-bold text-white mb-2">پروژه‌ای انتخاب نشده</h2>
         <p className="text-slate-400">Select or create a project to manage keywords.</p>
       </div>
     );
@@ -94,7 +96,7 @@ export default function Keywords() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Keyword Research — Real</h1>
@@ -129,7 +131,7 @@ export default function Keywords() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
             type="text"
-            placeholder="Search keywords..."
+            placeholder="جستجوی کلمات کلیدی..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-surface-2 border border-surface-3/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-600/50"

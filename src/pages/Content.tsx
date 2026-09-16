@@ -4,6 +4,8 @@ import {
   CheckCircle2, Clock, RefreshCw
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
+import { t } from '../i18n';
+import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 interface ContentBrief {
   id: string;
@@ -88,9 +90,9 @@ export default function Content() {
 
   if (!state.currentProject) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center" dir="rtl">
         <FileText className="w-12 h-12 text-slate-500 mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">No Project Selected</h2>
+        <h2 className="text-xl font-bold text-white mb-2">پروژه‌ای انتخاب نشده</h2>
         <p className="text-slate-400">Select or create a project to manage content.</p>
       </div>
     );
@@ -98,7 +100,7 @@ export default function Content() {
 
   if (providerError) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" dir="rtl">
         <div>
           <h1 className="text-2xl font-bold text-white">Content Engine — Real Provider</h1>
           <p className="text-sm text-slate-400 mt-1">AI-assisted content creation and optimization — real AI provider, cost metering, no fake briefs</p>

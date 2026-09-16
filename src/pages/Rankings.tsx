@@ -5,6 +5,8 @@ import {
 import { useAppState } from '../lib/store';
 import { api } from '../lib/api';
 import type { RankingEntry } from '../lib/types';
+import { t } from '../i18n';
+import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 export default function Rankings() {
   const { state } = useAppState();
@@ -72,9 +74,9 @@ export default function Rankings() {
 
   if (!hasProject) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center" dir="rtl">
         <BarChart3 className="w-12 h-12 text-slate-500 mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">No Project Selected</h2>
+        <h2 className="text-xl font-bold text-white mb-2">پروژه‌ای انتخاب نشده</h2>
         <p className="text-slate-400">Select or create a project to track rankings.</p>
       </div>
     );
@@ -82,7 +84,7 @@ export default function Rankings() {
 
   if (providerError) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" dir="rtl">
         <div>
           <h1 className="text-2xl font-bold text-white">Rank Tracking — Real Provider</h1>
           <p className="text-sm text-slate-400 mt-1">Monitor your search engine positions over time — real SERP provider, no fake data</p>

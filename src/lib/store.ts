@@ -59,10 +59,12 @@ export function getProviderLabel(key: string): string {
     dataForSeo: 'DataForSEO',
     openai: 'OpenAI',
     anthropic: 'Anthropic',
-    googleSearchConsole: 'Google Search Console',
-    googleAnalytics: 'Google Analytics 4',
-    stripe: 'Stripe',
-    s3: 'S3 Storage',
+    googleSearchConsole: 'سرچ کنسول گوگل',
+    googleAnalytics: 'آنالیتیکس گوگل',
+    stripe: 'درگاه پرداخت',
+    s3: 'فضای ذخیره‌سازی S3',
+    sentry: 'Sentry',
+    posthog: 'PostHog',
   };
   return labels[key] || key;
 }
@@ -78,10 +80,10 @@ export function getStatusColor(status: ProviderStatus): string {
 
 export function getStatusLabel(status: ProviderStatus): string {
   switch (status) {
-    case 'connected': return 'Connected';
-    case 'not_configured': return 'Not Configured';
-    case 'error': return 'Error';
-    case 'rate_limited': return 'Rate Limited';
+    case 'connected': return 'متصل';
+    case 'not_configured': return 'پیکربندی نشده';
+    case 'error': return 'خطا';
+    case 'rate_limited': return 'محدودیت نرخ';
   }
 }
 
@@ -92,7 +94,45 @@ export function formatNumber(n: number | null): string {
   return n.toString();
 }
 
+export function formatPersianNumberDisplay(n: number | null): string {
+  if (n === null) return '—';
+  const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+  const str = n.toString();
+  let result = str;
+  for (let i = 0; i < 10; i++) {
+    result = result.replace(new RegExp(i.toString(), 'g'), persianDigits[i]);
+  }
+  if (n >= 1000000) {
+    const formatted = (n / 1000000).toFixed(1);
+    let persianFormatted = formatted;
+    for (let i = 0; i < 10; i++) {
+      persianFormatted = persianFormatted.replace(new RegExp(i.toString(), 'g'), persianDigits[i]);
+    }
+    return `${persianFormatted}M`;
+  }
+  if (n >= 1000) {
+    const formatted = (n / 1000).toFixed(1);
+    let persianFormatted = formatted;
+    for (let i = 0; i < 10; i++) {
+      persianFormatted = persianFormatted.replace(new RegExp(i.toString(), 'g'), persianDigits[i]);
+    }
+    return `${persianFormatted}K`;
+  }
+  return result;
+}
+
 export function getPlanName(plan: PlanTier): string {
+  const names: Record<PlanTier, string> = {
+    FREE: 'رایگان',
+    STARTER: 'شروع',
+    PRO: 'حرفه‌ای',
+    AGENCY: 'آژانس',
+    ENTERPRISE: 'سازمانی',
+  };
+  return names[plan];
+}
+
+export function getPlanNameEn(plan: PlanTier): string {
   const names: Record<PlanTier, string> = {
     FREE: 'Free',
     STARTER: 'Starter',

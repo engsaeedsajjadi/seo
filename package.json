@@ -12,10 +12,12 @@
     "test:unit": "npx tsx tests/unit/ssrf.test.ts && npx tsx tests/unit/audit.test.ts && npx tsx tests/unit/credit.test.ts && npx tsx tests/unit/job-atomic.test.ts && npx tsx tests/unit/credit-atomic.test.ts && npx tsx tests/unit/timeout.test.ts",
     "test:security": "npx tsx tests/security/tenant-isolation.test.ts && npx tsx tests/security/cross-tenant.test.ts",
     "test:integration": "npx tsx tests/integration/auth.test.ts && npx tsx tests/integration/project.test.ts",
-    "test:e2e": "npx tsx tests/e2e/production-flow.test.ts",
+    "test:e2e": "npx tsx tests/e2e/production-flow.test.ts && npx tsx tests/e2e/rtl-persian.test.ts",
     "test:all": "npm run test:unit && npm run test:security && npm run test:integration && npm run test:e2e",
     "lint": "eslint . --max-warnings 200",
     "lint:fix": "eslint . --fix",
+    "i18n:audit": "npx tsx scripts/i18n-audit.ts",
+    "i18n:check": "npx tsx scripts/i18n-audit.ts",
     "docker:build": "docker build -t rankforge-web . && docker build -t rankforge-api -f apps/api/Dockerfile .",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down -v"

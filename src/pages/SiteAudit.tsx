@@ -6,6 +6,8 @@ import {
 import { useAppState } from '../lib/store';
 import { api } from '../lib/api';
 import type { Severity, AuditCategory, AuditFinding } from '../lib/types';
+import { t } from '../i18n';
+import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 export default function SiteAudit() {
   const { state } = useAppState();
@@ -69,10 +71,10 @@ export default function SiteAudit() {
 
   if (!hasProject) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center" dir="rtl">
         <Shield className="w-12 h-12 text-slate-500 mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">No Project Selected</h2>
-        <p className="text-slate-400">Select or create a project to run a site audit.</p>
+        <h2 className="text-xl font-bold text-white mb-2">پروژه‌ای انتخاب نشده</h2>
+        <p className="text-slate-400">برای اجرای ممیزی سایت، پروژه‌ای انتخاب یا ایجاد کنید.</p>
       </div>
     );
   }
@@ -107,7 +109,7 @@ export default function SiteAudit() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -201,7 +203,7 @@ export default function SiteAudit() {
               <option value="crawlability">Crawlability</option>
               <option value="indexability">Indexability</option>
               <option value="metadata">Metadata</option>
-              <option value="content">Content</option>
+              <option value="content">محتوا</option>
               <option value="links">Links</option>
               <option value="images">Images</option>
               <option value="performance">Performance</option>

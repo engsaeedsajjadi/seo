@@ -6,6 +6,8 @@ import {
 import { useAppState } from '../lib/store';
 import { api } from '../lib/api';
 import type { Report } from '../lib/types';
+import { t } from '../i18n';
+import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 export default function Reports() {
   const { state } = useAppState();
@@ -60,9 +62,9 @@ export default function Reports() {
 
   if (!state.currentProject) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center" dir="rtl">
         <FileText className="w-12 h-12 text-slate-500 mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">No Project Selected</h2>
+        <h2 className="text-xl font-bold text-white mb-2">پروژه‌ای انتخاب نشده</h2>
         <p className="text-slate-400">Select or create a project to generate reports.</p>
       </div>
     );
@@ -80,7 +82,7 @@ export default function Reports() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Reports — Real</h1>
@@ -171,9 +173,9 @@ export default function Reports() {
                 <select value={reportType} onChange={e => setReportType(e.target.value)} className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white">
                   <option>SEO Report</option>
                   <option>Technical Audit</option>
-                  <option>Keyword Performance</option>
+                  <option>عملکرد کلمات کلیدی</option>
                   <option>Rank Tracking</option>
-                  <option>Competitor Analysis</option>
+                  <option>تحلیل رقبا</option>
                   <option>Executive Summary</option>
                 </select>
               </div>

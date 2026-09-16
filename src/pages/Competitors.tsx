@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Target, Plus, AlertCircle, Globe, RefreshCw } from 'lucide-react';
 import { useAppState } from '../lib/store';
 import { api } from '../lib/api';
+import { t } from '../i18n';
+import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 interface Competitor {
   id: string;
@@ -78,16 +80,16 @@ export default function Competitors() {
 
   if (!state.currentProject) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center" dir="rtl">
         <Target className="w-12 h-12 text-slate-500 mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">No Project Selected</h2>
+        <h2 className="text-xl font-bold text-white mb-2">پروژه‌ای انتخاب نشده</h2>
         <p className="text-slate-400">Select or create a project to analyze competitors.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Competitor Analysis — Real</h1>

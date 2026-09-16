@@ -18,30 +18,168 @@
   --color-accent-red: #ef4444;
   --color-accent-yellow: #f59e0b;
   --color-accent-purple: #8b5cf6;
+  
+  /* Persian font */
+  --font-persian: 'Vazirmatn', 'IRANSans', system-ui, sans-serif;
+  --font-sans: 'Vazirmatn', 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 :root {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Vazirmatn', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  direction: rtl;
+}
+
+html {
+  direction: rtl;
+  lang: fa;
 }
 
 body {
   @apply bg-surface text-white antialiased;
+  font-family: 'Vazirmatn', 'Inter', system-ui, sans-serif;
+  direction: rtl;
+  text-align: right;
+  font-feature-settings: 'ss01' 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+/* RTL logical properties - use logical properties for RTL support */
+.rtl-support {
+  /* Use logical properties instead of physical */
+  margin-inline-start: 0;
+  margin-inline-end: 0;
+  padding-inline-start: 0;
+  padding-inline-end: 0;
+  border-inline-start: none;
+  border-inline-end: none;
+}
+
+/* Persian text styling */
+.persian-text {
+  font-family: 'Vazirmatn', system-ui, sans-serif;
+  direction: rtl;
+  text-align: right;
+  line-height: 1.8;
+  letter-spacing: -0.01em;
+}
+
+.persian-numbers {
+  font-variant-numeric: normal;
+  font-feature-settings: 'ss01' 1;
+  direction: ltr;
+  display: inline-block;
+  unicode-bidi: embed;
+}
+
+/* Keep LTR for code, URLs, technical content */
+.ltr-content,
+code,
+pre,
+.url,
+.technical {
+  direction: ltr;
+  text-align: left;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* RTL flex and grid adjustments */
+.rtl-flex {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .flex-row {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .text-left {
+  text-align: right;
+}
+
+[dir="rtl"] .text-right {
+  text-align: left;
+}
+
+/* RTL border adjustments */
+[dir="rtl"] .border-l {
+  border-left: none;
+  border-right-width: 1px;
+}
+
+[dir="rtl"] .border-r {
+  border-right: none;
+  border-left-width: 1px;
+}
+
+[dir="rtl"] .ml-auto {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+[dir="rtl"] .mr-auto {
+  margin-right: 0;
+  margin-left: auto;
+}
+
+/* Scrollbar RTL */
 .scrollbar-thin::-webkit-scrollbar {
   width: 6px;
 }
+
 .scrollbar-thin::-webkit-scrollbar-track {
   @apply bg-transparent;
 }
+
 .scrollbar-thin::-webkit-scrollbar-thumb {
   @apply bg-surface-3 rounded-full;
 }
 
+/* Animations */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
+
 .animate-pulse-dot {
   animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* Vazirmatn font weights */
+.font-vazirmatn-thin { font-weight: 100; }
+.font-vazirmatn-extralight { font-weight: 200; }
+.font-vazirmatn-light { font-weight: 300; }
+.font-vazirmatn-regular { font-weight: 400; }
+.font-vazirmatn-medium { font-weight: 500; }
+.font-vazirmatn-semibold { font-weight: 600; }
+.font-vazirmatn-bold { font-weight: 700; }
+.font-vazirmatn-extrabold { font-weight: 800; }
+.font-vazirmatn-black { font-weight: 900; }
+
+/* PDF RTL support */
+.pdf-rtl {
+  direction: rtl;
+  text-align: right;
+  font-family: 'Vazirmatn', sans-serif;
+}
+
+/* Accessibility - Persian aria labels */
+[aria-label]:empty::before {
+  content: attr(aria-label);
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Print styles for RTL */
+@media print {
+  body {
+    direction: rtl;
+    font-family: 'Vazirmatn', sans-serif;
+  }
 }

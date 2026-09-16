@@ -6,6 +6,8 @@ import {
 import { useAppState } from '../lib/store';
 import { api } from '../lib/api';
 import type { Alert as AlertType } from '../lib/types';
+import { t } from '../i18n';
+import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 export default function Alerts() {
   const { state } = useAppState();
@@ -87,9 +89,9 @@ export default function Alerts() {
 
   if (!state.currentProject) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center" dir="rtl">
         <Bell className="w-12 h-12 text-slate-500 mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">No Project Selected</h2>
+        <h2 className="text-xl font-bold text-white mb-2">پروژه‌ای انتخاب نشده</h2>
         <p className="text-slate-400">Select or create a project to view alerts.</p>
       </div>
     );
@@ -113,7 +115,7 @@ export default function Alerts() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Alerts — Real</h1>
@@ -196,12 +198,12 @@ export default function Alerts() {
               <div>
                 <label className="text-xs font-medium text-slate-300 mb-1.5 block">Type — real enum: rank_drop/traffic_drop/crawl_error/broken_link/critical_issue/keyword_loss/provider_failure</label>
                 <select value={ruleForm.type} onChange={e => setRuleForm(f => ({ ...f, type: e.target.value as any }))} className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white">
-                  <option value="rank_drop">Keyword position drops</option>
+                  <option value="rank_drop">افت جایگاه کلمه کلیدی</option>
                   <option value="traffic_drop">Organic clicks decrease</option>
                   <option value="crawl_error">Critical SEO issue detected</option>
                   <option value="broken_link">Broken link detected</option>
                   <option value="critical_issue">Critical issue</option>
-                  <option value="keyword_loss">Keyword loss</option>
+                  <option value="keyword_loss">از دست رفتن کلمه کلیدی</option>
                   <option value="provider_failure">Provider failure</option>
                 </select>
               </div>

@@ -25,6 +25,8 @@ import type { AppState, AppActions } from './lib/store';
 import type { Organization, Project, ProviderStatus } from './lib/types';
 import { api } from './lib/api';
 import { isApiError, ApiErrorCode } from './lib/api';
+import { t } from './i18n';
+import { formatPersianNumber, toPersianDigits } from './lib/persian';
 
 type AppStatus = 'loading' | 'no_backend' | 'unauthenticated' | 'ready';
 
@@ -74,10 +76,13 @@ function App() {
     }));
   }, []);
 
-  // Initialize app
+  // Initialize app - set RTL and Persian
   useEffect(() => {
+    document.documentElement.setAttribute('lang', 'fa');
+    document.documentElement.setAttribute('dir', 'rtl');
+    document.body.setAttribute('dir', 'rtl');
+    
     async function initialize() {
-      // Check if backend is available
       const available = await api.checkAvailability();
       
       if (!available) {
@@ -85,7 +90,6 @@ function App() {
         return;
       }
 
-      // Check authentication
       const userResult = await api.getCurrentUser();
       if (!userResult.success) {
         if (isApiError(userResult.error) && 
@@ -94,12 +98,10 @@ function App() {
           setStatus('unauthenticated');
           return;
         }
-        // Other error - still show unauthenticated
         setStatus('unauthenticated');
         return;
       }
 
-      // Load organization and project data
       await refreshData();
       setState(s => ({ ...s, isAuthenticated: true }));
       setStatus('ready');
@@ -108,26 +110,27 @@ function App() {
     initialize();
   }, [refreshData]);
 
-  // Loading state
+  // Loading state - Persian
   if (status === 'loading') {
     return (
-      <div className="flex items-center justify-center h-screen bg-surface">
+      <div className="flex items-center justify-center h-screen bg-surface" dir="rtl">
         <div className="text-center">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center mx-auto mb-4 animate-pulse">
             <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
-          <p className="text-slate-400 text-sm">Loading RankForge...</p>
+          <p className="text-slate-400 text-sm font-vazirmatn-regular">{t('common.loading')}</p>
+          <p className="text-slate-500 text-xs mt-2 font-vazirmatn-light">در حال بارگذاری رنک‌فورج...</p>
         </div>
       </div>
     );
   }
 
-  // No backend configured
+  // No backend configured - Persian
   if (status === 'no_backend') {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-surface p-6">
+      <div className="flex items-center justify-center min-h-screen bg-surface p-6" dir="rtl">
         <div className="max-w-2xl w-full">
           <div className="text-center mb-8">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center mx-auto mb-6">
@@ -135,8 +138,8 @@ function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <h1 className="text-3xl font-bold text-white mb-2">RankForge</h1>
-            <p className="text-slate-400">Commercial SEO Automation SaaS Platform</p>
+            <h1 className="text-3xl font-bold text-white mb-2 font-vazirmatn-bold">رنک‌فورج</h1>
+            <p className="text-slate-400 font-vazirmatn-regular">پلتفرم جامع اتوماسیون سئو</p>
           </div>
 
           <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-6 mb-6">
@@ -145,15 +148,15 @@ function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
               <div>
-                <h3 className="text-lg font-semibold text-white mb-2">Backend Not Connected</h3>
-                <p className="text-sm text-slate-400 mb-4">
-                  RankForge requires a backend API server. Set <code className="text-brand-400 bg-surface px-1.5 py-0.5 rounded text-xs">VITE_API_URL</code> to your API endpoint.
+                <h3 className="text-lg font-semibold text-white mb-2 font-vazirmatn-bold">اتصال به بک‌اند برقرار نیست</h3>
+                <p className="text-sm text-slate-400 mb-4 font-vazirmatn-regular">
+                  رنک‌فورج نیاز به سرور API دارد. متغیر <code className="text-brand-400 bg-surface px-1.5 py-0.5 rounded text-xs ltr-content">VITE_API_URL</code> را تنظیم کنید.
                 </p>
                 <div className="bg-surface/50 rounded-lg p-3">
-                  <p className="text-xs text-slate-400 font-mono">VITE_API_URL=https://api.your-rankforge.com</p>
+                  <p className="text-xs text-slate-400 font-mono ltr-content">VITE_API_URL=https://api.your-rankforge.com</p>
                 </div>
-                <p className="text-xs text-slate-500 mt-3">
-                  See <code className="text-brand-400">docs/DEPLOYMENT.md</code> for setup instructions.
+                <p className="text-xs text-slate-500 mt-3 font-vazirmatn-light">
+                  برای راهنمای نصب به <code className="text-brand-400">docs/DEPLOYMENT.md</code> مراجعه کنید.
                 </p>
               </div>
             </div>
@@ -163,10 +166,10 @@ function App() {
     );
   }
 
-  // Login screen
+  // Login screen - Persian
   if (status === 'unauthenticated') {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-surface p-6">
+      <div className="flex items-center justify-center min-h-screen bg-surface p-6" dir="rtl">
         <div className="max-w-md w-full">
           <div className="text-center mb-8">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center mx-auto mb-6">
@@ -174,8 +177,8 @@ function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <h1 className="text-3xl font-bold text-white mb-2">RankForge</h1>
-            <p className="text-slate-400">Sign in to your account</p>
+            <h1 className="text-3xl font-bold text-white mb-2 font-vazirmatn-bold">رنک‌فورج</h1>
+            <p className="text-slate-400 font-vazirmatn-regular">{t('auth.loginSubtitle')}</p>
           </div>
 
           <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-6">
@@ -186,43 +189,45 @@ function App() {
     );
   }
 
-  // Main application
+  // Main application - RTL layout
   return (
     <AppContext.Provider value={{ state, actions }}>
-      <HashRouter>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/projects" element={<Projects />} />
-            <Route path="/projects/:projectId" element={<ProjectLayout />}>
-              <Route path="audit" element={<SiteAudit />} />
-              <Route path="keywords" element={<Keywords />} />
-              <Route path="rankings" element={<Rankings />} />
-              <Route path="competitors" element={<Competitors />} />
-              <Route path="backlinks" element={<Backlinks />} />
-              <Route path="content" element={<Content />} />
-              <Route path="geo" element={<GEO />} />
-              <Route path="aeo" element={<AEO />} />
-              <Route path="reports" element={<Reports />} />
-              <Route path="automation" element={<Automation />} />
-              <Route path="alerts" element={<Alerts />} />
-              <Route path="settings" element={<SettingsPage />} />
+      <div dir="rtl" lang="fa" className="font-vazirmatn-regular">
+        <HashRouter>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/projects" element={<Projects />} />
+              <Route path="/projects/:projectId" element={<ProjectLayout />}>
+                <Route path="audit" element={<SiteAudit />} />
+                <Route path="keywords" element={<Keywords />} />
+                <Route path="rankings" element={<Rankings />} />
+                <Route path="competitors" element={<Competitors />} />
+                <Route path="backlinks" element={<Backlinks />} />
+                <Route path="content" element={<Content />} />
+                <Route path="geo" element={<GEO />} />
+                <Route path="aeo" element={<AEO />} />
+                <Route path="reports" element={<Reports />} />
+                <Route path="automation" element={<Automation />} />
+                <Route path="alerts" element={<Alerts />} />
+                <Route path="settings" element={<SettingsPage />} />
+              </Route>
+              <Route path="/integrations" element={<Integrations />} />
+              <Route path="/billing" element={<Billing />} />
+              <Route path="/team" element={<Team />} />
+              <Route path="/agency" element={<Agency />} />
+              <Route path="/api" element={<ApiPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
-            <Route path="/integrations" element={<Integrations />} />
-            <Route path="/billing" element={<Billing />} />
-            <Route path="/team" element={<Team />} />
-            <Route path="/agency" element={<Agency />} />
-            <Route path="/api" element={<ApiPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
-      </HashRouter>
+          </Routes>
+        </HashRouter>
+      </div>
     </AppContext.Provider>
   );
 }
 
-// Login form component
+// Login form component - Persian
 function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -245,41 +250,53 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4" dir="rtl">
       {error && (
         <div className="p-3 rounded-lg bg-accent-red/10 border border-accent-red/20">
-          <p className="text-xs text-accent-red">{error}</p>
+          <p className="text-xs text-accent-red font-vazirmatn-regular">{error}</p>
         </div>
       )}
       <div>
-        <label className="text-xs font-medium text-slate-300 mb-1.5 block">Email</label>
+        <label className="text-xs font-medium text-slate-300 mb-1.5 block font-vazirmatn-medium">
+          {t('auth.email')}
+        </label>
         <input
           type="email"
           value={email}
           onChange={e => setEmail(e.target.value)}
-          placeholder="you@company.com"
+          placeholder={t('auth.emailPlaceholder')}
           required
-          className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-600/50"
+          dir="ltr"
+          className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-600/50 ltr-content"
         />
       </div>
       <div>
-        <label className="text-xs font-medium text-slate-300 mb-1.5 block">Password</label>
+        <label className="text-xs font-medium text-slate-300 mb-1.5 block font-vazirmatn-medium">
+          {t('auth.password')}
+        </label>
         <input
           type="password"
           value={password}
           onChange={e => setPassword(e.target.value)}
-          placeholder="••••••••"
+          placeholder={t('auth.passwordPlaceholder')}
           required
-          className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-600/50"
+          dir="ltr"
+          className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-600/50 ltr-content"
         />
       </div>
       <button
         type="submit"
         disabled={loading}
-        className="w-full px-4 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg"
+        aria-label={t('auth.loginButton')}
+        className="w-full px-4 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg font-vazirmatn-medium"
       >
-        {loading ? 'Signing in...' : 'Sign In'}
+        {loading ? t('common.loading') : t('auth.loginButton')}
       </button>
+      <div className="text-center">
+        <p className="text-xs text-slate-500 font-vazirmatn-light">
+          {t('auth.noAccount')} <a href="#" className="text-brand-400 hover:text-brand-300">{t('auth.createAccount')}</a>
+        </p>
+      </div>
     </form>
   );
 }

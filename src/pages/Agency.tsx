@@ -5,6 +5,8 @@ import {
 import { useAppState } from '../lib/store';
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
+import { t } from '../i18n';
+import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 interface Client {
   id: string;
@@ -45,7 +47,7 @@ export default function Agency() {
 
   if (!isAgency) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" dir="rtl">
         <div>
           <h1 className="text-2xl font-bold text-white">Agency Mode</h1>
           <p className="text-sm text-slate-400 mt-1">Manage clients, white-label reports, and team access</p>

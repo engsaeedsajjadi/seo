@@ -3,6 +3,8 @@ import {
   Brain, AlertCircle, Sparkles, RefreshCw
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
+import { t } from '../i18n';
+import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 interface GeoRun {
   id: string;
@@ -78,9 +80,9 @@ export default function GEO() {
 
   if (!state.currentProject) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center" dir="rtl">
         <Brain className="w-12 h-12 text-slate-500 mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">No Project Selected</h2>
+        <h2 className="text-xl font-bold text-white mb-2">پروژه‌ای انتخاب نشده</h2>
         <p className="text-slate-400">Select or create a project to track AI visibility.</p>
       </div>
     );
@@ -88,7 +90,7 @@ export default function GEO() {
 
   if (providerError) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" dir="rtl">
         <div>
           <h1 className="text-2xl font-bold text-white">GEO / AI Visibility — Real Provider</h1>
           <p className="text-sm text-slate-400 mt-1">Track your brand visibility in AI-generated answers — real AI provider, cost metering, no fake</p>

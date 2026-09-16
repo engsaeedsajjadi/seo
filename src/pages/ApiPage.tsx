@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { t } from '../i18n';
+import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 import {
   Shield, Key, Code, ExternalLink, Copy, CheckCircle2,
   AlertCircle, Book, Terminal, Zap, RefreshCw, Trash2
@@ -173,7 +175,7 @@ export default function ApiPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">API & MCP — Real</h1>
