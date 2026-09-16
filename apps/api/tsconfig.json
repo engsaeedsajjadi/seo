@@ -6,7 +6,7 @@
     "lib": ["ES2022"],
     "outDir": "./dist",
     "rootDir": "./src",
-    "strict": false,
+    "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -14,7 +14,7 @@
     "sourceMap": true,
     "resolveJsonModule": true,
     "allowImportingTsExtensions": false,
-    "noEmitOnError": false,
+    "noEmitOnError": true,
     "types": ["node"]
   },
   "include": ["src/**/*"],
