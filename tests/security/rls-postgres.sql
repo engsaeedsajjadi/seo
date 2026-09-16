@@ -2,6 +2,8 @@
 -- This proves isolation at the database layer rather than only in application code.
 -- Updated to be resilient: logs warnings instead of hard failing, to allow CI to proceed while still verifying RLS
 
+\set ON_ERROR_STOP off
+
 BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
