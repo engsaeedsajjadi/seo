@@ -536,6 +536,7 @@ ALTER TABLE crawls ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crawl_pages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crawl_issues ENABLE ROW LEVEL SECURITY;
 ALTER TABLE keywords ENABLE ROW LEVEL SECURITY;
+ALTER TABLE keyword_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE competitors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE backlinks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE jobs ENABLE ROW LEVEL SECURITY;
@@ -546,6 +547,12 @@ ALTER TABLE credit_wallets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE usage_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE gsc_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE geo_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE content_briefs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_usage ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies — Tenant isolation at database level
 -- Supports both user-based and organization-based isolation for testing and production
@@ -597,6 +604,22 @@ CREATE POLICY crawl_isolation ON crawls
        AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
   );
 
+CREATE POLICY crawl_pages_isolation ON crawl_pages
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY crawl_issues_isolation ON crawl_issues
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
 CREATE POLICY keyword_isolation ON keywords
   FOR ALL TO PUBLIC
   USING (
@@ -605,7 +628,135 @@ CREATE POLICY keyword_isolation ON keywords
        AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
   );
 
+CREATE POLICY keyword_snapshots_isolation ON keyword_snapshots
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY competitors_isolation ON competitors
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY backlinks_isolation ON backlinks
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
 CREATE POLICY job_isolation ON jobs
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY alerts_isolation ON alerts
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY reports_isolation ON reports
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY integrations_isolation ON integrations
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY credit_wallets_isolation ON credit_wallets
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY credit_transactions_isolation ON credit_transactions
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY api_keys_isolation ON api_keys
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY audit_logs_isolation ON audit_logs
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY usage_records_isolation ON usage_records
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY invoices_isolation ON invoices
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY gsc_metrics_isolation ON gsc_metrics
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY geo_runs_isolation ON geo_runs
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY content_briefs_isolation ON content_briefs
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY ai_usage_isolation ON ai_usage
   FOR ALL TO PUBLIC
   USING (
     organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
