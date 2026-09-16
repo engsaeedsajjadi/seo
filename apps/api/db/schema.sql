@@ -692,27 +692,67 @@ CREATE TABLE IF NOT EXISTS webhooks (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   url TEXT NOT NULL CHECK (url ~ '^https?://'),
+  events JSONB NOT NULL DEFAULT '[]'::jsonb,
   secret_hash TEXT NOT NULL,
-  events TEXT[] NOT NULL,
+  secret_prefix TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive','failed')),
   active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  last_triggered_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_webhooks_org ON webhooks(organization_id);
+CREATE INDEX IF NOT EXISTS idx_webhooks_status ON webhooks(status);
 
 CREATE TABLE IF NOT EXISTS webhook_deliveries (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   webhook_id UUID NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
   event VARCHAR(100) NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','delivered','failed','retrying')),
   payload JSONB NOT NULL,
+  response_code INTEGER,
   response_status INTEGER,
   response_body TEXT,
   attempts INTEGER DEFAULT 1,
+  next_retry_at TIMESTAMPTZ,
   delivered_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id);
+CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_status ON webhook_deliveries(status);
+
+CREATE TABLE IF NOT EXISTS stripe_events (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  event_id TEXT UNIQUE NOT NULL,
+  type TEXT NOT NULL,
+  data JSONB NOT NULL,
+  processed BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_stripe_events_event_id ON stripe_events(event_id);
+CREATE INDEX IF NOT EXISTS idx_stripe_events_type ON stripe_events(type);
+
+CREATE TABLE IF NOT EXISTS scheduled_jobs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('SITE_CRAWL','SEO_AUDIT','RANK_CHECK','BACKLINK_SYNC','GSC_SYNC','GA4_SYNC','REPORT_GENERATION','ALERT_EVALUATION','PAGESPEED_CHECK','CONTENT_BRIEF','WEBHOOK_DELIVERY','COMPETITOR_CHECK')),
+  cron_expression TEXT NOT NULL,
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  enabled BOOLEAN DEFAULT TRUE,
+  last_run_at TIMESTAMPTZ,
+  next_run_at TIMESTAMPTZ,
+  config JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_org ON scheduled_jobs(organization_id);
+CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_next_run ON scheduled_jobs(next_run_at) WHERE enabled = true;
+CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_type ON scheduled_jobs(type);
 
 -- ============================================================
 -- AUDIT LOG
@@ -796,6 +836,10 @@ ALTER TABLE ga4_metrics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagespeed_results ENABLE ROW LEVEL SECURITY;
 ALTER TABLE geo_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE content_briefs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE webhooks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE webhook_deliveries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stripe_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scheduled_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_usage ENABLE ROW LEVEL SECURITY;
 ALTER TABLE feature_flags ENABLE ROW LEVEL SECURITY;
 
@@ -1074,6 +1118,39 @@ CREATE POLICY content_briefs_isolation ON content_briefs
     OR (current_setting('app.current_organization_id', true) = '' AND current_setting('app.current_user_id', true) = '')
     OR current_setting('app.current_organization_id', true) IS NULL
   );
+
+DROP POLICY IF EXISTS webhooks_isolation ON webhooks;
+CREATE POLICY webhooks_isolation ON webhooks
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' AND current_setting('app.current_user_id', true) = '')
+    OR current_setting('app.current_organization_id', true) IS NULL
+  );
+
+DROP POLICY IF EXISTS webhook_deliveries_isolation ON webhook_deliveries;
+CREATE POLICY webhook_deliveries_isolation ON webhook_deliveries
+  FOR ALL TO PUBLIC
+  USING (
+    webhook_id IN (SELECT id FROM webhooks WHERE organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID)
+    OR current_setting('app.current_organization_id', true) IS NULL
+    OR current_setting('app.current_organization_id', true) = ''
+  );
+
+DROP POLICY IF EXISTS stripe_events_isolation ON stripe_events;
+CREATE POLICY stripe_events_isolation ON stripe_events
+  FOR ALL TO PUBLIC
+  USING (true);
+
+DROP POLICY IF EXISTS scheduled_jobs_isolation ON scheduled_jobs;
+CREATE POLICY scheduled_jobs_isolation ON scheduled_jobs
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' AND current_setting('app.current_user_id', true) = '')
+    OR current_setting('app.current_organization_id', true) IS NULL
+  );
+
 
 DROP POLICY IF EXISTS ai_usage_isolation ON ai_usage;
 CREATE POLICY ai_usage_isolation ON ai_usage
