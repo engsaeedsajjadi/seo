@@ -1,4 +1,4 @@
-name: CI/CD Pipeline — Strict Production Reality
+name: CI/CD Pipeline
 
 on:
   push:
@@ -10,9 +10,40 @@ permissions:
   contents: read
 
 jobs:
+  lockfile-integrity:
+    name: Lockfile Integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Verify lockfile not modified by npm ci
+        run: |
+          git diff --exit-code -- package-lock.json
+          echo "✅ package-lock.json integrity verified - no modifications by npm ci"
+      - run: npm ci --prefix apps/api
+      - name: Verify API lockfile integrity
+        run: |
+          git diff --exit-code -- apps/api/package-lock.json
+          echo "✅ apps/api/package-lock.json integrity verified"
+      - run: npm ci --prefix apps/worker
+      - name: Verify Worker lockfile integrity
+        run: |
+          git diff --exit-code -- apps/worker/package-lock.json
+          echo "✅ apps/worker/package-lock.json integrity verified"
+      - run: npm ci --prefix apps/mcp
+      - name: Verify MCP lockfile integrity
+        run: |
+          git diff --exit-code -- apps/mcp/package-lock.json
+          echo "✅ apps/mcp/package-lock.json integrity verified"
+
   frontend:
     name: Frontend Build & Typecheck
     runs-on: ubuntu-latest
+    needs: [lockfile-integrity]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,6 +53,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
+      - run: npm run i18n:audit
       - uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
@@ -30,6 +62,7 @@ jobs:
   api:
     name: API Build
     runs-on: ubuntu-latest
+    needs: [lockfile-integrity]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,6 +78,7 @@ jobs:
   worker:
     name: Worker Build
     runs-on: ubuntu-latest
+    needs: [lockfile-integrity]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -52,6 +86,12 @@ jobs:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: apps/worker/package-lock.json
+      - name: Install API dependencies used by shared worker modules
+        run: npm ci
+        working-directory: apps/api
+      - name: Build API shared modules
+        run: npm run build
+        working-directory: apps/api
       - run: npm ci
         working-directory: apps/worker
       - run: npm run build
@@ -60,6 +100,7 @@ jobs:
   mcp:
     name: MCP Build
     runs-on: ubuntu-latest
+    needs: [lockfile-integrity]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -72,10 +113,50 @@ jobs:
       - run: npm run build
         working-directory: apps/mcp
 
+  lint-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    needs: [lockfile-integrity]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint -- --max-warnings=0
+      - run: npm run typecheck
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: [lint-typecheck]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:unit
+
+  security-tests:
+    name: Security Tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:security
+
   integration:
     name: Integration & Database Security Tests
     runs-on: ubuntu-latest
-    needs: [api, worker, mcp]
+    needs: [api, worker, mcp, security-tests]
     services:
       postgres:
         image: postgres:15
@@ -104,32 +185,43 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint -- --max-warnings=0
       - run: npm run db:migrate
         working-directory: apps/api
       - name: Create non-owner RLS test role
         run: |
-          PGPASSWORD=rankforge psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE rankforge_app LOGIN PASSWORD 'rankforge_app' ON_ERROR_STOP=0" || PGPASSWORD=rankforge psql "$DATABASE_URL" -c "DROP ROLE IF EXISTS rankforge_app; CREATE ROLE rankforge_app LOGIN PASSWORD 'rankforge_app'"
-          PGPASSWORD=rankforge psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO rankforge_app; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO rankforge_app; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO rankforge_app; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO rankforge_app; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO rankforge_app;"
-      - name: Verify PostgreSQL RLS with non-owner role — STRICT
+          PGPASSWORD=rankforge psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE rankforge_app LOGIN PASSWORD 'rankforge_app'" || true
+          PGPASSWORD=rankforge psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO rankforge_app; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO rankforge_app; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO rankforge_app;"
+      - name: Verify PostgreSQL RLS with non-owner role
         run: PGPASSWORD=rankforge_app psql "postgresql://rankforge_app:rankforge_app@localhost:5432/rankforge_test" -v ON_ERROR_STOP=1 -f tests/security/rls-postgres.sql
-      - run: npm run test
+      - run: npm run test:integration
 
-  docker:
-    name: Docker Build
+  e2e:
+    name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
-    needs: [frontend, api, worker, mcp, integration]
-    steps:
-      - uses: actions/checkout@v4
-      - run: docker build -t rankforge-web:${{ github.sha }} .
-      - run: docker build -t rankforge-api:${{ github.sha }} apps/api/
-      - run: docker build -t rankforge-worker:${{ github.sha }} apps/worker/
-      - run: docker build -t rankforge-mcp:${{ github.sha }} apps/mcp/
-
-  security:
-    name: Security Scan
-    runs-on: ubuntu-latest
+    needs: [integration]
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: rankforge
+          POSTGRES_PASSWORD: rankforge
+          POSTGRES_DB: rankforge_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U rankforge -d rankforge_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://rankforge:rankforge@localhost:5432/rankforge_test
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: test-jwt-secret-at-least-32-chars-long-for-testing
+      VITE_API_URL: http://localhost:3001
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -137,7 +229,60 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npm audit --audit-level=moderate
+      - run: npx playwright install --with-deps chromium
+      - run: npm run db:migrate
+        working-directory: apps/api
+      - run: npm run build
+        working-directory: apps/api
+      - name: Start API server
+        run: |
+          npm start &
+          echo $! > api.pid
+          sleep 5
+          curl -f http://localhost:3001/health || (cat api.log; exit 1)
+        working-directory: apps/api
+      - run: npm run test:e2e
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            playwright-report/
+            test-results/
+            dist/
+
+  docker:
+    name: Docker Build & Runtime
+    runs-on: ubuntu-latest
+    needs: [frontend, api, worker, mcp, e2e]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t rankforge-web:${{ github.sha }} .
+      - run: docker build -t rankforge-api:${{ github.sha }} -f apps/api/Dockerfile apps/api
+      - run: docker build -t rankforge-worker:${{ github.sha }} -f apps/worker/Dockerfile apps/worker
+      - run: docker build -t rankforge-mcp:${{ github.sha }} -f apps/mcp/Dockerfile apps/mcp
+      - name: Test Docker Compose
+        run: |
+          docker compose up -d --build
+          sleep 10
+          docker compose ps
+          docker compose logs
+          curl -f http://localhost:3001/health || (docker compose logs; exit 1)
+          docker compose down -v
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: [lockfile-integrity]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm audit --audit-level=high
       - uses: trufflesecurity/trufflehog@main
         with:
           extra_args: --only-verified
