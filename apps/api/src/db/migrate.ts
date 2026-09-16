@@ -12,15 +12,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const requiredTables = [
-  'users', 'organizations', 'organization_members', 'projects', 'crawls',
-  'crawl_pages', 'crawl_issues', 'keywords', 'keyword_snapshots', 'competitors',
+  'users', 'organizations', 'organization_members', 'projects', 'crawls', 'crawl_runs',
+  'crawl_pages', 'crawl_issues', 'audit_findings', 'keywords', 'keyword_snapshots', 'competitors',
   'backlinks', 'jobs', 'integrations', 'gsc_metrics', 'geo_runs', 'reports',
   'credit_wallets', 'credit_transactions', 'api_keys', 'audit_logs',
 ];
 
 const rlsTables = [
-  'organizations', 'organization_members', 'projects', 'crawls', 'crawl_pages',
-  'crawl_issues', 'keywords', 'keyword_snapshots', 'competitors', 'backlinks',
+  'organizations', 'organization_members', 'projects', 'crawls', 'crawl_runs', 'crawl_pages',
+  'crawl_issues', 'audit_findings', 'keywords', 'keyword_snapshots', 'competitors', 'backlinks',
   'jobs', 'alerts', 'reports', 'integrations', 'credit_wallets',
   'credit_transactions', 'usage_records', 'invoices', 'api_keys', 'audit_logs',
 ];

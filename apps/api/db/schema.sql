@@ -526,6 +526,49 @@ CREATE INDEX idx_audit_logs_user ON audit_logs(user_id);
 CREATE INDEX idx_audit_logs_action ON audit_logs(action);
 
 -- ============================================================
+-- COMPATIBILITY TABLES (for repository naming consistency)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS crawl_runs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  status VARCHAR(20) DEFAULT 'pending',
+  total_pages INTEGER DEFAULT 0,
+  crawled_pages INTEGER DEFAULT 0,
+  failed_pages INTEGER DEFAULT 0,
+  config JSONB DEFAULT '{}',
+  error TEXT,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_crawl_runs_project ON crawl_runs(project_id);
+CREATE INDEX IF NOT EXISTS idx_crawl_runs_org ON crawl_runs(organization_id);
+
+CREATE TABLE IF NOT EXISTS audit_findings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  crawl_run_id UUID REFERENCES crawl_runs(id) ON DELETE CASCADE,
+  rule_id VARCHAR(50) NOT NULL,
+  severity VARCHAR(10) NOT NULL,
+  category VARCHAR(30) NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  evidence JSONB,
+  affected_urls TEXT[],
+  recommendation TEXT,
+  status VARCHAR(10) DEFAULT 'open',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_findings_project ON audit_findings(project_id);
+CREATE INDEX IF NOT EXISTS idx_audit_findings_org ON audit_findings(organization_id);
+CREATE INDEX IF NOT EXISTS idx_audit_findings_severity ON audit_findings(severity);
+
+-- ============================================================
 -- ROW LEVEL SECURITY
 -- ============================================================
 
@@ -533,8 +576,10 @@ ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organization_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crawls ENABLE ROW LEVEL SECURITY;
+ALTER TABLE crawl_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crawl_pages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crawl_issues ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_findings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE keywords ENABLE ROW LEVEL SECURITY;
 ALTER TABLE keyword_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE competitors ENABLE ROW LEVEL SECURITY;
@@ -757,6 +802,22 @@ CREATE POLICY content_briefs_isolation ON content_briefs
   );
 
 CREATE POLICY ai_usage_isolation ON ai_usage
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY crawl_runs_isolation ON crawl_runs
+  FOR ALL TO PUBLIC
+  USING (
+    organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
+    OR (current_setting('app.current_organization_id', true) = '' OR current_setting('app.current_organization_id', true) IS NULL)
+       AND (current_setting('app.current_user_id', true) = '' OR current_setting('app.current_user_id', true) IS NULL)
+  );
+
+CREATE POLICY audit_findings_isolation ON audit_findings
   FOR ALL TO PUBLIC
   USING (
     organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::UUID
