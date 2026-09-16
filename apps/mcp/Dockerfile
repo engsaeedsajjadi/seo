@@ -1,16 +1,16 @@
 # RankForge MCP Server Dockerfile
+# Context: apps/mcp/
 
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY apps/api/package*.json ./
+COPY package*.json ./
 RUN npm ci
 
-COPY apps/api/src/lib/db.ts ./src/lib/db.ts
-COPY apps/mcp/src/ ./src/
+COPY . ./
 
-RUN npm run build || npx tsc src/index.ts --outDir dist --module NodeNext --target ES2022 --esModuleInterop --skipLibCheck || echo "Build done"
+RUN npm run build
 
 FROM node:20-alpine AS runner
 
@@ -22,12 +22,13 @@ RUN addgroup -g 1001 -S nodejs && adduser -S rankforge -u 1001
 
 COPY --from=builder --chown=rankforge:nodejs /app/dist ./dist
 COPY --from=builder --chown=rankforge:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=rankforge:nodejs /app/package.json ./
 
 USER rankforge
 
 EXPOSE 3002
 
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3002/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 CMD ["node", "dist/index.js"]
