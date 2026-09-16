@@ -264,11 +264,11 @@ export async function createStripeCheckoutSession(organizationId: string, planId
   return { url: session.url! };
 }
 
-export function verifyStripeWebhook(payload: string | Buffer, signature: string): any {
+export async function verifyStripeWebhook(payload: string | Buffer, signature: string): Promise<any> {
   if (!isStripeConfigured()) throw new Error('Stripe not configured');
   
-  const Stripe = require('stripe');
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  const { default: Stripe } = await import('stripe');
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
   
-  return stripe.webhooks.constructEvent(payload, signature, process.env.STRIPE_WEBHOOK_SECRET!);
+  return stripe.webhooks.constructEvent(payload, signature, process.env.STRIPE_WEBHOOK_SECRET as string);
 }

@@ -305,7 +305,9 @@ export class Crawler {
         try {
           const data = JSON.parse($(el).html() || '');
           structuredData.push(data);
-        } catch {}
+        } catch {
+          // Ignore invalid JSON-LD
+        }
       });
 
       const images = $('img').map((_, el) => ({
@@ -320,7 +322,9 @@ export class Crawler {
         let absoluteHref = href;
         try {
           absoluteHref = new URL(href, item.url).toString();
-        } catch {}
+        } catch {
+          // Invalid URL
+        }
         return {
           href: absoluteHref,
           text: $(el).text().trim().slice(0, 200),

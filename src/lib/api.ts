@@ -244,26 +244,34 @@ class ApiClient {
 
         // Classify error by status code
         switch (response.status) {
-          case 401:
+          case 401: {
             return { success: false, error: new AuthenticationError(errorMessage) };
-          case 403:
+          }
+          case 403: {
             return { success: false, error: new AuthorizationError(errorMessage) };
-          case 404:
+          }
+          case 404: {
             return { success: false, error: new NotFoundError() };
-          case 409:
+          }
+          case 409: {
             return { success: false, error: new ApiError(ApiErrorCode.CONFLICT, errorMessage, 409, parsedError.error?.details, requestId) };
-          case 422:
+          }
+          case 422: {
             return { success: false, error: new ValidationError(errorMessage, parsedError.error?.details) };
-          case 429:
+          }
+          case 429: {
             const retryAfter = response.headers.get('retry-after');
             return { success: false, error: new RateLimitError(retryAfter ? parseInt(retryAfter) : undefined) };
-          case 503:
+          }
+          case 503: {
             return { success: false, error: new ApiError(ApiErrorCode.SERVICE_UNAVAILABLE, errorMessage, 503, undefined, requestId) };
-          default:
+          }
+          default: {
             if (errorCode) {
               return { success: false, error: new ApiError(errorCode, errorMessage, response.status, parsedError.error?.details, requestId) };
             }
             return { success: false, error: new ApiError(ApiErrorCode.INTERNAL_ERROR, errorMessage, response.status, undefined, requestId) };
+          }
         }
       }
 
