@@ -26,12 +26,12 @@ export default function Dashboard() {
       }
 
       try {
-        const [findings, jobs] = await Promise.all([
+        const [findingsResult, jobsResult] = await Promise.all([
           api.getAuditFindings(state.currentProject.id),
           api.getJobs(state.currentProject.id),
         ]);
-        setAuditFindings(findings);
-        setRecentJobs(jobs.slice(0, 5));
+        if (findingsResult.success) setAuditFindings(findingsResult.data);
+        if (jobsResult.success) setRecentJobs(jobsResult.data.slice(0, 5));
       } catch (error) {
         console.error('Failed to load dashboard data:', error);
       } finally {

@@ -24,8 +24,8 @@ export default function Rankings() {
       }
 
       try {
-        const data = await api.getRankings(state.currentProject.id);
-        setRankings(data);
+        const result = await api.getRankings(state.currentProject.id);
+        if (result.success) setRankings(result.data);
       } catch (error) {
         console.error('Failed to load rankings:', error);
       } finally {

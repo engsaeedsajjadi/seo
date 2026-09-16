@@ -1,16 +1,17 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
-  Globe, Plus, Settings, Trash2, Search, BarChart3,
-  Shield, Clock, CheckCircle2, AlertCircle, ExternalLink
+  Globe, Plus, Settings, Trash2, Search, AlertCircle
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
-import type { Project, PlanTier } from '../lib/types';
+import { api } from '../lib/api';
+import type { Project } from '../lib/types';
 import { PLAN_LIMITS } from '../lib/types';
 import { getPlanName } from '../lib/store';
 
 export default function Projects() {
-  const { state } = useAppState();
+  const { state, actions } = useAppState();
+  const navigate = useNavigate();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -82,7 +83,7 @@ function ProjectCard({ project }: { project: Project }) {
   return (
     <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5 hover:border-brand-600/30 transition-colors group">
       <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3">
+        <Link to={`/projects/${project.id}/audit`} className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-brand-600/20 flex items-center justify-center">
             <Globe className="w-5 h-5 text-brand-400" />
           </div>
@@ -90,14 +91,11 @@ function ProjectCard({ project }: { project: Project }) {
             <h3 className="text-sm font-semibold text-white">{project.name}</h3>
             <p className="text-xs text-slate-400">{project.domain}</p>
           </div>
-        </div>
+        </Link>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button className="p-1.5 rounded hover:bg-surface-3/50 text-slate-400 hover:text-white">
+          <Link to={`/projects/${project.id}/settings`} className="p-1.5 rounded hover:bg-surface-3/50 text-slate-400 hover:text-white">
             <Settings className="w-3.5 h-3.5" />
-          </button>
-          <button className="p-1.5 rounded hover:bg-surface-3/50 text-slate-400 hover:text-red-400">
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -120,33 +118,21 @@ function ProjectCard({ project }: { project: Project }) {
         <span className="px-2 py-0.5 rounded text-[10px] bg-surface-3/50 text-slate-400">{project.device}</span>
       </div>
 
-      {/* Integration Status */}
-      <div className="flex items-center gap-2 mb-4">
-        {Object.entries(project.integrations).map(([key, status]) => (
-          <div key={key} className={`w-2 h-2 rounded-full ${
-            status === 'connected' ? 'bg-accent-green' :
-            status === 'error' ? 'bg-accent-red' :
-            'bg-slate-600'
-          }`} title={`${key}: ${status}`} />
-        ))}
-        <span className="text-[10px] text-slate-500 ml-1">Integrations</span>
-      </div>
-
       <div className="flex items-center gap-2">
         <Link
-          to="/audit"
+          to={`/projects/${project.id}/audit`}
           className="flex-1 px-3 py-1.5 bg-brand-600/20 hover:bg-brand-600/30 text-brand-400 text-xs font-medium rounded-lg text-center"
         >
           Audit
         </Link>
         <Link
-          to="/keywords"
+          to={`/projects/${project.id}/keywords`}
           className="flex-1 px-3 py-1.5 bg-surface-3/30 hover:bg-surface-3/50 text-slate-300 text-xs font-medium rounded-lg text-center"
         >
           Keywords
         </Link>
         <Link
-          to="/rankings"
+          to={`/projects/${project.id}/rankings`}
           className="flex-1 px-3 py-1.5 bg-surface-3/30 hover:bg-surface-3/50 text-slate-300 text-xs font-medium rounded-lg text-center"
         >
           Rankings
@@ -157,10 +143,67 @@ function ProjectCard({ project }: { project: Project }) {
 }
 
 function CreateProjectModal({ onClose }: { onClose: () => void }) {
+  const { actions } = useAppState();
   const [domain, setDomain] = useState('');
   const [name, setName] = useState('');
   const [country, setCountry] = useState('US');
   const [language, setLanguage] = useState('en');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Validate domain
+  const normalizeDomain = (input: string): string => {
+    let d = input.trim().toLowerCase();
+    d = d.replace(/^https?:\/\//, '');
+    d = d.replace(/\/.*$/, '');
+    d = d.replace(/^www\./, '');
+    return d;
+  };
+
+  const isValidDomain = (d: string): boolean => {
+    return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/.test(d);
+  };
+
+  const handleCreate = async () => {
+    setError(null);
+
+    // Validation
+    if (!name.trim()) {
+      setError('Project name is required.');
+      return;
+    }
+    
+    const normalizedDomain = normalizeDomain(domain);
+    if (!normalizedDomain) {
+      setError('Domain is required.');
+      return;
+    }
+    if (!isValidDomain(normalizedDomain)) {
+      setError('Please enter a valid domain (e.g., example.com).');
+      return;
+    }
+
+    setLoading(true);
+
+    // Call API to create project
+    const result = await api.createProject({
+      name: name.trim(),
+      domain: normalizedDomain,
+      country,
+      language,
+    });
+
+    setLoading(false);
+
+    if (result.success) {
+      // Update local state with new project
+      actions.addProject(result.data);
+      onClose();
+    } else {
+      // Show error from API
+      setError(result.error.message);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -168,6 +211,12 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
         <h2 className="text-lg font-bold text-white mb-4">Create New Project</h2>
 
         <div className="space-y-4">
+          {error && (
+            <div className="p-3 rounded-lg bg-accent-red/10 border border-accent-red/20">
+              <p className="text-xs text-accent-red">{error}</p>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1.5">Project Name</label>
             <input
@@ -234,15 +283,17 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-end gap-3 mt-6">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-slate-400 hover:text-white"
+            disabled={loading}
+            className="px-4 py-2 text-sm text-slate-400 hover:text-white disabled:opacity-50"
           >
             Cancel
           </button>
           <button
-            onClick={onClose}
-            className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg"
+            onClick={handleCreate}
+            disabled={loading}
+            className="px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg"
           >
-            Create Project
+            {loading ? 'Creating...' : 'Create Project'}
           </button>
         </div>
       </div>

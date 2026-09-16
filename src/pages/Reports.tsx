@@ -21,8 +21,8 @@ export default function Reports() {
       }
 
       try {
-        const data = await api.getReports(state.currentProject.id);
-        setReports(data);
+        const result = await api.getReports(state.currentProject.id);
+        if (result.success) setReports(result.data);
       } catch (error) {
         console.error('Failed to load reports:', error);
       } finally {

@@ -22,8 +22,8 @@ export default function Alerts() {
       }
 
       try {
-        const data = await api.getAlerts(state.currentProject.id);
-        setAlerts(data);
+        const result = await api.getAlerts(state.currentProject.id);
+        if (result.success) setAlerts(result.data);
       } catch (error) {
         console.error('Failed to load alerts:', error);
       } finally {

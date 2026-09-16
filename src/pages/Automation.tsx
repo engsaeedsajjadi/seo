@@ -20,8 +20,8 @@ export default function Automation() {
       }
 
       try {
-        const data = await api.getJobs(state.currentProject.id);
-        setJobs(data);
+        const result = await api.getJobs(state.currentProject.id);
+        if (result.success) setJobs(result.data);
       } catch (error) {
         console.error('Failed to load jobs:', error);
       } finally {

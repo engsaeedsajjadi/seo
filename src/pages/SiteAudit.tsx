@@ -26,8 +26,8 @@ export default function SiteAudit() {
       }
 
       try {
-        const data = await api.getAuditFindings(state.currentProject.id);
-        setFindings(data);
+        const result = await api.getAuditFindings(state.currentProject.id);
+        if (result.success) setFindings(result.data);
       } catch (error) {
         console.error('Failed to load audit findings:', error);
       } finally {

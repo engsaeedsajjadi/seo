@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Projects from './pages/Projects';
@@ -23,11 +23,13 @@ import SettingsPage from './pages/Settings';
 import { AppContext } from './lib/store';
 import type { AppState, AppActions } from './lib/store';
 import type { Organization, Project, ProviderStatus } from './lib/types';
-import { api, checkApiAvailability } from './lib/api';
+import { api } from './lib/api';
+import { isApiError, ApiErrorCode } from './lib/api';
+
+type AppStatus = 'loading' | 'no_backend' | 'unauthenticated' | 'ready';
 
 function App() {
-  const [loading, setLoading] = useState(true);
-  const [apiAvailable, setApiAvailable] = useState(false);
+  const [status, setStatus] = useState<AppStatus>('loading');
   const [state, setState] = useState<AppState>({
     isAuthenticated: false,
     currentOrg: null,
@@ -55,43 +57,59 @@ function App() {
     dismissAlert: (id) => setState(s => ({ ...s, alerts: s.alerts.filter(a => a.id !== id) })),
   };
 
-  // Initialize app - check API availability and load real data
+  // Refresh data from API
+  const refreshData = useCallback(async () => {
+    const [orgResult, projectsResult, providerResult] = await Promise.all([
+      api.getCurrentOrganization(),
+      api.getProjects(),
+      api.getProviderStatus(),
+    ]);
+
+    setState(s => ({
+      ...s,
+      currentOrg: orgResult.success ? orgResult.data : null,
+      projects: projectsResult.success ? projectsResult.data : [],
+      currentProject: projectsResult.success && projectsResult.data.length > 0 ? projectsResult.data[0] : s.currentProject,
+      providerStatus: providerResult.success ? providerResult.data : s.providerStatus,
+    }));
+  }, []);
+
+  // Initialize app
   useEffect(() => {
     async function initialize() {
-      try {
-        // Check if backend API is available
-        const available = await checkApiAvailability();
-        setApiAvailable(available);
-
-        if (available) {
-          // Load real data from API
-          const [org, projects, providerStatus] = await Promise.all([
-            api.getCurrentOrganization(),
-            api.getProjects(),
-            api.getProviderStatus(),
-          ]);
-
-          setState(s => ({
-            ...s,
-            isAuthenticated: org !== null,
-            currentOrg: org,
-            projects: projects,
-            currentProject: projects.length > 0 ? projects[0] : null,
-            providerStatus: providerStatus,
-          }));
-        }
-      } catch (error) {
-        console.error('Failed to initialize app:', error);
-      } finally {
-        setLoading(false);
+      // Check if backend is available
+      const available = await api.checkAvailability();
+      
+      if (!available) {
+        setStatus('no_backend');
+        return;
       }
+
+      // Check authentication
+      const userResult = await api.getCurrentUser();
+      if (!userResult.success) {
+        if (isApiError(userResult.error) && 
+            (userResult.error.code === ApiErrorCode.UNAUTHENTICATED || 
+             userResult.error.code === ApiErrorCode.SESSION_EXPIRED)) {
+          setStatus('unauthenticated');
+          return;
+        }
+        // Other error - still show unauthenticated
+        setStatus('unauthenticated');
+        return;
+      }
+
+      // Load organization and project data
+      await refreshData();
+      setState(s => ({ ...s, isAuthenticated: true }));
+      setStatus('ready');
     }
 
     initialize();
-  }, []);
+  }, [refreshData]);
 
-  // Show loading state
-  if (loading) {
+  // Loading state
+  if (status === 'loading') {
     return (
       <div className="flex items-center justify-center h-screen bg-surface">
         <div className="text-center">
@@ -106,8 +124,8 @@ function App() {
     );
   }
 
-  // Show setup screen if API not available
-  if (!apiAvailable) {
+  // No backend configured
+  if (status === 'no_backend') {
     return (
       <div className="flex items-center justify-center min-h-screen bg-surface p-6">
         <div className="max-w-2xl w-full">
@@ -127,76 +145,26 @@ function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
               <div>
-                <h3 className="text-lg font-semibold text-white mb-2">Backend Not Configured</h3>
+                <h3 className="text-lg font-semibold text-white mb-2">Backend Not Connected</h3>
                 <p className="text-sm text-slate-400 mb-4">
-                  RankForge requires a backend API to function. The frontend application is ready, but needs to be connected to:
+                  RankForge requires a backend API server. Set <code className="text-brand-400 bg-surface px-1.5 py-0.5 rounded text-xs">VITE_API_URL</code> to your API endpoint.
                 </p>
-                <ul className="text-sm text-slate-400 space-y-1 mb-4">
-                  <li>• PostgreSQL database</li>
-                  <li>• API server (Node.js/Next.js)</li>
-                  <li>• Background worker process</li>
-                  <li>• Provider credentials (DataForSEO, OpenAI, Stripe, etc.)</li>
-                </ul>
-                <p className="text-sm text-slate-400">
-                  See <code className="text-brand-400 bg-surface px-1.5 py-0.5 rounded">docs/ARCHITECTURE.md</code> for setup instructions.
+                <div className="bg-surface/50 rounded-lg p-3">
+                  <p className="text-xs text-slate-400 font-mono">VITE_API_URL=https://api.your-rankforge.com</p>
+                </div>
+                <p className="text-xs text-slate-500 mt-3">
+                  See <code className="text-brand-400">docs/DEPLOYMENT.md</code> for setup instructions.
                 </p>
               </div>
             </div>
-          </div>
-
-          <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-6">
-            <h3 className="text-sm font-semibold text-white mb-3">Quick Start</h3>
-            <div className="space-y-3 text-sm">
-              <div className="flex items-start gap-3">
-                <span className="w-6 h-6 rounded-full bg-brand-600/20 text-brand-400 flex items-center justify-center text-xs font-bold flex-shrink-0">1</span>
-                <div>
-                  <p className="text-white font-medium">Set up environment variables</p>
-                  <p className="text-slate-400 text-xs mt-0.5">Copy .env.example to .env and configure all required variables</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="w-6 h-6 rounded-full bg-brand-600/20 text-brand-400 flex items-center justify-center text-xs font-bold flex-shrink-0">2</span>
-                <div>
-                  <p className="text-white font-medium">Start PostgreSQL database</p>
-                  <p className="text-slate-400 text-xs mt-0.5">Use Docker or install PostgreSQL locally</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="w-6 h-6 rounded-full bg-brand-600/20 text-brand-400 flex items-center justify-center text-xs font-bold flex-shrink-0">3</span>
-                <div>
-                  <p className="text-white font-medium">Run database migrations</p>
-                  <p className="text-slate-400 text-xs mt-0.5">Execute migration scripts to create schema</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="w-6 h-6 rounded-full bg-brand-600/20 text-brand-400 flex items-center justify-center text-xs font-bold flex-shrink-0">4</span>
-                <div>
-                  <p className="text-white font-medium">Start API server</p>
-                  <p className="text-slate-400 text-xs mt-0.5">Run the backend API server</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="w-6 h-6 rounded-full bg-brand-600/20 text-brand-400 flex items-center justify-center text-xs font-bold flex-shrink-0">5</span>
-                <div>
-                  <p className="text-white font-medium">Configure VITE_API_URL</p>
-                  <p className="text-slate-400 text-xs mt-0.5">Set the API URL in environment variables</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 text-center">
-            <p className="text-xs text-slate-500">
-              RankForge v1.0.0 • Commercial SEO Automation SaaS
-            </p>
           </div>
         </div>
       </div>
     );
   }
 
-  // Show login screen if not authenticated
-  if (!state.isAuthenticated) {
+  // Login screen
+  if (status === 'unauthenticated') {
     return (
       <div className="flex items-center justify-center min-h-screen bg-surface p-6">
         <div className="max-w-md w-full">
@@ -206,41 +174,12 @@ function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <h1 className="text-3xl font-bold text-white mb-2">Welcome to RankForge</h1>
+            <h1 className="text-3xl font-bold text-white mb-2">RankForge</h1>
             <p className="text-slate-400">Sign in to your account</p>
           </div>
 
           <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-6">
-            <form className="space-y-4">
-              <div>
-                <label className="text-xs font-medium text-slate-300 mb-1.5 block">Email</label>
-                <input
-                  type="email"
-                  placeholder="you@company.com"
-                  className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-600/50"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-300 mb-1.5 block">Password</label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-600/50"
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg"
-              >
-                Sign In
-              </button>
-            </form>
-
-            <div className="mt-4 text-center">
-              <p className="text-xs text-slate-400">
-                Don't have an account? <a href="#" className="text-brand-400 hover:text-brand-300">Sign up</a>
-              </p>
-            </div>
+            <LoginForm onSuccess={() => { setStatus('ready'); refreshData(); }} />
           </div>
         </div>
       </div>
@@ -251,32 +190,103 @@ function App() {
   return (
     <AppContext.Provider value={{ state, actions }}>
       <HashRouter>
-        <Layout>
-          <Routes>
+        <Routes>
+          <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/projects" element={<Projects />} />
-            <Route path="/audit" element={<SiteAudit />} />
-            <Route path="/keywords" element={<Keywords />} />
-            <Route path="/rankings" element={<Rankings />} />
-            <Route path="/competitors" element={<Competitors />} />
-            <Route path="/backlinks" element={<Backlinks />} />
-            <Route path="/content" element={<Content />} />
-            <Route path="/geo" element={<GEO />} />
-            <Route path="/aeo" element={<AEO />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/automation" element={<Automation />} />
-            <Route path="/alerts" element={<Alerts />} />
+            <Route path="/projects/:projectId" element={<ProjectLayout />}>
+              <Route path="audit" element={<SiteAudit />} />
+              <Route path="keywords" element={<Keywords />} />
+              <Route path="rankings" element={<Rankings />} />
+              <Route path="competitors" element={<Competitors />} />
+              <Route path="backlinks" element={<Backlinks />} />
+              <Route path="content" element={<Content />} />
+              <Route path="geo" element={<GEO />} />
+              <Route path="aeo" element={<AEO />} />
+              <Route path="reports" element={<Reports />} />
+              <Route path="automation" element={<Automation />} />
+              <Route path="alerts" element={<Alerts />} />
+              <Route path="settings" element={<SettingsPage />} />
+            </Route>
             <Route path="/integrations" element={<Integrations />} />
             <Route path="/billing" element={<Billing />} />
             <Route path="/team" element={<Team />} />
             <Route path="/agency" element={<Agency />} />
             <Route path="/api" element={<ApiPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-          </Routes>
-        </Layout>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
       </HashRouter>
     </AppContext.Provider>
   );
+}
+
+// Login form component
+function LoginForm({ onSuccess }: { onSuccess: () => void }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    const result = await api.login(email, password);
+    setLoading(false);
+
+    if (result.success) {
+      onSuccess();
+    } else {
+      setError(result.error.message);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {error && (
+        <div className="p-3 rounded-lg bg-accent-red/10 border border-accent-red/20">
+          <p className="text-xs text-accent-red">{error}</p>
+        </div>
+      )}
+      <div>
+        <label className="text-xs font-medium text-slate-300 mb-1.5 block">Email</label>
+        <input
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          placeholder="you@company.com"
+          required
+          className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-600/50"
+        />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-slate-300 mb-1.5 block">Password</label>
+        <input
+          type="password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          placeholder="••••••••"
+          required
+          className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-600/50"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full px-4 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg"
+      >
+        {loading ? 'Signing in...' : 'Sign In'}
+      </button>
+    </form>
+  );
+}
+
+// Project layout wrapper - loads project by ID from URL
+function ProjectLayout() {
+  return <Outlet />;
 }
 
 export default App;

@@ -26,8 +26,8 @@ export default function Keywords() {
       }
 
       try {
-        const data = await api.getKeywords(state.currentProject.id);
-        setKeywords(data);
+        const result = await api.getKeywords(state.currentProject.id);
+        if (result.success) setKeywords(result.data);
       } catch (error) {
         console.error('Failed to load keywords:', error);
       } finally {

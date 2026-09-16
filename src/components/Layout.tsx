@@ -55,7 +55,9 @@ const navSections = [
   },
 ];
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+import { Outlet } from 'react-router-dom';
+
+export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(
     Object.fromEntries(navSections.map(s => [s.title, true]))
@@ -220,7 +222,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto scrollbar-thin p-6">
-          {children}
+          <Outlet />
         </main>
       </div>
     </div>
