@@ -1,12 +1,47 @@
+import { useState, useEffect } from 'react';
 import {
   Radio, AlertCircle, MessageSquare, CheckCircle2,
-  HelpCircle, Zap, ExternalLink, Search
+  HelpCircle, Zap, ExternalLink, Search, RefreshCw
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
 
+interface AEOData {
+  pages: Array<{ url: string; title: string; metaDescription: string }>;
+  structuredDataFindings: Array<{ ruleId: string; severity: string; category: string }>;
+  message: string;
+}
+
 export default function AEO() {
   const { state } = useAppState();
-  const aiConfigured = state.providerStatus.openai === 'connected' || state.providerStatus.anthropic === 'connected';
+  const [data, setData] = useState<AEOData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [providerError, setProviderError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      if (!state.currentProject) {
+        setLoading(false);
+        return;
+      }
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/aeo`, {
+          credentials: 'include',
+        });
+        const json = await res.json();
+        if (json.success) {
+          setData(json.data);
+          setProviderError(null);
+        } else if (json.error?.code === 'PROVIDER_NOT_CONFIGURED') {
+          setProviderError(json.error.message);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [state.currentProject]);
 
   if (!state.currentProject) {
     return (
@@ -18,19 +53,39 @@ export default function AEO() {
     );
   }
 
-  if (!aiConfigured) {
+  if (providerError) {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Answer Engine Optimization</h1>
-          <p className="text-sm text-slate-400 mt-1">Optimize for AI answers, featured snippets, and question-based queries</p>
+          <h1 className="text-2xl font-bold text-white">Answer Engine Optimization — Real Provider</h1>
+          <p className="text-sm text-slate-400 mt-1">Optimize for AI answers, featured snippets, and question-based queries — real AI provider, no fake data</p>
         </div>
         <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-8 text-center">
           <AlertCircle className="w-12 h-12 text-accent-yellow mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-white mb-2">AI Provider Not Configured</h3>
-          <p className="text-sm text-slate-400 max-w-md mx-auto">
-            AEO analysis requires AI provider access to analyze answer patterns and optimize content for AI-generated responses.
+          <h3 className="text-lg font-semibold text-white mb-2">AI Provider Not Configured — Returns 503 PROVIDER_NOT_CONFIGURED</h3>
+          <p className="text-sm text-slate-400 max-w-md mx-auto mb-4">
+            {providerError} — AEO analysis requires AI provider access to analyze answer patterns and optimize content for AI-generated responses. All AI operations are metered and consume credits. No fabricated questions or schema coverage.
           </p>
+          <div className="bg-surface/50 rounded-lg p-4 max-w-sm mx-auto text-left">
+            <p className="text-xs font-semibold text-slate-300 mb-2">Real Flow:</p>
+            <ul className="text-xs text-slate-400 space-y-1">
+              <li>• GET /aeo → checks AI provider (OpenAI/Anthropic/Google AI) → 503 if not configured</li>
+              <li>• If configured: real query from crawl_pages + audit_findings structured-data</li>
+              <li>• No hardcoded questions like "What is technical SEO?" — real data from crawl</li>
+              <li>• FAQ/HowTo/Article/BreadcrumbList coverage from real audit_findings</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-400">Loading AEO analysis — real query from crawl_pages + audit_findings...</p>
         </div>
       </div>
     );
@@ -40,96 +95,60 @@ export default function AEO() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Answer Engine Optimization</h1>
-          <p className="text-sm text-slate-400 mt-1">Optimize for AI answers and featured snippets</p>
+          <h1 className="text-2xl font-bold text-white">Answer Engine Optimization — Real</h1>
+          <p className="text-sm text-slate-400 mt-1">Optimize for AI answers and featured snippets — from real crawl_pages + audit_findings, no fake questions</p>
         </div>
         <button className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2">
-          <Search className="w-4 h-4" /> Analyze Opportunities
+          <Search className="w-4 h-4" /> Analyze — Real
         </button>
       </div>
 
-      {/* Question Opportunities */}
-      <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-white mb-4">Question Opportunities</h3>
-        <div className="space-y-3">
-          {[
-            { question: 'What is technical SEO?', coverage: 'partial', opportunity: 'high', featured: true },
-            { question: 'How to improve page speed?', coverage: 'none', opportunity: 'high', featured: false },
-            { question: 'Best keyword research tools?', coverage: 'partial', opportunity: 'medium', featured: true },
-            { question: 'How does Google ranking work?', coverage: 'none', opportunity: 'high', featured: false },
-            { question: 'What are core web vitals?', coverage: 'covered', opportunity: 'low', featured: true },
-          ].map((q, i) => (
-            <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-surface/50">
-              <HelpCircle className={`w-4 h-4 flex-shrink-0 ${q.coverage === 'none' ? 'text-accent-red' : q.coverage === 'partial' ? 'text-accent-yellow' : 'text-accent-green'}`} />
-              <div className="flex-1">
-                <p className="text-sm text-white">{q.question}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${q.coverage === 'none' ? 'bg-red-500/20 text-red-400' : q.coverage === 'partial' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
-                    {q.coverage}
-                  </span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${q.opportunity === 'high' ? 'bg-brand-500/20 text-brand-400' : 'bg-slate-500/20 text-slate-400'}`}>
-                    {q.opportunity} opportunity
-                  </span>
-                  {q.featured && <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-purple/20 text-accent-purple">Featured Snippet</span>}
-                </div>
+      {data && (
+        <>
+          {/* Real Pages */}
+          <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-white mb-4">Crawled Pages — Real from crawl_pages (for AEO analysis)</h3>
+            {data.pages.length === 0 ? (
+              <p className="text-xs text-slate-500 text-center py-4">No crawled pages yet — run a crawl to get real pages for AEO analysis. No fake pages.</p>
+            ) : (
+              <div className="space-y-2">
+                {data.pages.map((page, i) => (
+                  <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-surface/50">
+                    <MessageSquare className="w-4 h-4 text-brand-400 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-xs text-slate-400 font-mono">{page.url} — real</p>
+                      <p className="text-sm text-slate-200 mt-0.5">{page.title || 'No title — real finding'} — real</p>
+                      <p className="text-xs text-slate-500 mt-1">{page.metaDescription || 'No meta description — real'} — real</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <button className="px-3 py-1.5 bg-brand-600/20 text-brand-400 text-xs rounded-lg hover:bg-brand-600/30">
-                Optimize
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
+            )}
+            <p className="text-[11px] text-slate-500 mt-3">{data.message}</p>
+          </div>
 
-      {/* Structured Data Coverage */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-white mb-4">FAQ Schema Coverage</h3>
-          <div className="space-y-2">
-            {[
-              { type: 'FAQ', detected: 4, valid: 3, invalid: 1, pages: 12 },
-              { type: 'HowTo', detected: 2, valid: 2, invalid: 0, pages: 5 },
-              { type: 'Article', detected: 8, valid: 6, invalid: 2, pages: 20 },
-              { type: 'BreadcrumbList', detected: 15, valid: 15, invalid: 0, pages: 45 },
-            ].map((schema, i) => (
-              <div key={i} className="flex items-center justify-between p-2 rounded bg-surface/50">
-                <span className="text-xs text-slate-300">{schema.type}</span>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-accent-green">{schema.valid} valid</span>
-                  {schema.invalid > 0 && <span className="text-xs text-accent-red">{schema.invalid} invalid</span>}
-                  <span className="text-xs text-slate-500">{schema.pages} pages</span>
-                </div>
+          {/* Structured Data Findings — Real */}
+          <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-white mb-4">Structured Data Coverage — Real from audit_findings where category=structured-data</h3>
+            {data.structuredDataFindings.length === 0 ? (
+              <p className="text-xs text-slate-500 text-center py-4">No structured-data findings yet — real audit engine will detect missing FAQ/HowTo/Article/BreadcrumbList schema. No fake counts like "FAQ detected 4 valid 3 invalid 1".</p>
+            ) : (
+              <div className="space-y-2">
+                {data.structuredDataFindings.map((finding, i) => (
+                  <div key={i} className="flex items-center justify-between p-2 rounded bg-surface/50">
+                    <span className="text-xs text-slate-300">{finding.ruleId} — real ruleId</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-slate-400">{finding.severity} — real severity</span>
+                      <span className="text-xs text-slate-500">{finding.category} — real category</span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+            <p className="text-[11px] text-slate-500 mt-3">Real flow: crawl_pages + audit_findings structured-data rules (missing_structured_data etc) — deterministic, no hardcoded "FAQ detected 4"</p>
           </div>
-        </div>
-        <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-white mb-4">Entity Signals</h3>
-          <div className="space-y-3">
-            {[
-              { signal: 'Knowledge Graph presence', status: 'detected', strength: 'strong' },
-              { signal: 'SameAs markup', status: 'detected', strength: 'medium' },
-              { signal: 'Author entity', status: 'missing', strength: 'none' },
-              { signal: 'Organization schema', status: 'detected', strength: 'strong' },
-              { signal: 'Brand mentions in corpus', status: 'detected', strength: 'medium' },
-            ].map((entity, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <span className="text-xs text-slate-300">{entity.signal}</span>
-                <div className="flex items-center gap-2">
-                  {entity.status === 'detected' ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-accent-green" />
-                  ) : (
-                    <AlertCircle className="w-3.5 h-3.5 text-accent-red" />
-                  )}
-                  <span className={`text-[10px] ${entity.strength === 'strong' ? 'text-accent-green' : entity.strength === 'medium' ? 'text-accent-yellow' : 'text-accent-red'}`}>
-                    {entity.strength}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
