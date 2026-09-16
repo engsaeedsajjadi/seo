@@ -137,6 +137,14 @@ export const billing = {
   paymentError: 'خطا در پرداخت',
   subscriptionError: 'خطا در اشتراک',
   stripeNotConfigured: 'درگاه پرداخت پیکربندی نشده است',
+  // Currency
+  currency: 'واحد پول',
+  currencyToman: 'تومان',
+  currencyRial: 'ریال',
+  toman: 'تومان',
+  rial: 'ریال',
+  formatToman: '{amount} تومان',
+  formatRial: '{amount} ریال',
   // Empty
   noInvoices: 'فاکتوری یافت نشد',
   noTransactions: 'تراکنشی یافت نشد',
