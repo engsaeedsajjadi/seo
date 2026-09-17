@@ -43,7 +43,7 @@ async function verifyDatabase() {
 
   const rls = await query(`
     SELECT c.relname, c.relrowsecurity,
-           COUNT(p.policyname)::int AS policy_count
+           COUNT(p.polname)::int AS policy_count
     FROM pg_class c
     LEFT JOIN pg_policy p ON p.polrelid = c.oid
     WHERE c.relname = ANY($1::text[])
