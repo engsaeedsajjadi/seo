@@ -54,7 +54,7 @@ async function verifyDatabase() {
   const rlsMap = new Map<string, any>(rls.rows.map((r: any) => [r.relname, r]));
   const invalid = rlsTables.filter(t => {
     const r: any = rlsMap.get(t);
-    if (!r) return true; // table missing from pg_class
+    if (!r) return true;
     return !r.relrowsecurity || r.policy_count < 1;
   });
 
@@ -70,12 +70,8 @@ async function verifyDatabase() {
 }
 
 async function executeSchema(schemaSql: string) {
-  // Strict execution: try as single transaction first
-  // If it fails, we still want to know — but schema is designed to be idempotent with IF NOT EXISTS and DROP IF EXISTS
-  // So single transaction should succeed
   console.log(`📏 Schema size: ${schemaSql.length} chars`);
   try {
-    // Use transaction for atomicity
     const pool = getPool();
     const client = await pool.connect();
     try {
@@ -158,8 +154,6 @@ export async function runMigrations() {
       await executeSchema(schemaSql);
     } else {
       console.log('⏭️  Baseline already executed, checking for pending columns...');
-      // Even if baseline exists, run idempotent ALTER TABLE DO blocks to add missing columns
-      // Extract DO $$ blocks that add columns and execute them
       const doBlocks = schemaSql.match(/DO \$\$[\s\S]*?END \$\$;/g) || [];
       console.log(`🔧 Found ${doBlocks.length} DO blocks for column additions`);
       for (const block of doBlocks) {
@@ -167,7 +161,6 @@ export async function runMigrations() {
           await query(block);
         } catch (e: any) {
           console.warn(`⚠️  DO block failed (may already applied): ${e.message.substring(0, 200)}`);
-          // DO blocks are idempotent via IF NOT EXISTS checks, so failure is unexpected — log but continue only if it's about already exists
           if (!e.message.includes('already exists') && !e.message.includes('duplicate')) {
             throw e;
           }
@@ -175,7 +168,10 @@ export async function runMigrations() {
       }
     }
 
-    const drizzleFolder = path.join(__dirname, '../../../drizzle');
+    // drizzle/ is at the repository root; migrate.ts lives in apps/api/src/db.
+    // The previous ../../../drizzle resolved to apps/drizzle, so tenant RLS
+    // migrations were silently skipped. Keep this path strict and explicit.
+    const drizzleFolder = path.join(__dirname, '../../../../drizzle');
     console.log(`🔧 Drizzle folder: ${drizzleFolder}, exists: ${fs.existsSync(drizzleFolder)}`);
     if (fs.existsSync(drizzleFolder)) {
       for (const file of fs.readdirSync(drizzleFolder).filter((f) => f.endsWith('.sql')).sort()) {
@@ -186,6 +182,8 @@ export async function runMigrations() {
         await query(sql);
         await query('INSERT INTO _migrations (name) VALUES ($1)', [file]);
       }
+    } else {
+      throw new Error(`Drizzle migrations folder not found: ${drizzleFolder}`);
     }
 
     console.log('🔧 Verifying database — strict...');
@@ -195,7 +193,6 @@ export async function runMigrations() {
     console.error('❌ Migration failed — STRICT FAILURE:');
     console.error('❌ Error message:', error?.message);
     console.error('❌ Error stack:', error?.stack);
-    // No swallowing, no exit 0 — always throw, even in test
     throw new Error(`Migration failed: ${error?.message || String(error)}`, { cause: error });
   } finally {
     try {
