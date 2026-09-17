@@ -1,74 +1,45 @@
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import cookieParser from 'cookie-parser';
-import { rateLimit } from 'express-rate-limit';
-import pinoHttp from 'pino-http';
-import { authRouter } from './routes/auth.js';
-import { projectsRouter } from './routes/projects.js';
-import { auditRouter } from './routes/audit.js';
-import { keywordsRouter } from './routes/keywords.js';
-import { rankingsRouter } from './routes/rankings.js';
-import { jobsRouter } from './routes/jobs.js';
-import { reportsRouter } from './routes/reports.js';
-import { alertsRouter } from './routes/alerts.js';
-import { integrationsRouter } from './routes/integrations.js';
-import { organizationsRouter } from './routes/organizations.js';
-import { healthRouter } from './routes/health.js';
-import { errorHandler } from './middleware/error-handler.js';
-import { authMiddleware } from './middleware/auth.js';
-import { requestLogger } from './middleware/logging.js';
+/**
+ * RankForge — Production API Server Bootstrap
+ * Real PostgreSQL persistence, no memoryDB in production path
+ * 
+ * Architecture: Frontend → API → PostgreSQL → Redis/Queue → Workers
+ * This file only bootstraps the application — business logic in app.ts
+ */
 
-const app = express();
-const PORT = process.env.PORT || 3001;
+import { createApp } from './app.js';
+import { config } from './config/index.js';
+import { closePool } from './db/client.js';
 
-// Security middleware
-app.use(helmet());
-app.use(cors({
-  origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
-  credentials: true,
-}));
+const app = createApp();
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: { error: 'Too many requests, please try again later.' },
+const server = app.listen(config.port, () => {
+  console.log(`🚀 RankForge API running on port ${config.port}`);
+  console.log(`📊 Environment: ${config.nodeEnv}`);
+  console.log(`🔗 CORS: ${config.corsOrigins.join(', ')}`);
+  console.log(`💾 Database: ${config.database.url ? 'PostgreSQL configured' : 'NOT CONFIGURED (will fail fast in production)'}`);
+  console.log(`🔑 Providers: DataForSEO=${!!config.providers.dataforseo.login}, OpenAI=${!!config.providers.openai}, Stripe=${!!config.providers.stripe.secretKey}`);
 });
-app.use('/api/', limiter);
 
-// Body parsing
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
+function gracefulShutdown(signal: string) {
+  console.log(`${signal} received, shutting down gracefully...`);
+  server.close(async () => {
+    console.log('HTTP server closed');
+    try {
+      await closePool();
+      console.log('Database pool closed');
+    } catch (e) {
+      console.error('Error closing DB pool:', e);
+    }
+    process.exit(0);
+  });
 
-// Logging
-app.use(pinoHttp());
-app.use(requestLogger);
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+}
 
-// Health check (no auth required)
-app.use('/api/v1/health', healthRouter);
-
-// Auth routes (no auth required for login/signup)
-app.use('/api/v1/auth', authRouter);
-
-// Protected routes (auth required)
-app.use('/api/v1/organizations', authMiddleware, organizationsRouter);
-app.use('/api/v1/projects', authMiddleware, projectsRouter);
-app.use('/api/v1/audit', authMiddleware, auditRouter);
-app.use('/api/v1/keywords', authMiddleware, keywordsRouter);
-app.use('/api/v1/rankings', authMiddleware, rankingsRouter);
-app.use('/api/v1/jobs', authMiddleware, jobsRouter);
-app.use('/api/v1/reports', authMiddleware, reportsRouter);
-app.use('/api/v1/alerts', authMiddleware, alertsRouter);
-app.use('/api/v1/integrations', authMiddleware, integrationsRouter);
-
-// Error handler (must be last)
-app.use(errorHandler);
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`RankForge API server running on port ${PORT}`);
-});
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export default app;

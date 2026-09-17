@@ -1,36 +1,61 @@
 {
-  "name": "sandbox-workspace",
+  "name": "rankforge",
   "private": true,
   "type": "module",
+  "version": "1.0.0",
+  "description": "RankForge — Production-ready commercial SEO Automation SaaS",
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:unit && npm run test:security && npm run test:integration && npm run test:e2e",
+    "test:unit": "npx tsx tests/unit/ssrf.test.ts && npx tsx tests/unit/audit.test.ts && npx tsx tests/unit/credit.test.ts && npx tsx tests/unit/job-atomic.test.ts && npx tsx tests/unit/credit-atomic.test.ts && npx tsx tests/unit/timeout.test.ts",
+    "test:security": "npx tsx tests/security/tenant-isolation.test.ts && npx tsx tests/security/cross-tenant.test.ts",
+    "test:integration": "npx tsx tests/integration/auth.test.ts && npx tsx tests/integration/project.test.ts && npx tsx tests/integration/job-concurrency.test.ts && npx tsx tests/integration/credit-ledger.test.ts && npx tsx tests/integration/ssrf-e2e.test.ts && npx tsx tests/integration/crawl-safety.test.ts && npx tsx tests/integration/seo-audit.test.ts && npx tsx tests/integration/idempotency.test.ts && npx tsx tests/integration/api-contract.test.ts",
+    "test:e2e:static": "npx tsx tests/e2e/rtl-persian.test.ts && npx tsx tests/e2e/persian-negative.test.ts && npx tsx scripts/i18n-audit.ts",
+    "test:e2e:browser": "npx playwright test --reporter=list",
+    "test:e2e": "npm run test:e2e:static",
+    "test:e2e:all": "npm run test:e2e:static && npx playwright test --reporter=list",
+    "test:all": "npm run test:unit && npm run test:security && npm run test:integration && npm run test:e2e:static",
+    "lint": "eslint . --max-warnings 200",
+    "lint:fix": "eslint . --fix",
+    "i18n:audit": "npx tsx scripts/i18n-audit.ts",
+    "i18n:check": "npx tsx scripts/i18n-audit.ts",
+    "docker:build": "docker build -t rankforge-web . && docker build -t rankforge-api -f apps/api/Dockerfile .",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down -v"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
     "@dnd-kit/sortable": "^8.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@supabase/supabase-js": "^2.98.0",
-    "canvas-confetti": "^1.9.3",
+    "canvas-confetti": "^1.9.0",
     "date-fns": "^2.30.0",
     "framer-motion": "^11.16.1",
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.8.0",
-    "recharts": "^2.10.0",
-    "uuid": "^9.0.1"
+    "react-router-dom": "^7.18.4",
+    "recharts": "^2.10.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
+    "pg": "^8.11.3",
     "@tailwindcss/vite": "^4.1.7",
     "@types/canvas-confetti": "^1.6.4",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
-    "@types/uuid": "^9.0.7",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^10.10.0",
     "tailwindcss": "^4.1.7",
+    "tsx": "^4.7.0",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.70.0",
     "vite": "^6.3.5"
   }
 }

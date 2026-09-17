@@ -4,6 +4,8 @@ import {
 } from 'lucide-react';
 import { useAppState, getProviderLabel, getStatusColor, getStatusLabel } from '../lib/store';
 import type { ProviderStatus } from '../lib/types';
+import { t } from '../i18n';
+import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 interface Integration {
   key: string;
@@ -37,7 +39,7 @@ export default function Integrations() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Integrations</h1>

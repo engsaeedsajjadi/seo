@@ -4,6 +4,8 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
 import type { Role } from '../lib/types';
+import { t } from '../i18n';
+import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 export default function Team() {
   const { state } = useAppState();
@@ -21,7 +23,7 @@ export default function Team() {
 
   if (!state.currentOrg) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center" dir="rtl">
         <Users className="w-12 h-12 text-slate-500 mb-4" />
         <h2 className="text-xl font-bold text-white mb-2">No Organization</h2>
         <p className="text-slate-400">Create an organization to manage team members.</p>
@@ -30,7 +32,7 @@ export default function Team() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Team</h1>

@@ -147,10 +147,14 @@ export interface Alert {
   id: string;
   projectId: string;
   rule: string;
+  type?: string;
+  title?: string;
   message: string;
   severity: Severity;
   triggeredAt: string;
   read: boolean;
+  data?: any;
+  createdAt?: string;
 }
 
 export interface AIUsage {
