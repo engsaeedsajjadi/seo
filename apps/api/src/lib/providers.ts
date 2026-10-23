@@ -9,8 +9,69 @@ export interface SearchOptions {
   language?: string;
   device?: 'desktop' | 'mobile';
   location?: string;
+  /** Explicit DataForSEO location_code override — wins over the country mapping. */
+  locationCode?: number;
   engine?: 'google' | 'bing' | 'yahoo';
   limit?: number;
+}
+
+/**
+ * DataForSEO Google location_code by ISO 3166-1 alpha-2 country code.
+ *
+ * Source: DataForSEO's published locations list for the Google SERP / Labs
+ * APIs (the same list served by GET /v3/serp/google/locations). US (2840) is
+ * the historical default of this codebase. Extend this table as new markets
+ * are needed — verify additions against the live locations endpoint, which
+ * is free to call with valid credentials.
+ *
+ * NOTE: apps/worker/src/dataforseo.ts carries an identical copy of this
+ * table (the worker is a self-contained app by design). Keep them in sync.
+ */
+export const DATAFORSEO_LOCATION_CODES: Record<string, number> = {
+  US: 2840, // United States
+  GB: 2826, // United Kingdom
+  DE: 2276, // Germany
+  FR: 2250, // France
+  ES: 2724, // Spain
+  IT: 2380, // Italy
+  NL: 2528, // Netherlands
+  PL: 2616, // Poland
+  TR: 2792, // Turkey
+  AE: 2784, // United Arab Emirates
+  SA: 2682, // Saudi Arabia
+  EG: 2818, // Egypt
+  IQ: 2368, // Iraq
+  IL: 2376, // Israel
+  IR: 2364, // Iran — Persian (fa) is a supported DataForSEO language_code
+  IN: 2356, // India
+  PK: 2586, // Pakistan
+  ID: 2360, // Indonesia
+  JP: 2392, // Japan
+  KR: 2410, // South Korea
+  CN: 2156, // China
+  RU: 2643, // Russia
+  BR: 2076, // Brazil
+  MX: 2484, // Mexico
+  CA: 2124, // Canada
+  AU: 2036, // Australia
+  ZA: 2710, // South Africa
+};
+
+export const DATAFORSEO_DEFAULT_LOCATION_CODE = DATAFORSEO_LOCATION_CODES.US;
+
+/**
+ * Resolve a project/keyword country (ISO alpha-2, e.g. projects.country) to a
+ * DataForSEO location_code. Falls back to the US code ONLY when the country
+ * is unset or not present in the mapping table.
+ */
+export function resolveDataForSeoLocationCode(country?: string | null): number {
+  if (!country) return DATAFORSEO_DEFAULT_LOCATION_CODE;
+  return DATAFORSEO_LOCATION_CODES[country.trim().toUpperCase()] ?? DATAFORSEO_DEFAULT_LOCATION_CODE;
+}
+
+/** DataForSEO language_code from a stored language value (projects.language). */
+export function resolveDataForSeoLanguageCode(language?: string | null): string {
+  return (language || 'en').trim().toLowerCase();
 }
 
 export interface KeywordOptions extends SearchOptions {
@@ -111,8 +172,8 @@ export class DataForSEOProvider implements SearchProvider {
 
     const body = [{
       keyword: query,
-      location_code: 2840, // US default, should map country to code
-      language_code: options.language || 'en',
+      location_code: options.locationCode ?? resolveDataForSeoLocationCode(options.country),
+      language_code: resolveDataForSeoLanguageCode(options.language),
       device: options.device || 'desktop',
       depth: 20,
     }];
@@ -163,8 +224,8 @@ export class DataForSEOProvider implements SearchProvider {
 
     const body = [{
       keywords: seed,
-      location_code: 2840,
-      language_code: options.language || 'en',
+      location_code: options.locationCode ?? resolveDataForSeoLocationCode(options.country),
+      language_code: resolveDataForSeoLanguageCode(options.language),
       include_serp_info: options.includeSerpInfo ?? true,
       limit: options.limit ?? 100,
     }];
@@ -246,8 +307,8 @@ export class DataForSEOProvider implements SearchProvider {
 
     const body = [{
       target: domain,
-      location_code: 2840,
-      language_code: options.language || 'en',
+      location_code: options.locationCode ?? resolveDataForSeoLocationCode(options.country),
+      language_code: resolveDataForSeoLanguageCode(options.language),
       limit: 20,
     }];
 
@@ -278,8 +339,8 @@ export class DataForSEOProvider implements SearchProvider {
 
     const body = [{
       target: domain,
-      location_code: 2840,
-      language_code: options.language || 'en',
+      location_code: options.locationCode ?? resolveDataForSeoLocationCode(options.country),
+      language_code: resolveDataForSeoLanguageCode(options.language),
       limit: options.limit ?? 100,
     }];
 
@@ -305,8 +366,8 @@ export class DataForSEOProvider implements SearchProvider {
     // Fallback to ranked_keywords
     const body2 = [{
       target: domain,
-      location_code: 2840,
-      language_code: options.language || 'en',
+      location_code: options.locationCode ?? resolveDataForSeoLocationCode(options.country),
+      language_code: resolveDataForSeoLanguageCode(options.language),
       limit: options.limit ?? 100,
     }];
 

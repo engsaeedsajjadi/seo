@@ -6,6 +6,15 @@
 
 import { Pool } from 'pg';
 import * as cheerio from 'cheerio';
+import {
+  DataForSeoClient,
+  DataForSeoError,
+  resolveDataForSeoLocationCode,
+  resolveDataForSeoLanguageCode,
+  findDomainPosition,
+  persistRankResult,
+  persistBacklinkSync,
+} from './dataforseo.js';
 
 // ============================================================
 // CONFIG — env-based, fail-fast
@@ -823,6 +832,29 @@ interface Job {
   executionId?: string;
 }
 
+// ============================================================
+// DATAFORSEO — real provider wiring for RANK_CHECK / BACKLINK_SYNC
+// (client + persistence live in ./dataforseo.ts, mirroring the API
+// lib's providers.ts; credentials come from env, like every other
+// provider in this worker — see config.providers above)
+// ============================================================
+
+function createDataForSeoClient(): DataForSeoClient {
+  return new DataForSeoClient(config.providers.dataforseo.login, config.providers.dataforseo.password);
+}
+
+/** Map a provider failure onto a job error — the provider's own message always surfaces. */
+function providerErrorToJobError(error: unknown, context: string): JobError {
+  if (error instanceof DataForSeoError) {
+    if (error.httpStatus === 401 || error.httpStatus === 403) {
+      // Credentials were supplied but rejected by DataForSEO — retrying won't help.
+      return new JobError(`DataForSEO authentication failed — ${error.message}`, 'NON_RETRYABLE', false);
+    }
+    return new JobError(`${context} failed — ${error.message}`, 'RETRYABLE', true);
+  }
+  return new JobError(`${context} failed — ${error instanceof Error ? error.message : String(error)}`, 'RETRYABLE', true);
+}
+
 type JobErrorCode = 'RETRYABLE' | 'NON_RETRYABLE' | 'PROVIDER_NOT_CONFIGURED' | 'VALIDATION_ERROR' | 'SECURITY_ERROR' | 'TIMEOUT' | 'INTERNAL_ERROR';
 
 class JobError extends Error {
@@ -1440,41 +1472,94 @@ class Worker {
   private async handleRankCheck(job: Job, signal: AbortSignal): Promise<any> {
     console.log(JSON.stringify({ level: 'info', msg: 'Rank check', job_id: job.id, project_id: job.projectId }));
 
-    if (!config.providers.dataforseo.login || !config.providers.dataforseo.password) {
-      if (!config.providers.serpapi) {
-        throw new JobError('Rank check provider not configured — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
-      }
+    // No credentials → graceful PROVIDER_NOT_CONFIGURED, no fake rankings (unchanged contract).
+    const client = createDataForSeoClient();
+    if (!client.isConfigured()) {
+      throw new JobError('Rank check provider not configured — DataForSEO credentials missing (set DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD) — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
     }
 
     if (signal.aborted) throw new JobError('Rank check aborted', 'TIMEOUT', true);
+    if (!job.projectId) throw new JobError('Project missing for rank check — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
 
-    // Real provider call would happen here — for now, we return NOT_CONFIGURED if credentials missing, else we would call provider
-    // Since we don't have real API keys in test, we simulate provider check but don't fabricate rankings
-    const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password) || !!config.providers.serpapi;
-    
-    if (!hasProvider) {
-      throw new JobError('Rank provider not configured', 'PROVIDER_NOT_CONFIGURED', false);
+    const projectResult = await query(
+      `SELECT id, domain, normalized_domain, country, language, device FROM projects WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
+      [job.projectId, job.organizationId]
+    );
+    if (projectResult.rows.length === 0) {
+      throw new JobError(`Project not found for rank check: ${job.projectId}`, 'NON_RETRYABLE', false);
+    }
+    const project = projectResult.rows[0];
+
+    // Location + language come from the project's own configuration.
+    const country = (project.country || 'US').toUpperCase();
+    const locationCode = resolveDataForSeoLocationCode(country);
+    const languageCode = resolveDataForSeoLanguageCode(project.language);
+    // projects.device is 'desktop' | 'mobile' | 'both' — 'both' tracks desktop here.
+    const device: 'desktop' | 'mobile' = project.device === 'mobile' ? 'mobile' : 'desktop';
+    const targetDomain = project.normalized_domain || project.domain;
+
+    const keywordResult = await query(
+      `SELECT id, COALESCE(keyword, term) AS term FROM keywords WHERE project_id = $1 AND organization_id = $2 ORDER BY created_at ASC`,
+      [project.id, job.organizationId]
+    );
+
+    if (keywordResult.rows.length === 0) {
+      console.log(JSON.stringify({ level: 'info', msg: 'Rank check — no tracked keywords', job_id: job.id, project_id: project.id }));
+      return { keywordsChecked: 0, ranked: 0, notRanked: 0, provider: 'dataforseo', message: 'No tracked keywords for project — nothing to check' };
     }
 
-    // If provider configured, we would call real provider — this is where real SERP call happens
-    // For production reality, we don't fabricate, we actually call provider
-    // This implementation shows the structure; real provider integration is in api/src/lib/providers.ts
-    // Worker would import provider and call it
-    // Since we are in self-contained worker, we acknowledge provider is configured but need real implementation
-    // For now, we return success with note that provider call would happen
-    
-    // In real production with credentials, you would:
-    // const provider = createProvider();
-    // const results = await provider.getRankings(keywords, options);
-    // await persistResults(results);
-    
-    // For this fix, we make it explicit: if configured, we would process, but we don't have provider lib here
-    // So we throw NOT_CONFIGURED to avoid fake data, unless we implement real provider call
-    
-    // To avoid fake, we check if we can actually perform — if not, NOT_CONFIGURED
-    // Since this worker is self-contained and doesn't have provider implementation, we return NOT_CONFIGURED
-    // The API layer has real provider implementation and would handle rank checks via its own queue
-    throw new JobError('Rank provider implementation requires DataForSEO credentials and provider lib — NOT_CONFIGURED in this worker container', 'PROVIDER_NOT_CONFIGURED', false);
+    let ranked = 0;
+    let notRanked = 0;
+
+    for (const kw of keywordResult.rows) {
+      if (signal.aborted) throw new JobError('Rank check aborted', 'TIMEOUT', true);
+
+      let serp;
+      try {
+        serp = await client.searchSerp(kw.term, { locationCode, languageCode, device });
+      } catch (error) {
+        throw providerErrorToJobError(error, 'DataForSEO SERP request');
+      }
+
+      const hit = findDomainPosition(serp.results, targetDomain);
+
+      await persistRankResult(query, {
+        organizationId: job.organizationId,
+        projectId: project.id,
+        keywordId: kw.id,
+        position: hit ? hit.position : null,
+        url: hit ? hit.url : null,
+        country,
+        language: languageCode,
+        device,
+        engine: 'google',
+        rawData: {
+          requestId: serp.requestId,
+          totalResults: serp.totalResults,
+          serpFeatures: serp.serpFeatures,
+          locationCode,
+          checkedAt: new Date().toISOString(),
+        },
+      });
+
+      if (hit) ranked++;
+      else notRanked++;
+    }
+
+    console.log(JSON.stringify({
+      level: 'info', msg: 'Rank check completed', job_id: job.id, project_id: project.id,
+      keywordsChecked: keywordResult.rows.length, ranked, notRanked, locationCode, languageCode, device,
+    }));
+
+    return {
+      keywordsChecked: keywordResult.rows.length,
+      ranked,
+      notRanked,
+      locationCode,
+      languageCode,
+      device,
+      provider: 'dataforseo',
+    };
   }
 
   private async handleKeywordRefresh(job: Job, signal: AbortSignal): Promise<any> {
@@ -1494,13 +1579,49 @@ class Worker {
   private async handleBacklinkRefresh(job: Job, signal: AbortSignal): Promise<any> {
     console.log(JSON.stringify({ level: 'info', msg: 'Backlink refresh', job_id: job.id, domain: job.payload?.domain }));
 
-    if (!config.providers.dataforseo.login) {
-      throw new JobError('Backlink provider not configured — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
+    // No credentials → graceful PROVIDER_NOT_CONFIGURED, no fake backlinks (unchanged contract).
+    const client = createDataForSeoClient();
+    if (!client.isConfigured()) {
+      throw new JobError('Backlink provider not configured — DataForSEO credentials missing (set DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD) — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
     }
 
     if (signal.aborted) throw new JobError('Backlink refresh aborted', 'TIMEOUT', true);
+    if (!job.projectId) throw new JobError('Project missing for backlink sync — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
 
-    throw new JobError('Backlink provider not configured — NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
+    let domain: string | undefined = job.payload?.domain;
+    if (!domain) {
+      const projectResult = await query(
+        `SELECT normalized_domain, domain FROM projects WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
+        [job.projectId, job.organizationId]
+      );
+      if (projectResult.rows.length === 0) {
+        throw new JobError(`Project not found for backlink sync: ${job.projectId}`, 'NON_RETRYABLE', false);
+      }
+      domain = projectResult.rows[0].normalized_domain || projectResult.rows[0].domain;
+    }
+    if (!domain) throw new JobError('Domain missing for backlink sync — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
+
+    const syncStartedAt = new Date();
+
+    let backlinks;
+    try {
+      backlinks = await client.getBacklinks(domain);
+    } catch (error) {
+      throw providerErrorToJobError(error, 'DataForSEO backlinks request');
+    }
+
+    const stats = await persistBacklinkSync(query, {
+      organizationId: job.organizationId,
+      projectId: job.projectId,
+      backlinks,
+      syncStartedAt,
+    });
+
+    console.log(JSON.stringify({
+      level: 'info', msg: 'Backlink sync completed', job_id: job.id, project_id: job.projectId, domain, ...stats,
+    }));
+
+    return { domain, provider: 'dataforseo', ...stats };
   }
 
   private async handleGscSync(job: Job, signal: AbortSignal): Promise<any> {
