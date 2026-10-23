@@ -19,6 +19,21 @@ import {
 } from './dataforseo.js';
 import { runSchedulerTick } from './scheduler.js';
 import {
+  GoogleWorkerClient,
+  GoogleApiError,
+  buildGscRequestBody,
+  buildGa4RequestBody,
+  mapGscSearchAnalyticsResponse,
+  mapGa4ReportResponse,
+  persistGscMetrics,
+  persistGa4Metrics,
+  ensureValidAccessToken,
+  markIntegrationSyncSuccess,
+  markIntegrationError,
+  defaultGscWindow,
+  defaultGa4Window,
+} from './google.js';
+import {
   AiProviderError,
   createAiProviders,
   pickAiProvider,
@@ -857,6 +872,36 @@ interface Job {
 
 function createDataForSeoClient(): DataForSeoClient {
   return new DataForSeoClient(config.providers.dataforseo.login, config.providers.dataforseo.password);
+}
+
+// ============================================================
+// GOOGLE — real Search Console / GA4 sync wiring for GSC_SYNC /
+// GA4_SYNC (client + mappers + persistence live in ./google.ts,
+// mirroring the API app's Google module; OAuth app credentials come
+// from env — the per-account tokens come from the integrations
+// table, written by the API's OAuth connect flow)
+// ============================================================
+
+function createGoogleClient(): GoogleWorkerClient {
+  return new GoogleWorkerClient({
+    clientId: config.providers.google.clientId,
+    clientSecret: config.providers.google.clientSecret,
+  });
+}
+
+/** Map a Google failure onto a job error — the provider's own message always surfaces. */
+function googleErrorToJobError(error: unknown, context: string): JobError {
+  if (error instanceof GoogleApiError) {
+    if (error.providerError === 'invalid_grant' || error.providerError === 'no_refresh_token' || error.providerError === 'no_credentials') {
+      // The grant is dead: retrying cannot help; the user must reconnect.
+      return new JobError(`${context} — Google connection expired or revoked, reconnect required — ${error.message}`, 'PROVIDER_NOT_CONFIGURED', false);
+    }
+    if (error.httpStatus === 401 || error.httpStatus === 403) {
+      return new JobError(`${context} — Google authorization failed — ${error.message}`, 'NON_RETRYABLE', false);
+    }
+    return new JobError(`${context} failed — ${error.message}`, 'RETRYABLE', true);
+  }
+  return new JobError(`${context} failed — ${error instanceof Error ? error.message : String(error)}`, 'RETRYABLE', true);
 }
 
 // ============================================================
@@ -1748,51 +1793,133 @@ class Worker {
   private async handleGscSync(job: Job, signal: AbortSignal): Promise<any> {
     console.log(JSON.stringify({ level: 'info', msg: 'GSC sync', job_id: job.id, project_id: job.projectId }));
 
-    if (!config.providers.google.clientId) {
-      throw new JobError('GSC not configured — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
+    // No OAuth app credentials → graceful PROVIDER_NOT_CONFIGURED (unchanged contract).
+    const client = createGoogleClient();
+    if (!client.isConfigured()) {
+      throw new JobError('GSC not configured — Google OAuth app credentials missing (set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET) — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
     }
 
     if (signal.aborted) throw new JobError('GSC sync aborted', 'TIMEOUT', true);
+    if (!job.projectId) throw new JobError('Project missing for GSC sync — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
 
-    // Real GSC sync would:
-    // 1. Fetch encrypted tokens from integrations table
-    // 2. Refresh token if needed
-    // 3. Call Search Analytics API
-    // 4. Persist to gsc_metrics
-
-    // Check if integration exists
     const integrationResult = await query(
-      `SELECT id, status FROM integrations WHERE organization_id = $1 AND project_id = $2 AND provider = 'gsc'`,
+      `SELECT id, status, credentials_encrypted as "credentialsEncrypted", config FROM integrations WHERE organization_id = $1 AND project_id = $2 AND provider = 'gsc'`,
       [job.organizationId, job.projectId]
     );
 
     if (integrationResult.rows.length === 0 || integrationResult.rows[0].status !== 'connected') {
       throw new JobError('GSC integration not connected — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
     }
+    const integration = integrationResult.rows[0];
 
-    // Real API call would happen here
-    throw new JobError('GSC sync requires OAuth tokens and Google API — NOT_CONFIGURED until connected', 'PROVIDER_NOT_CONFIGURED', false);
+    const siteUrl: string | undefined = integration.config?.siteUrl;
+    if (!siteUrl) {
+      throw new JobError('GSC property not selected for this project — bind a Search Console site first — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
+    }
+
+    const fallbackWindow = defaultGscWindow();
+    const window = {
+      startDate: job.payload?.startDate || fallbackWindow.startDate,
+      endDate: job.payload?.endDate || fallbackWindow.endDate,
+    };
+
+    // Stored token (decrypted), refreshed + persisted when stale.
+    let accessToken: string;
+    try {
+      accessToken = await ensureValidAccessToken(query, integration, client);
+    } catch (error) {
+      if (error instanceof GoogleApiError && (error.providerError === 'invalid_grant' || error.providerError === 'no_refresh_token' || error.providerError === 'no_credentials')) {
+        await markIntegrationError(query, integration.id, error.message);
+      }
+      throw googleErrorToJobError(error, 'GSC sync');
+    }
+
+    let rows;
+    try {
+      const json = await client.querySearchAnalytics(accessToken, siteUrl, buildGscRequestBody(window));
+      rows = mapGscSearchAnalyticsResponse(json);
+    } catch (error) {
+      throw googleErrorToJobError(error, 'GSC Search Analytics request');
+    }
+
+    const stats = await persistGscMetrics(query, {
+      organizationId: job.organizationId,
+      projectId: job.projectId,
+      rows,
+    });
+    await markIntegrationSyncSuccess(query, integration.id);
+
+    console.log(JSON.stringify({
+      level: 'info', msg: 'GSC sync completed', job_id: job.id, project_id: job.projectId, siteUrl, window, ...stats,
+    }));
+
+    return { siteUrl, provider: 'gsc', window, ...stats };
   }
 
   private async handleGa4Sync(job: Job, signal: AbortSignal): Promise<any> {
     console.log(JSON.stringify({ level: 'info', msg: 'GA4 sync', job_id: job.id, project_id: job.projectId }));
 
-    if (!config.providers.google.clientId) {
-      throw new JobError('GA4 not configured — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
+    // No OAuth app credentials → graceful PROVIDER_NOT_CONFIGURED (unchanged contract).
+    const client = createGoogleClient();
+    if (!client.isConfigured()) {
+      throw new JobError('GA4 not configured — Google OAuth app credentials missing (set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET) — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
     }
 
     if (signal.aborted) throw new JobError('GA4 sync aborted', 'TIMEOUT', true);
+    if (!job.projectId) throw new JobError('Project missing for GA4 sync — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
 
     const integrationResult = await query(
-      `SELECT id, status FROM integrations WHERE organization_id = $1 AND project_id = $2 AND provider = 'ga4'`,
+      `SELECT id, status, credentials_encrypted as "credentialsEncrypted", config FROM integrations WHERE organization_id = $1 AND project_id = $2 AND provider = 'ga4'`,
       [job.organizationId, job.projectId]
     );
 
     if (integrationResult.rows.length === 0 || integrationResult.rows[0].status !== 'connected') {
       throw new JobError('GA4 integration not connected — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
     }
+    const integration = integrationResult.rows[0];
 
-    throw new JobError('GA4 sync requires OAuth — NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
+    const propertyId: string | undefined = integration.config?.propertyId;
+    if (!propertyId) {
+      throw new JobError('GA4 property not selected for this project — bind a GA4 property first — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
+    }
+
+    const fallbackWindow = defaultGa4Window();
+    const window = {
+      startDate: job.payload?.startDate || fallbackWindow.startDate,
+      endDate: job.payload?.endDate || fallbackWindow.endDate,
+    };
+
+    // Stored token (decrypted), refreshed + persisted when stale.
+    let accessToken: string;
+    try {
+      accessToken = await ensureValidAccessToken(query, integration, client);
+    } catch (error) {
+      if (error instanceof GoogleApiError && (error.providerError === 'invalid_grant' || error.providerError === 'no_refresh_token' || error.providerError === 'no_credentials')) {
+        await markIntegrationError(query, integration.id, error.message);
+      }
+      throw googleErrorToJobError(error, 'GA4 sync');
+    }
+
+    let rows;
+    try {
+      const json = await client.runGa4Report(accessToken, propertyId, buildGa4RequestBody(window));
+      rows = mapGa4ReportResponse(json);
+    } catch (error) {
+      throw googleErrorToJobError(error, 'GA4 Data API request');
+    }
+
+    const stats = await persistGa4Metrics(query, {
+      organizationId: job.organizationId,
+      projectId: job.projectId,
+      rows,
+    });
+    await markIntegrationSyncSuccess(query, integration.id);
+
+    console.log(JSON.stringify({
+      level: 'info', msg: 'GA4 sync completed', job_id: job.id, project_id: job.projectId, propertyId, window, ...stats,
+    }));
+
+    return { propertyId, provider: 'ga4', window, ...stats };
   }
 
   private async handlePagespeedCheck(job: Job, signal: AbortSignal): Promise<any> {
@@ -2151,8 +2278,8 @@ class Worker {
       keywords: keywordsResult.rows,
       generatedAt: new Date().toISOString(),
       integrations: {
-        gsc: config.providers.google.clientId ? 'configured' : 'not_configured',
-        ga4: config.providers.google.clientId ? 'configured' : 'not_configured',
+        gsc: config.providers.google.clientId && config.providers.google.clientSecret ? 'configured' : 'not_configured',
+        ga4: config.providers.google.clientId && config.providers.google.clientSecret ? 'configured' : 'not_configured',
         dataforseo: config.providers.dataforseo.login ? 'configured' : 'not_configured',
         pagespeed: config.providers.pagespeed ? 'configured' : 'not_configured',
       },

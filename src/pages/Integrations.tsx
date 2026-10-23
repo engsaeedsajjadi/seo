@@ -3,6 +3,7 @@ import {
   Settings, RefreshCw, Database, Bot, CreditCard, HardDrive, Search
 } from 'lucide-react';
 import { useAppState, getProviderLabel, getStatusColor, getStatusLabel } from '../lib/store';
+import { api } from '../lib/api';
 import type { ProviderStatus } from '../lib/types';
 import { t } from '../i18n';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
@@ -15,6 +16,24 @@ interface Integration {
   status: ProviderStatus;
   envVars: string[];
   icon: React.ElementType;
+}
+
+async function handleConnectGoogle() {
+  const result = await api.getGoogleConnectUrl();
+  if (result.success) {
+    window.location.href = result.data.url;
+  } else {
+    window.alert(result.error.message || 'Google OAuth is not configured on the server (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).');
+  }
+}
+
+async function handleDisconnectGoogle() {
+  const result = await api.disconnectGoogle();
+  if (result.success) {
+    window.location.reload();
+  } else {
+    window.alert(result.error.message || 'Failed to disconnect Google.');
+  }
 }
 
 export default function Integrations() {
@@ -107,7 +126,23 @@ export default function Integrations() {
                   </div>
 
                   <div className="mt-3 flex items-center gap-2">
-                    {integration.status === 'not_configured' && (
+                    {(integration.key === 'googleSearchConsole' || integration.key === 'googleAnalytics') && integration.status !== 'connected' && (
+                      <button
+                        onClick={handleConnectGoogle}
+                        className="flex-1 px-3 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-lg flex items-center justify-center gap-1"
+                      >
+                        <ExternalLink className="w-3 h-3" /> Connect Google
+                      </button>
+                    )}
+                    {(integration.key === 'googleSearchConsole' || integration.key === 'googleAnalytics') && integration.status === 'connected' && (
+                      <button
+                        onClick={handleDisconnectGoogle}
+                        className="flex-1 px-3 py-2 bg-surface-3/30 hover:bg-surface-3/50 text-slate-300 text-xs font-medium rounded-lg flex items-center justify-center gap-1"
+                      >
+                        <XCircle className="w-3 h-3" /> Disconnect Google
+                      </button>
+                    )}
+                    {integration.key !== 'googleSearchConsole' && integration.key !== 'googleAnalytics' && integration.status === 'not_configured' && (
                       <button className="flex-1 px-3 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-lg flex items-center justify-center gap-1">
                         <Settings className="w-3 h-3" /> Configure
                       </button>

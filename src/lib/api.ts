@@ -481,6 +481,23 @@ class ApiClient {
   async getProviderStatus(): Promise<ApiResult<Record<string, ProviderStatus>>> {
     return this.request('/api/v1/integrations/status');
   }
+
+  // ===========================================================
+  // GOOGLE OAUTH (Search Console + GA4)
+  // ===========================================================
+
+  /** Returns the Google consent URL — navigate the browser to it to connect. */
+  async getGoogleConnectUrl(): Promise<ApiResult<{ url: string; scopes: string[] }>> {
+    return this.request('/api/v1/integrations/google/connect');
+  }
+
+  async getGoogleConnectionStatus(): Promise<ApiResult<{ configured: boolean; connected: boolean; email?: string; connectedAt?: string }>> {
+    return this.request('/api/v1/integrations/google/status');
+  }
+
+  async disconnectGoogle(): Promise<ApiResult<{ disconnected: boolean }>> {
+    return this.request('/api/v1/integrations/google', { method: 'DELETE' });
+  }
 }
 
 // Export singleton instance

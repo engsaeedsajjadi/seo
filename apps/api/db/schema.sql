@@ -404,7 +404,7 @@ CREATE TABLE IF NOT EXISTS gsc_metrics (
   position DECIMAL(5,2) DEFAULT 0,
   query TEXT,
   page TEXT,
-  country VARCHAR(2),
+  country VARCHAR(3),
   device VARCHAR(10),
   provider VARCHAR(20) DEFAULT 'gsc',
   raw_data JSONB,
@@ -427,11 +427,13 @@ CREATE TABLE IF NOT EXISTS ga4_metrics (
   organic_users INTEGER DEFAULT 0,
   conversions INTEGER DEFAULT 0,
   landing_page TEXT,
-  country VARCHAR(2),
+  channel VARCHAR(100),
+  country VARCHAR(3),
   device VARCHAR(10),
   provider VARCHAR(20) DEFAULT 'ga4',
   raw_data JSONB,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(project_id, date, channel)
 );
 
 CREATE INDEX IF NOT EXISTS idx_ga4_metrics_org ON ga4_metrics(organization_id);
@@ -1366,4 +1368,41 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='geo_runs' AND column_name='cost') THEN
     ALTER TABLE geo_runs ADD COLUMN cost DECIMAL(10,6);
   END IF;
+END $$;
+
+-- Google integrations (phase 4): GA4 channel grain + GSC country width
+-- + org-level connection uniqueness, for existing DBs.
+-- The GA4 sync writes one row per (date, channel) — the table needs the
+-- channel column and a matching unique key for idempotent upserts.
+-- GSC returns ISO 3166-1 alpha-3 country codes ('usa', 'irn', ...) which
+-- do not fit the original VARCHAR(2).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ga4_metrics' AND column_name='channel') THEN
+    ALTER TABLE ga4_metrics ADD COLUMN channel VARCHAR(100);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='gsc_metrics' AND column_name='country' AND character_maximum_length < 3) THEN
+    ALTER TABLE gsc_metrics ALTER COLUMN country TYPE VARCHAR(3);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ga4_metrics' AND column_name='country' AND character_maximum_length < 3) THEN
+    ALTER TABLE ga4_metrics ALTER COLUMN country TYPE VARCHAR(3);
+  END IF;
+  -- Dedupe channel-grained GA4 rows (keep earliest) before the unique index.
+  DELETE FROM ga4_metrics a USING ga4_metrics b
+    WHERE a.project_id = b.project_id AND a.date = b.date
+      AND a.channel IS NOT NULL AND a.channel = b.channel AND a.id > b.id;
+  -- Org-level Google connection rows (project_id IS NULL) must be unique
+  -- per (organization, provider); the table UNIQUE treats NULLs as
+  -- distinct, so enforce it with a partial index.
+  DELETE FROM integrations a USING integrations b
+    WHERE a.project_id IS NULL AND b.project_id IS NULL
+      AND a.organization_id = b.organization_id AND a.provider = b.provider
+      AND (a.updated_at, a.id) < (b.updated_at, b.id);
+END $$;
+
+-- Unique keys for the Google sync upserts (inside a DO block because
+-- the migration runner re-applies DO blocks to already-baselined DBs,
+-- while plain statements only run on a fresh baseline).
+DO $$ BEGIN
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_ga4_metrics_project_date_channel ON ga4_metrics(project_id, date, channel);
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_integrations_org_provider ON integrations(organization_id, provider) WHERE project_id IS NULL;
 END $$;

@@ -23,6 +23,7 @@ import { creditRepository } from './repositories/credit.repository.js';
 import { apiKeyRepository } from './repositories/api-key.repository.js';
 import { auditLogRepository } from './repositories/audit-log.repository.js';
 import { authService } from './services/auth.service.js';
+import { googleService } from './services/google.service.js';
 import { generateApiKey } from './lib/encryption.js';
 
 export function createApp() {
@@ -899,22 +900,150 @@ export function createApp() {
   // INTEGRATIONS
   // ============================================================
 
-  app.get('/api/v1/integrations/status', authMiddleware, (req: AuthRequest, res) => {
-    const status: Record<string, string> = {
-      dataForSeo: config.providers.dataforseo.login ? 'connected' : 'not_configured',
-      openai: config.providers.openai ? 'connected' : 'not_configured',
-      anthropic: config.providers.anthropic ? 'connected' : 'not_configured',
-      google: config.providers.googleAi ? 'connected' : 'not_configured',
-      openrouter: config.providers.openrouter ? 'connected' : 'not_configured',
-      perplexity: config.providers.perplexity ? 'connected' : 'not_configured',
-      googleSearchConsole: config.providers.google.clientId ? 'connected' : 'not_configured',
-      googleAnalytics: config.providers.google.clientId ? 'connected' : 'not_configured',
-      stripe: config.providers.stripe.secretKey ? 'connected' : 'not_configured',
-      s3: config.providers.s3.accessKey ? 'connected' : 'not_configured',
-      dataforseo: config.providers.dataforseo.login ? 'connected' : 'not_configured',
-      serpapi: config.providers.serpapi ? 'connected' : 'not_configured',
-    };
-    res.json({ success: true, data: status });
+  app.get('/api/v1/integrations/status', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      // GSC/GA4 status reflects the org's real OAuth connection, not
+      // merely the presence of app credentials: env configured but no
+      // completed OAuth grant is honestly "not_configured".
+      let googleStatus = 'not_configured';
+      if (config.providers.google.clientId && config.providers.google.clientSecret) {
+        const connection = await googleService.getConnectionStatus(req.organizationId!);
+        googleStatus = connection.connected ? 'connected' : connection.rowStatus === 'error' ? 'error' : 'not_configured';
+      }
+      const status: Record<string, string> = {
+        dataForSeo: config.providers.dataforseo.login ? 'connected' : 'not_configured',
+        openai: config.providers.openai ? 'connected' : 'not_configured',
+        anthropic: config.providers.anthropic ? 'connected' : 'not_configured',
+        google: config.providers.googleAi ? 'connected' : 'not_configured',
+        openrouter: config.providers.openrouter ? 'connected' : 'not_configured',
+        perplexity: config.providers.perplexity ? 'connected' : 'not_configured',
+        googleSearchConsole: googleStatus,
+        googleAnalytics: googleStatus,
+        stripe: config.providers.stripe.secretKey ? 'connected' : 'not_configured',
+        s3: config.providers.s3.accessKey ? 'connected' : 'not_configured',
+        dataforseo: config.providers.dataforseo.login ? 'connected' : 'not_configured',
+        serpapi: config.providers.serpapi ? 'connected' : 'not_configured',
+      };
+      res.json({ success: true, data: status });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ============================================================
+  // GOOGLE OAUTH — Search Console + GA4 connect flow
+  // ============================================================
+
+  // Step 1 (authenticated): returns the Google consent URL. The
+  // frontend fetches this and navigates the browser to data.url.
+  app.get('/api/v1/integrations/google/connect', authMiddleware, (req: AuthRequest, res, next) => {
+    try {
+      const data = googleService.startOAuth(req.organizationId!, req.userId!);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Step 2 (browser redirect from Google — no auth header; identity
+  // and CSRF protection come from the HMAC-signed state parameter).
+  app.get('/api/v1/integrations/google/callback', async (req: Request, res: Response) => {
+    const integrationsUrl = `${config.appUrl}/integrations`;
+    try {
+      const { code, state, error } = req.query as Record<string, string | undefined>;
+      if (error) {
+        return res.redirect(`${integrationsUrl}?google=error&reason=${encodeURIComponent(error)}`);
+      }
+      if (!code || !state) {
+        return res.redirect(`${integrationsUrl}?google=error&reason=missing_code_or_state`);
+      }
+      const result = await googleService.handleOAuthCallback(code, state);
+      console.log(JSON.stringify({ level: 'info', msg: 'Google account connected', organization_id: result.organizationId, email: result.email }));
+      return res.redirect(`${integrationsUrl}?google=connected`);
+    } catch (err: any) {
+      console.warn(JSON.stringify({ level: 'warn', msg: 'Google OAuth callback failed', error: err?.message }));
+      return res.redirect(`${integrationsUrl}?google=error&reason=${encodeURIComponent(err?.code || 'callback_failed')}`);
+    }
+  });
+
+  app.get('/api/v1/integrations/google/status', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const data = await googleService.getConnectionStatus(req.organizationId!);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete('/api/v1/integrations/google', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      await googleService.disconnect(req.organizationId!);
+      res.json({ success: true, data: { disconnected: true } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Property discovery for the connected Google account.
+  app.get('/api/v1/integrations/google/gsc/sites', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const sites = await googleService.listGscSites(req.organizationId!);
+      res.json({ success: true, data: { sites } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get('/api/v1/integrations/google/ga4/properties', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const properties = await googleService.listGa4Properties(req.organizationId!);
+      res.json({ success: true, data: { properties } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Property binding: attach a GSC site / GA4 property to a project.
+  app.put('/api/v1/projects/:projectId/integrations/gsc', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      const siteUrl = typeof req.body?.siteUrl === 'string' ? req.body.siteUrl.trim() : '';
+      if (!siteUrl) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'siteUrl is required' } });
+      const row = await googleService.bindProjectProperty(req.organizationId!, project.id, 'gsc', { siteUrl });
+      res.json({ success: true, data: { id: row.id, status: row.status, provider: 'gsc', siteUrl, lastSyncAt: row.lastSyncAt, lastError: row.lastError } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put('/api/v1/projects/:projectId/integrations/ga4', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      const propertyId = typeof req.body?.propertyId === 'string' ? req.body.propertyId.trim() : '';
+      if (!propertyId) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'propertyId is required (e.g. properties/123456789)' } });
+      const propertyName = typeof req.body?.propertyName === 'string' ? req.body.propertyName : undefined;
+      const row = await googleService.bindProjectProperty(req.organizationId!, project.id, 'ga4', { propertyId, propertyName });
+      res.json({ success: true, data: { id: row.id, status: row.status, provider: 'ga4', propertyId, propertyName, lastSyncAt: row.lastSyncAt, lastError: row.lastError } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete('/api/v1/projects/:projectId/integrations/:provider', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const provider = req.params.provider;
+      if (provider !== 'gsc' && provider !== 'ga4') {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'provider must be gsc or ga4' } });
+      }
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      await googleService.unbindProject(req.organizationId!, project.id, provider);
+      res.json({ success: true, data: { disconnected: true, provider } });
+    } catch (error) {
+      next(error);
+    }
   });
 
   // ============================================================
@@ -1267,10 +1396,11 @@ export function createApp() {
       }
 
       const { query } = await import('./db/client.js');
-      const integration = await query(`SELECT id, status, last_sync_at as "lastSyncAt", last_error as "lastError" FROM integrations WHERE organization_id = $1 AND project_id = $2 AND provider = 'gsc'`, [req.organizationId!, project.id]);
-      
+      const integration = await query(`SELECT id, status, last_sync_at as "lastSyncAt", last_error as "lastError", config FROM integrations WHERE organization_id = $1 AND project_id = $2 AND provider = 'gsc'`, [req.organizationId!, project.id]);
+
       if (integration.rows.length === 0) {
-        return res.status(200).json({ success: true, data: { status: 'not_connected', message: 'GSC not connected — OAuth required', provider: 'gsc' } });
+        const connection = await googleService.getConnectionStatus(req.organizationId!);
+        return res.status(200).json({ success: true, data: { status: 'not_connected', googleConnected: connection.connected, message: connection.connected ? 'Google connected — bind a Search Console property to this project' : 'GSC not connected — OAuth required', provider: 'gsc' } });
       }
 
       const metrics = await query(`SELECT date, clicks, impressions, ctr, position, query, page, country, device FROM gsc_metrics WHERE project_id = $1 ORDER BY date DESC LIMIT 100`, [project.id]);
@@ -1291,10 +1421,11 @@ export function createApp() {
       }
 
       const { query } = await import('./db/client.js');
-      const integration = await query(`SELECT id, status, last_sync_at as "lastSyncAt" FROM integrations WHERE organization_id = $1 AND project_id = $2 AND provider = 'ga4'`, [req.organizationId!, project.id]);
+      const integration = await query(`SELECT id, status, last_sync_at as "lastSyncAt", config FROM integrations WHERE organization_id = $1 AND project_id = $2 AND provider = 'ga4'`, [req.organizationId!, project.id]);
 
       if (integration.rows.length === 0) {
-        return res.status(200).json({ success: true, data: { status: 'not_connected', message: 'GA4 not connected — OAuth required', provider: 'ga4' } });
+        const connection = await googleService.getConnectionStatus(req.organizationId!);
+        return res.status(200).json({ success: true, data: { status: 'not_connected', googleConnected: connection.connected, message: connection.connected ? 'Google connected — bind a GA4 property to this project' : 'GA4 not connected — OAuth required', provider: 'ga4' } });
       }
 
       const metrics = await query(`SELECT date, users, sessions, page_views as "pageViews", organic_users as "organicUsers", conversions, landing_page as "landingPage" FROM ga4_metrics WHERE project_id = $1 ORDER BY date DESC LIMIT 100`, [project.id]);

@@ -76,6 +76,9 @@ export const config = {
     google: {
       clientId: getEnv('GOOGLE_CLIENT_ID', false, ''),
       clientSecret: getEnv('GOOGLE_CLIENT_SECRET', false, ''),
+      // Must exactly match an Authorized redirect URI on the Google
+      // Cloud OAuth client. Defaults to this API's callback route.
+      redirectUri: getEnv('GOOGLE_REDIRECT_URI', false, 'http://localhost:3001/api/v1/integrations/google/callback'),
     },
     pagespeed: getEnv('PAGESPEED_API_KEY', false, ''),
     stripe: {
