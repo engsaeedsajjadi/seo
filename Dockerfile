@@ -13,7 +13,10 @@ RUN npm ci
 COPY . .
 
 # Build args
-ARG VITE_API_URL=http://localhost:3001/api
+# VITE_API_URL is the API ORIGIN only (the client appends /api/v1 itself).
+# Empty (default) = same-origin relative calls, proxied by nginx (/api/).
+# For a split-origin deployment pass e.g. --build-arg VITE_API_URL=https://api.example.com
+ARG VITE_API_URL=
 ENV VITE_API_URL=$VITE_API_URL
 
 # Build

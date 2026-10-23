@@ -27,7 +27,11 @@ export function getPool(): Pool {
 
   pool = new Pool({
     connectionString: dbUrl,
-    ssl: config.isProduction ? { rejectUnauthorized: false } : false,
+    // SSL is opt-in via DATABASE_SSL=true: stock PostgreSQL (incl. the
+    // postgres:16-alpine compose service) does not serve SSL, so forcing
+    // SSL in production made the shipped stack unable to reach its own
+    // database. Managed DBs that require SSL set DATABASE_SSL=true.
+    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,

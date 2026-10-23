@@ -58,7 +58,8 @@ Services:
 - api: Backend API on :3001
 - postgres: PostgreSQL 16 on :5432
 - redis: Redis for queue on :6379 (optional)
-- worker: Background worker (same image as api, different command)
+- migrate: one-shot service that runs database migrations + seed, then exits (api and worker wait for it)
+- worker: Background worker (its own image, built from apps/worker — crawls, audits and scheduled jobs only run while the worker is up)
 - mcp: MCP server on :3002 (optional)
 
 ### 4. Access
@@ -67,25 +68,46 @@ Services:
 - Health: http://localhost:3001/api/v1/health
 - MCP: http://localhost:3002/health
 
-### 5. Run Migrations
+### 5. Migrations & Seed
+
+With Docker you do not run migrations manually: the one-shot `migrate`
+service applies migrations and seeds reference data (plans, audit
+rules) before the API and worker start, and both wait for it to
+finish successfully. To re-run it manually:
+
 ```bash
-docker compose exec api npm run db:migrate
-# Or if using in-memory fallback, no migration needed for dev
+docker compose run --rm migrate
 ```
+
+For a local (non-Docker) setup, run the same steps from the API app —
+the apps read the repo-root `.env` automatically:
+
+```bash
+cd apps/api
+npm run db:migrate
+npm run db:seed
+```
+
+Note: there is no in-memory mode — PostgreSQL is required.
 
 ## Production Deployment
 
 ### Docker Build
 ```bash
 docker build -t rankforge-web .
-docker build -t rankforge-api apps/api/
+docker build -t rankforge-api -f apps/api/Dockerfile apps/api
+docker build -t rankforge-worker -f apps/worker/Dockerfile apps/worker
 ```
 
 ### Environment Variables
 
 Production must set:
 - NODE_ENV=production
-- DATABASE_URL (managed PostgreSQL)
+- DATABASE_URL (managed PostgreSQL). Database SSL is off unless
+  DATABASE_SSL=true — set it only when your provider requires SSL.
+- In Docker Compose, JWT_SECRET and ENCRYPTION_KEY are mandatory in
+  .env: compose refuses to start without them (by design — there are
+  no built-in fallback secrets).
 - JWT_SECRET (32+ chars, random)
 - ENCRYPTION_KEY (32+ chars, random)
 - APP_URL (https://your-domain.com)
@@ -121,16 +143,22 @@ git clone https://github.com/engsaeedsajjadi/seo.git
 cd seo
 cp .env.example .env
 nano .env
+# REQUIRED before the first `docker compose up`: set JWT_SECRET and
+# ENCRYPTION_KEY to random values of 32+ chars (e.g. `openssl rand -hex 32`).
+# Compose refuses to start while they are empty — this is intentional.
 
-# Start with production compose
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Start the stack (the single docker-compose.yml is the production stack)
+docker compose up -d
 
 # Setup Nginx reverse proxy with SSL (Let's Encrypt)
 # Example nginx.conf included
 ```
 
 #### Kubernetes
-- Deployment manifests in `docker/` folder
+- No Kubernetes manifests ship with this repo; run the Docker Compose
+  stack, or build the images and wire the same env vars in your own
+  manifests (each app is a single long-running process: web, api,
+  worker, mcp, plus the one-shot migrate job)
 - Use secrets for env vars
 - Liveness/readiness probes: /api/v1/health/live and /ready
 - Horizontal scaling: api (stateless), worker (scaled by queue depth)

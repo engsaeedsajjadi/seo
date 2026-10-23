@@ -19,6 +19,7 @@
     "test:e2e:static": "npx tsx tests/e2e/rtl-persian.test.ts && npx tsx tests/e2e/persian-negative.test.ts && npx tsx scripts/i18n-audit.ts",
     "test:e2e:browser": "npx playwright test --reporter=list",
     "test:e2e": "npm run test:e2e:static",
+    "test:e2e:golden": "npx tsx scripts/e2e-golden-path.ts",
     "test:e2e:all": "npm run test:e2e:static && npx playwright test --reporter=list",
     "test:all": "npm run test:unit && npm run test:security && npm run test:integration && npm run test:e2e:static",
     "lint": "eslint . --max-warnings 200",

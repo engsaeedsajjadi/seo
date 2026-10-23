@@ -3,6 +3,31 @@
  * Fail-fast for missing secrets in production
  */
 
+// Load the monorepo-root .env for local development — the documented
+// setup creates a single .env at the repo root, and without this the
+// local commands (db:migrate, dev servers) cannot see it. Variables
+// already present in the process environment always win: Docker
+// Compose injects env directly and its images contain no .env file.
+import { existsSync as _existsSync, readFileSync as _readFileSync } from 'node:fs';
+import _path from 'node:path';
+import { fileURLToPath as _fileURLToPath } from 'node:url';
+(() => {
+  const here = _path.dirname(_fileURLToPath(import.meta.url));
+  const candidates = [
+    _path.resolve(process.cwd(), '.env'),
+    _path.resolve(here, '../../../.env'),
+    _path.resolve(here, '../../../../.env'),
+  ];
+  for (const file of candidates) {
+    if (!_existsSync(file)) continue;
+    for (const line of _readFileSync(file, 'utf8').split('\n')) {
+      const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+      if (!m) continue;
+      if (process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+    }
+  }
+})();
+
 export function getEnv(name: string, required = false, defaultValue?: string): string {
   const value = process.env[name] || defaultValue;
   if (required && !value) {

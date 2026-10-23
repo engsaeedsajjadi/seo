@@ -161,6 +161,8 @@ cd seo
 ```bash
 cp .env.example .env
 # فایل .env را ویرایش کنید — همه کلیدها با توضیح فارسی در .env.example موجود است
+# الزامی: JWT_SECRET و ENCRYPTION_KEY را با مقادیر تصادفی ۳۲+ کاراکتری پر کنید
+# (مثلاً openssl rand -hex 32) — بدون آن‌ها docker compose عمداً اجرا نمی‌شود
 ```
 
 ### ۳. اجرای سرویس‌ها
@@ -189,7 +191,9 @@ JWT_SECRET=your-super-secure-jwt-secret-min-32-chars
 
 # برنامه
 APP_URL=http://localhost:3000
-VITE_API_URL=http://localhost:3001/api
+VITE_API_URL=http://localhost:3001
+# توجه: کلاینت فرانت‌اند خودش /api/v1 را اضافه می‌کند؛ مقدار باید فقط origin باشد.
+# در حالت Docker این مقدار را خالی بگذارید تا از پراکسی nginx استفاده شود.
 CORS_ORIGINS=http://localhost:3000
 ```
 
@@ -308,11 +312,21 @@ npm run lint         # ESLint --max-warnings=0
 ```bash
 cd apps/api
 npm ci
-npm run dev          # سرور API روی 3001
-npm run build        # tsc
 npm run db:migrate   # مایگریشن قطعی از دیتابیس خالی
 npm run db:seed      # سید اولیه
+npm run dev          # سرور API روی 3001
+npm run build        # tsc
 ```
+اپ‌ها فایل .env ریشه مخزن را خودکار می‌خوانند؛ نیازی به export دستی نیست.
+
+### ورکر (الزامی برای خزش و ممیزی)
+```bash
+cd apps/worker
+npm ci
+npm run build
+node dist/index.js   # یا npm run dev
+```
+خزش، ممیزی، رتبه و کارهای زمان‌بندی‌شده فقط وقتی انجام می‌شوند که ورکر در حال اجرا باشد؛ بدون ورکر، کارها در صف می‌مانند.
 
 ### حسابرسی فارسی‌سازی
 ```bash
@@ -326,6 +340,7 @@ npm run test:unit         # 6 تست: SSRF، ممیزی، اعتبار، job ا�
 npm run test:security     # ایزولاسیون مستاجر A-F + cross-tenant
 npm run test:integration  # 9 تست واقعی PG: احراز هویت، پروژه، هم‌زمانی، دفترکل، SSRF، ایمنی خزش، ممیزی، idempotency، قرارداد API
 npm run test:e2e          # rtl-persian (8) + persian-negative (10) + i18n:audit
+# مسیر طلایی واقعی (نیازمند PG + API و ورکر در حال اجرا): npm run test:e2e:golden
 npm run test:all          # همه موارد بالا
 ```
 
@@ -345,7 +360,8 @@ npx playwright test tests/e2e/production-flow.spec.ts
 npm run docker:build
 # یا دستی:
 docker build -t rankforge-web .
-docker build -t rankforge-api -f apps/api/Dockerfile .
+docker build -t rankforge-api -f apps/api/Dockerfile apps/api
+docker build -t rankforge-worker -f apps/worker/Dockerfile apps/worker
 ```
 
 ### اجرا با Compose

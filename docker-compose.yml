@@ -12,7 +12,10 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-rankforge_password_change_in_production}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./apps/api/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      # NOTE: the schema is NOT applied via docker-entrypoint-initdb.d.
+      # The single supported schema path is the `migrate` service below
+      # (db:migrate + db:seed) — initdb scripts would apply schema.sql
+      # without recording the baseline migration and break db:migrate.
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
@@ -38,18 +41,43 @@ services:
     restart: unless-stopped
     profiles: ["with-redis"]
 
+  # One-shot database setup: runs the API image's compiled migrate + seed
+  # (node dist/db/migrate.js && node dist/db/seed.js), then exits.
+  # A fresh deploy is fully initialized by `docker compose up` alone.
+  migrate:
+    image: rankforge-api
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    command: ["sh", "-c", "node dist/db/migrate.js && node dist/db/seed.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rankforge}:${POSTGRES_PASSWORD:-rankforge_password_change}@postgres:5432/${POSTGRES_DB:-rankforge}
+      # The migration runner loads the app config module, whose production
+      # fail-fast requires these to be present (same values as the API).
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env to a random value of 32+ chars (see docs/DEPLOYMENT.md)}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env to a random value of 32+ chars (see docs/DEPLOYMENT.md)}
+    volumes:
+      # migrate resolves the repo-root drizzle/ folder at /drizzle
+      - ./drizzle:/drizzle:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   # API Server
   api:
+    image: rankforge-api
     build:
-      context: .
-      dockerfile: apps/api/Dockerfile
+      context: ./apps/api
+      dockerfile: Dockerfile
     environment:
       NODE_ENV: production
       PORT: 3001
       DATABASE_URL: postgresql://${POSTGRES_USER:-rankforge}:${DATABASE_PASSWORD:-rankforge_password_change_in_production}@postgres:5432/${POSTGRES_DB:-rankforge}
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis_password_change}@redis:6379
-      JWT_SECRET: ${JWT_SECRET:-your-jwt-secret-min-32-chars-change-in-production}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-your-encryption-key-32-chars-min}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env to a random value of 32+ chars (see docs/DEPLOYMENT.md)}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env to a random value of 32+ chars (see docs/DEPLOYMENT.md)}
       APP_URL: ${APP_URL:-http://localhost:3000}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
@@ -82,6 +110,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/v1/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
@@ -93,14 +123,14 @@ services:
   # Background Worker
   worker:
     build:
-      context: .
-      dockerfile: apps/worker/Dockerfile
+      context: ./apps/worker
+      dockerfile: Dockerfile
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-rankforge}:${DATABASE_PASSWORD:-rankforge_password_change_in_production}@postgres:5432/${POSTGRES_DB:-rankforge}
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis_password_change}@redis:6379
-      JWT_SECRET: ${JWT_SECRET:-your-jwt-secret-min-32-chars-change-in-production}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-your-encryption-key-32-chars-min}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env to a random value of 32+ chars (see docs/DEPLOYMENT.md)}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env to a random value of 32+ chars (see docs/DEPLOYMENT.md)}
       DATAFORSEO_LOGIN: ${DATAFORSEO_LOGIN:-}
       DATAFORSEO_PASSWORD: ${DATAFORSEO_PASSWORD:-}
       SERPAPI_KEY: ${SERPAPI_KEY:-}
@@ -116,6 +146,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       api:
         condition: service_healthy
     restart: unless-stopped
@@ -123,13 +155,13 @@ services:
   # MCP Server
   mcp:
     build:
-      context: .
-      dockerfile: apps/mcp/Dockerfile
+      context: ./apps/mcp
+      dockerfile: Dockerfile
     environment:
       NODE_ENV: production
       MCP_PORT: 3002
       DATABASE_URL: postgresql://${POSTGRES_USER:-rankforge}:${DATABASE_PASSWORD:-rankforge_password_change_in_production}@postgres:5432/${POSTGRES_DB:-rankforge}
-      JWT_SECRET: ${JWT_SECRET:-your-jwt-secret-min-32-chars-change-in-production}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env to a random value of 32+ chars (see docs/DEPLOYMENT.md)}
       DATAFORSEO_LOGIN: ${DATAFORSEO_LOGIN:-}
       DATAFORSEO_PASSWORD: ${DATAFORSEO_PASSWORD:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -147,7 +179,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:3001/api}
+        VITE_API_URL: ${VITE_API_URL:-}
     ports:
       - "${WEB_PORT:-3000}:80"
     depends_on:

@@ -1,6 +1,16 @@
 /**
  * SSRF Protection E2E Integration Test
  * Tests all URL validation blocks private IPs, metadata, non-http, redirects to private
+ *
+ * ENVIRONMENT NOTE (phase 6): the "allowed URL" cases must not depend on
+ * this sandbox's DNS — the sandbox resolves every public hostname into
+ * 198.18.0.0/15 (RFC 2544 benchmarking range), which the validator
+ * CORRECTLY classifies as blocked. The allowed-target assertion is
+ * therefore anchored on public IP-literal URLs (no DNS involved, run in
+ * every environment), and the hostname cases run only when a probe
+ * resolution shows this environment returns real public addresses.
+ * No blocked-case assertion is weakened anywhere: private, metadata,
+ * link-local and reserved ranges (incl. TEST-NET) must always throw.
  */
 
 import assert from 'assert';
@@ -75,6 +85,10 @@ const privateIPs = [
   '192.168.255.255',
   '169.254.169.254', // AWS metadata
   '169.254.0.1', // Link-local
+  '192.0.2.1', // TEST-NET-1 (reserved documentation range)
+  '198.51.100.1', // TEST-NET-2 (reserved documentation range)
+  '203.0.113.1', // TEST-NET-3 (reserved documentation range)
+  '198.18.0.1', // RFC 2544 benchmarking range — also the sandbox fake-IP range
   '::1',
   'fc00::1', // Unique local
   'fe80::1', // Link-local IPv6
@@ -134,27 +148,72 @@ console.log(`✅ ${blockedUrls.length} blocked URLs correctly rejected`);
 
 console.log('\nTest 4: Allowed URLs');
 
-const allowedUrls = [
+// 4a: Public IP-literal URLs need no DNS resolution, so they prove
+// "public target is allowed" in EVERY environment (including sandboxes
+// whose DNS returns synthetic answers). This is the primary assertion.
+const allowedIpLiteralUrls = [
+  'http://8.8.8.8/',
+  'https://1.1.1.1/path',
+  'http://8.8.4.4/',
+];
+
+for (const url of allowedIpLiteralUrls) {
+  const result = await validateUrlForSSRF(url);
+  assert.ok(result.ips.length >= 1, `${url} should validate with its literal IP`);
+  console.log(`  ✅ Allowed (IP literal): ${url}`);
+}
+console.log(`✅ ${allowedIpLiteralUrls.length} public IP-literal URLs correctly allowed`);
+
+// 4b: Hostname URLs — asserted only when this environment's DNS returns
+// real public addresses for them. Some sandboxes resolve ALL hostnames
+// into 198.18.0.0/15 (fake-IP proxy); there the validator blocking the
+// hostname is CORRECT behavior for that resolution, so the case is
+// inapplicable (not failed, not silently passed). A probe resolution
+// decides, per hostname, before asserting.
+const { lookup } = await import('dns/promises');
+
+function isSandboxFakeIp(ip: string): boolean {
+  // 198.18.0.0/15 — RFC 2544 benchmarking range used as fake-IP pool
+  return ip.startsWith('198.18.') || ip.startsWith('198.19.');
+}
+
+const allowedHostnameUrls = [
   'https://example.com',
   'https://google.com',
   'http://example.com/path',
   'https://sub.example.com',
 ];
 
-for (const url of allowedUrls) {
+let hostnameAsserted = 0;
+let hostnameSkipped = 0;
+for (const url of allowedHostnameUrls) {
+  const hostname = new URL(url).hostname;
+  let probeIps: string[] = [];
+  try {
+    probeIps = (await lookup(hostname, { all: true })).map(r => r.address);
+  } catch {
+    console.log(`  ⚠️  DNS probe failed for ${hostname} in this env - skipping hostname case`);
+    hostnameSkipped++;
+    continue;
+  }
+  if (probeIps.length > 0 && probeIps.every(isSandboxFakeIp)) {
+    console.log(`  ⚠️  ${hostname} resolves only to sandbox fake-IP range (${probeIps.join(', ')}) - validator correctly blocks such resolutions; hostname case inapplicable in this environment`);
+    hostnameSkipped++;
+    continue;
+  }
   try {
     await validateUrlForSSRF(url);
-    // Should not throw
+    hostnameAsserted++;
   } catch (e: any) {
-    // Allow DNS failures in offline env, but not SSRF blocks
     if (e.message && e.message.includes('DNS lookup failed')) {
       console.log(`  ⚠️  DNS lookup failed for ${url} in offline env - skipping, but SSRF logic OK`);
+      hostnameSkipped++;
       continue;
     }
     assert.fail(`URL ${url} should be allowed but was blocked: ${e}`);
   }
 }
-console.log(`✅ ${allowedUrls.length} allowed URLs correctly passed (with offline tolerance)`);
+console.log(`✅ Allowed hostname URLs: ${hostnameAsserted} asserted, ${hostnameSkipped} environment-inapplicable`);
 
 console.log('\nTest 5: DNS rebinding and redirect protection');
 
