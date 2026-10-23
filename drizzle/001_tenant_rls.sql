@@ -5,8 +5,11 @@
 DO $$
 DECLARE
   table_name text;
+  -- NOTE: 'organizations' is intentionally NOT in this list — it has no
+  -- organization_id column (its primary key IS the tenant id). It gets its
+  -- own policy in the special-case block below this loop.
   tenant_tables text[] := ARRAY[
-    'organizations', 'organization_members', 'projects', 'crawls', 'crawl_pages',
+    'organization_members', 'projects', 'crawls', 'crawl_pages',
     'crawl_issues', 'keywords', 'keyword_snapshots', 'competitors', 'backlinks',
     'integrations', 'gsc_metrics', 'content_briefs', 'ai_usage', 'geo_runs',
     'jobs', 'alerts', 'reports', 'credit_wallets', 'credit_transactions',

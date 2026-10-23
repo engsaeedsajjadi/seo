@@ -1603,7 +1603,7 @@ export function createApp() {
     try {
       const { query } = await import('./db/client.js');
       const role = await query(`SELECT role FROM organization_members WHERE user_id = $1 AND organization_id = $2`, [req.userId!, req.organizationId!]);
-      if (!role.rows[0] || !['owner', 'admin'].includes(role.rows[0].role)) {
+      if (!role.rows[0] || !['Owner', 'Admin'].includes(role.rows[0].role)) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin only' } });
       }
 
@@ -1770,7 +1770,7 @@ export function createApp() {
     try {
       const { query } = await import('./db/client.js');
       const role = await query(`SELECT role FROM organization_members WHERE user_id = $1 AND organization_id = $2`, [req.userId!, req.organizationId!]);
-      if (!role.rows[0] || !['owner', 'admin'].includes(role.rows[0].role)) {
+      if (!role.rows[0] || !['Owner', 'Admin'].includes(role.rows[0].role)) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin only' } });
       }
 

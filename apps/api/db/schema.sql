@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS organizations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(255) NOT NULL,
   slug VARCHAR(63) UNIQUE NOT NULL,
+  owner_id UUID NOT NULL REFERENCES users(id),
   plan VARCHAR(20) DEFAULT 'FREE' CHECK (plan IN ('FREE','STARTER','PRO','AGENCY','ENTERPRISE')),
   stripe_customer_id TEXT,
   stripe_subscription_id TEXT,
@@ -57,12 +58,13 @@ CREATE TABLE IF NOT EXISTS organizations (
 );
 
 CREATE INDEX IF NOT EXISTS idx_organizations_slug ON organizations(slug);
+CREATE INDEX IF NOT EXISTS idx_organizations_owner ON organizations(owner_id);
 
 CREATE TABLE IF NOT EXISTS organization_members (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role VARCHAR(20) NOT NULL DEFAULT 'viewer' CHECK (role IN ('owner','admin','manager','seo_manager','analyst','editor','client','viewer')),
+  role VARCHAR(20) NOT NULL DEFAULT 'Viewer' CHECK (role IN ('Owner','Admin','Manager','SEO_Manager','Analyst','Editor','Client','Viewer')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(organization_id, user_id)
 );
@@ -206,6 +208,19 @@ CREATE INDEX IF NOT EXISTS idx_crawl_issues_run ON crawl_issues(crawl_run_id);
 CREATE INDEX IF NOT EXISTS idx_crawl_issues_org ON crawl_issues(organization_id);
 CREATE INDEX IF NOT EXISTS idx_crawl_issues_severity ON crawl_issues(severity);
 CREATE INDEX IF NOT EXISTS idx_crawl_issues_rule ON crawl_issues(rule_id);
+
+-- Audit rule catalogue (seeded by db:seed; audit_findings.rule_id and
+-- crawl_issues.rule_id reference these ids — mirrors packages/db schema)
+CREATE TABLE IF NOT EXISTS audit_rules (
+  id VARCHAR(100) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT NOT NULL,
+  category VARCHAR(50) NOT NULL,
+  severity VARCHAR(20) NOT NULL CHECK (severity IN ('critical','high','medium','low','notice')),
+  documentation_url TEXT,
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS audit_findings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -605,6 +620,19 @@ CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
 -- BILLING & CREDITS — Atomic ledger + idempotency
 -- ============================================================
 
+-- Subscription plan catalogue (seeded by db:seed; mirrors packages/db schema)
+CREATE TABLE IF NOT EXISTS plans (
+  id VARCHAR(20) PRIMARY KEY,
+  name VARCHAR(50) NOT NULL,
+  description TEXT,
+  price_monthly_cents INTEGER NOT NULL,
+  price_annual_cents INTEGER NOT NULL,
+  limits JSONB NOT NULL,
+  features JSONB DEFAULT '[]',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS credit_wallets (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -802,8 +830,10 @@ CREATE TABLE IF NOT EXISTS feature_flags (
   name VARCHAR(255) NOT NULL,
   description TEXT,
   enabled BOOLEAN DEFAULT FALSE,
+  organization_overrides JSONB DEFAULT '{}',
   organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_feature_flags_key ON feature_flags(key);
@@ -1200,6 +1230,25 @@ CREATE POLICY feature_flags_isolation ON feature_flags
 -- ============================================================
 -- ADD MISSING COLUMNS FOR EXISTING DBs (idempotent)
 -- ============================================================
+
+-- Organizations: add owner_id if not exists (ownership is also recorded in
+-- organization_members; the repository and Drizzle model require this column)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='organizations' AND column_name='owner_id') THEN
+    ALTER TABLE organizations ADD COLUMN owner_id UUID REFERENCES users(id);
+  END IF;
+END $$;
+
+-- Feature flags: add organization_overrides / updated_at if not exists
+-- (seed, the feature-flag admin endpoints, and the Drizzle model use both)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='feature_flags' AND column_name='organization_overrides') THEN
+    ALTER TABLE feature_flags ADD COLUMN organization_overrides JSONB DEFAULT '{}';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='feature_flags' AND column_name='updated_at') THEN
+    ALTER TABLE feature_flags ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+  END IF;
+END $$;
 
 -- Jobs: add idempotency, error_code, failed_at, execution_id if not exists
 DO $$ BEGIN

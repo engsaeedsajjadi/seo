@@ -102,7 +102,7 @@ async function seed() {
       const existingUser = await query('SELECT id FROM users WHERE email = $1', ['test@rankforge.io']);
       if (existingUser.rows.length === 0) {
         console.log('Creating test user...');
-        const bcrypt = await import('bcryptjs');
+        const { default: bcrypt } = await import('bcryptjs');
         const passwordHash = await bcrypt.hash('TestPassword123!', 12);
         
         const userResult = await query(`
