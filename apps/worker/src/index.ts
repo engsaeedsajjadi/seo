@@ -14,7 +14,22 @@ import {
   findDomainPosition,
   persistRankResult,
   persistBacklinkSync,
+  persistKeywordMetrics,
+  persistCompetitorDiscovery,
 } from './dataforseo.js';
+import { runSchedulerTick } from './scheduler.js';
+import {
+  AiProviderError,
+  createAiProviders,
+  pickAiProvider,
+  aiEngineForProvider,
+  analyzeGeoResponse,
+  buildBriefPrompt,
+  parseBriefOutline,
+  recordAiUsage,
+  BRIEF_PROMPT_VERSION,
+  type AIProvider,
+} from './ai.js';
 
 // ============================================================
 // CONFIG — env-based, fail-fast
@@ -49,6 +64,7 @@ const config = {
     openai: process.env.OPENAI_API_KEY || '',
     anthropic: process.env.ANTHROPIC_API_KEY || '',
     googleAi: process.env.GOOGLE_AI_API_KEY || '',
+    perplexity: process.env.PERPLEXITY_API_KEY || '',
     pagespeed: process.env.PAGESPEED_API_KEY || '',
   },
 };
@@ -843,6 +859,35 @@ function createDataForSeoClient(): DataForSeoClient {
   return new DataForSeoClient(config.providers.dataforseo.login, config.providers.dataforseo.password);
 }
 
+// ============================================================
+// AI PROVIDERS — GEO (AI_VISIBILITY_CHECK) + CONTENT_BRIEF
+// (client + analysis live in ./ai.ts, mirroring the API lib's
+// ai-providers.ts; credentials come from env, like every other
+// provider in this worker)
+// ============================================================
+
+function createWorkerAiProviders(): AIProvider[] {
+  return createAiProviders({
+    openai: config.providers.openai,
+    anthropic: config.providers.anthropic,
+    googleAi: config.providers.googleAi,
+    perplexity: config.providers.perplexity,
+  });
+}
+
+const AI_NOT_CONFIGURED_MESSAGE = 'AI provider not configured — set OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_AI_API_KEY or PERPLEXITY_API_KEY — PROVIDER_NOT_CONFIGURED';
+
+/** Map an AI provider failure onto a job error — the provider's own message always surfaces. */
+function aiErrorToJobError(error: unknown, context: string): JobError {
+  if (error instanceof AiProviderError) {
+    if (error.httpStatus === 401 || error.httpStatus === 403) {
+      return new JobError(`AI provider authentication failed — ${error.message}`, 'NON_RETRYABLE', false);
+    }
+    return new JobError(`${context} failed — ${error.message}`, 'RETRYABLE', true);
+  }
+  return new JobError(`${context} failed — ${error instanceof Error ? error.message : String(error)}`, 'RETRYABLE', true);
+}
+
 /** Map a provider failure onto a job error — the provider's own message always surfaces. */
 function providerErrorToJobError(error: unknown, context: string): JobError {
   if (error instanceof DataForSeoError) {
@@ -928,19 +973,39 @@ class Worker {
   private concurrency = config.worker.concurrency;
   private timeout = config.worker.timeout;
   private pollInterval = config.worker.pollIntervalMs;
+  private schedulerTickMs = parseInt(process.env.SCHEDULER_TICK_MS || '15000', 10);
+  private schedulerEnabled = process.env.SCHEDULER_ENABLED !== 'false';
+  private lastSchedulerTickAt = 0;
 
   async start() {
-    console.log(JSON.stringify({ level: 'info', msg: 'Worker starting', concurrency: this.concurrency, timeout: this.timeout, database: config.database.url ? 'configured' : 'NOT_CONFIGURED' }));
+    console.log(JSON.stringify({ level: 'info', msg: 'Worker starting', concurrency: this.concurrency, timeout: this.timeout, database: config.database.url ? 'configured' : 'NOT_CONFIGURED', scheduler: this.schedulerEnabled ? `tick ${this.schedulerTickMs}ms` : 'disabled' }));
     this.running = true;
 
     while (this.running) {
       try {
         await this.processNextJobs();
+        await this.maybeRunScheduler();
         await this.sleep(this.pollInterval);
       } catch (error) {
         console.error(JSON.stringify({ level: 'error', msg: 'Worker loop error', error: error instanceof Error ? error.message : String(error) }));
         await this.sleep(5000);
       }
+    }
+  }
+
+  /** Throttled scheduler tick — enqueues jobs for due scheduled_jobs rows (see ./scheduler.ts). */
+  private async maybeRunScheduler() {
+    if (!this.schedulerEnabled) return;
+    const nowMs = Date.now();
+    if (nowMs - this.lastSchedulerTickAt < this.schedulerTickMs) return;
+    this.lastSchedulerTickAt = nowMs;
+    try {
+      const summary = await runSchedulerTick((fn) => withTransaction(fn));
+      if (summary.fired > 0 || summary.initialized > 0 || summary.skipped > 0 || summary.parked > 0) {
+        console.log(JSON.stringify({ level: 'info', msg: 'Scheduler tick', ...summary }));
+      }
+    } catch (error) {
+      console.error(JSON.stringify({ level: 'error', msg: 'Scheduler tick failed', error: error instanceof Error ? error.message : String(error) }));
     }
   }
 
@@ -1178,6 +1243,8 @@ class Worker {
         return this.handleCompetitorCheck(job, signal);
       case 'AI_VISIBILITY_CHECK':
         return this.handleAiVisibilityCheck(job, signal);
+      case 'CONTENT_BRIEF':
+        return this.handleContentBrief(job, signal);
       case 'REPORT_GENERATION':
         return this.handleReportGeneration(job, signal);
       case 'ALERT_EVALUATION':
@@ -1565,15 +1632,69 @@ class Worker {
   private async handleKeywordRefresh(job: Job, signal: AbortSignal): Promise<any> {
     console.log(JSON.stringify({ level: 'info', msg: 'Keyword refresh', job_id: job.id, project_id: job.projectId }));
 
-    if (!config.providers.dataforseo.login) {
-      throw new JobError('Keyword provider not configured — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
+    // No credentials → graceful PROVIDER_NOT_CONFIGURED, no fake keyword metrics.
+    const client = createDataForSeoClient();
+    if (!client.isConfigured()) {
+      throw new JobError('Keyword provider not configured — DataForSEO credentials missing (set DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD) — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
     }
 
     if (signal.aborted) throw new JobError('Keyword refresh aborted', 'TIMEOUT', true);
+    if (!job.projectId) throw new JobError('Project missing for keyword refresh — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
 
-    // Real implementation would call DataForSEO keyword API
-    // For production reality, we don't generate fake keywords
-    throw new JobError('Keyword provider not fully implemented in worker — use API endpoint with real provider', 'PROVIDER_NOT_CONFIGURED', false);
+    const projectResult = await query(
+      `SELECT id, country, language FROM projects WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
+      [job.projectId, job.organizationId]
+    );
+    if (projectResult.rows.length === 0) {
+      throw new JobError(`Project not found for keyword refresh: ${job.projectId}`, 'NON_RETRYABLE', false);
+    }
+    const project = projectResult.rows[0];
+
+    const country = (project.country || 'US').toUpperCase();
+    const locationCode = resolveDataForSeoLocationCode(country);
+    const languageCode = resolveDataForSeoLanguageCode(project.language);
+
+    const keywordResult = await query(
+      `SELECT id, COALESCE(keyword, term) AS term FROM keywords WHERE project_id = $1 AND organization_id = $2 ORDER BY created_at ASC`,
+      [project.id, job.organizationId]
+    );
+
+    if (keywordResult.rows.length === 0) {
+      console.log(JSON.stringify({ level: 'info', msg: 'Keyword refresh — no tracked keywords', job_id: job.id, project_id: project.id }));
+      return { tracked: 0, updated: 0, notReturned: 0, provider: 'dataforseo', message: 'No tracked keywords for project — nothing to refresh' };
+    }
+
+    // The provider's related-keywords endpoint takes the tracked terms
+    // as seeds and returns metrics for them and their close variants;
+    // persistence applies ONLY exact normalized matches (see
+    // persistKeywordMetrics) — unmatched tracked keywords keep their
+    // existing values rather than receiving invented ones.
+    const seeds = keywordResult.rows.map((r: any) => r.term).filter(Boolean);
+    let metrics;
+    try {
+      metrics = await client.getKeywordData(seeds, { locationCode, languageCode, limit: 100 });
+    } catch (error) {
+      throw providerErrorToJobError(error, 'DataForSEO keyword data request');
+    }
+
+    const stats = await persistKeywordMetrics(query, {
+      organizationId: job.organizationId,
+      projectId: project.id,
+      metrics,
+    });
+
+    console.log(JSON.stringify({
+      level: 'info', msg: 'Keyword refresh completed', job_id: job.id, project_id: project.id,
+      tracked: keywordResult.rows.length, locationCode, languageCode, ...stats,
+    }));
+
+    return {
+      tracked: keywordResult.rows.length,
+      ...stats,
+      locationCode,
+      languageCode,
+      provider: 'dataforseo',
+    };
   }
 
   private async handleBacklinkRefresh(job: Job, signal: AbortSignal): Promise<any> {
@@ -1729,35 +1850,266 @@ class Worker {
     console.log(JSON.stringify({ level: 'info', msg: 'Competitor check', job_id: job.id, project_id: job.projectId }));
 
     if (signal.aborted) throw new JobError('Competitor check aborted', 'TIMEOUT', true);
+    if (!job.projectId) throw new JobError('Project missing for competitor check — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
 
-    // Competitor discovery: check if provider configured, else manual only
-    const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password);
-    
-    if (!hasProvider) {
-      // Allow manual competitors — check if project has competitors
-      const projectResult = await query(`SELECT competitors FROM projects WHERE id = $1`, [job.projectId]);
+    const client = createDataForSeoClient();
+
+    if (!client.isConfigured()) {
+      // No provider → manual competitors only (unchanged contract):
+      // succeed with the manual list when one exists, else fail honestly.
+      const projectResult = await query(`SELECT competitors FROM projects WHERE id = $1 AND organization_id = $2`, [job.projectId, job.organizationId]);
       const competitors = projectResult.rows[0]?.competitors || [];
       if (competitors.length === 0) {
         throw new JobError('Competitor provider not configured and no manual competitors — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
       }
-      // Manual competitors exist, we can analyze them from existing crawl data
       return { competitors, source: 'manual', message: 'Manual competitors only, no provider discovery' };
     }
 
-    // Real provider discovery would happen here
-    throw new JobError('Competitor discovery requires DataForSEO — NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
+    const projectResult = await query(
+      `SELECT id, domain, normalized_domain, country, language FROM projects WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
+      [job.projectId, job.organizationId]
+    );
+    if (projectResult.rows.length === 0) {
+      throw new JobError(`Project not found for competitor check: ${job.projectId}`, 'NON_RETRYABLE', false);
+    }
+    const project = projectResult.rows[0];
+    const targetDomain = project.normalized_domain || project.domain;
+    const country = (project.country || 'US').toUpperCase();
+    const locationCode = resolveDataForSeoLocationCode(country);
+    const languageCode = resolveDataForSeoLanguageCode(project.language);
+
+    let discovered;
+    try {
+      discovered = await client.getCompetitorDomains(targetDomain, { locationCode, languageCode, limit: 20 });
+    } catch (error) {
+      throw providerErrorToJobError(error, 'DataForSEO competitors request');
+    }
+
+    const stats = await persistCompetitorDiscovery(query, {
+      organizationId: job.organizationId,
+      projectId: project.id,
+      ownDomain: targetDomain,
+      competitors: discovered,
+    });
+
+    console.log(JSON.stringify({
+      level: 'info', msg: 'Competitor discovery completed', job_id: job.id, project_id: project.id,
+      domain: targetDomain, locationCode, languageCode, ...stats,
+    }));
+
+    return {
+      domain: targetDomain,
+      source: 'provider',
+      provider: 'dataforseo',
+      locationCode,
+      languageCode,
+      competitors: discovered.map((c) => c.domain),
+      ...stats,
+    };
   }
 
   private async handleAiVisibilityCheck(job: Job, signal: AbortSignal): Promise<any> {
     console.log(JSON.stringify({ level: 'info', msg: 'AI visibility check', job_id: job.id, prompt: job.payload?.prompt }));
 
-    if (!config.providers.openai && !config.providers.anthropic && !config.providers.googleAi) {
-      throw new JobError('AI provider not configured — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
+    // No AI provider → graceful PROVIDER_NOT_CONFIGURED, no fabricated visibility.
+    const provider = pickAiProvider(createWorkerAiProviders(), job.payload?.provider);
+    if (!provider) {
+      throw new JobError(AI_NOT_CONFIGURED_MESSAGE, 'PROVIDER_NOT_CONFIGURED', false);
     }
 
     if (signal.aborted) throw new JobError('AI visibility check aborted', 'TIMEOUT', true);
+    if (!job.projectId) throw new JobError('Project missing for AI visibility check — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
 
-    throw new JobError('AI visibility requires provider implementation — NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
+    const projectResult = await query(
+      `SELECT id, name, domain, normalized_domain, competitors FROM projects WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
+      [job.projectId, job.organizationId]
+    );
+    if (projectResult.rows.length === 0) {
+      throw new JobError(`Project not found for AI visibility check: ${job.projectId}`, 'NON_RETRYABLE', false);
+    }
+    const project = projectResult.rows[0];
+    const targetDomain = project.normalized_domain || project.domain;
+
+    // Competitor set for mention analysis: the discovered/manual
+    // competitors table plus the project's own competitors list.
+    const competitorRows = await query(
+      `SELECT normalized_domain FROM competitors WHERE project_id = $1 AND organization_id = $2`,
+      [project.id, job.organizationId]
+    );
+    const competitorDomains = Array.from(new Set([
+      ...competitorRows.rows.map((r: any) => r.normalized_domain),
+      ...((project.competitors || []) as string[]),
+    ].filter(Boolean)));
+
+    const prompt = job.payload?.prompt || `What is ${project.domain}?`;
+
+    let ai;
+    try {
+      ai = await provider.complete(prompt, { maxTokens: 800, temperature: 0.2 });
+    } catch (error) {
+      throw aiErrorToJobError(error, `${provider.name} visibility request`);
+    }
+    if (signal.aborted) throw new JobError('AI visibility check aborted', 'TIMEOUT', true);
+
+    const analysis = analyzeGeoResponse(ai.content, {
+      domain: targetDomain,
+      projectName: project.name,
+      competitorDomains,
+    });
+    const engine = aiEngineForProvider(provider.name);
+
+    const runResult = await query(
+      `INSERT INTO geo_runs (project_id, organization_id, ai_engine, prompt, response, brand_mentioned, brand_position, cited_urls, competitor_mentions, visibility_score, cost, provider, model, raw_response)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       RETURNING id`,
+      [
+        project.id,
+        job.organizationId,
+        engine,
+        prompt,
+        ai.content,
+        analysis.brandMentioned,
+        analysis.brandPosition,
+        analysis.citedUrls,
+        JSON.stringify(analysis.competitorMentions),
+        analysis.visibilityScore,
+        ai.estimatedCostUsd,
+        ai.provider,
+        ai.model,
+        JSON.stringify({
+          content: ai.content,
+          requestId: ai.requestId || null,
+          latencyMs: ai.latencyMs,
+          usage: { inputTokens: ai.inputTokens, outputTokens: ai.outputTokens },
+        }),
+      ]
+    );
+
+    await recordAiUsage(query, {
+      organizationId: job.organizationId,
+      projectId: project.id,
+      provider: ai.provider,
+      model: ai.model,
+      inputTokens: ai.inputTokens,
+      outputTokens: ai.outputTokens,
+      estimatedCostUsd: ai.estimatedCostUsd,
+      operation: 'geo_visibility_check',
+      idempotencyKey: `geo_${job.id}`,
+      referenceType: 'geo_run',
+      referenceId: runResult.rows[0].id,
+    });
+
+    console.log(JSON.stringify({
+      level: 'info', msg: 'AI visibility check completed', job_id: job.id, project_id: project.id,
+      provider: ai.provider, model: ai.model, brandMentioned: analysis.brandMentioned,
+      brandPosition: analysis.brandPosition, citedUrls: analysis.citedUrls.length,
+      visibilityScore: analysis.visibilityScore, costUsd: ai.estimatedCostUsd,
+    }));
+
+    return {
+      geoRunId: runResult.rows[0].id,
+      provider: ai.provider,
+      model: ai.model,
+      engine,
+      brandMentioned: analysis.brandMentioned,
+      brandPosition: analysis.brandPosition,
+      citedUrls: analysis.citedUrls.length,
+      competitorMentions: analysis.competitorMentions,
+      visibilityScore: analysis.visibilityScore,
+      estimatedCostUsd: ai.estimatedCostUsd,
+    };
+  }
+
+  private async handleContentBrief(job: Job, signal: AbortSignal): Promise<any> {
+    console.log(JSON.stringify({ level: 'info', msg: 'Content brief', job_id: job.id, brief_id: job.payload?.briefId }));
+
+    const briefId = job.payload?.briefId;
+    if (!briefId) throw new JobError('Brief missing in payload — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
+    if (!job.projectId) throw new JobError('Project missing for content brief — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
+
+    const briefResult = await query(
+      `SELECT id, project_id, title, target_keyword, content_type, target_word_count, word_count FROM content_briefs WHERE id = $1 AND organization_id = $2`,
+      [briefId, job.organizationId]
+    );
+    if (briefResult.rows.length === 0) {
+      throw new JobError(`Content brief not found: ${briefId}`, 'NON_RETRYABLE', false);
+    }
+    const brief = briefResult.rows[0];
+
+    // No AI provider → graceful PROVIDER_NOT_CONFIGURED; the brief is
+    // left in 'draft', exactly as the API created it — no fake outline.
+    const provider = pickAiProvider(createWorkerAiProviders(), job.payload?.provider);
+    if (!provider) {
+      throw new JobError(AI_NOT_CONFIGURED_MESSAGE, 'PROVIDER_NOT_CONFIGURED', false);
+    }
+
+    if (signal.aborted) throw new JobError('Content brief aborted', 'TIMEOUT', true);
+
+    const projectResult = await query(
+      `SELECT id, name, domain, normalized_domain, language FROM projects WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
+      [brief.project_id, job.organizationId]
+    );
+    const project = projectResult.rows[0] || null;
+
+    await query(`UPDATE content_briefs SET status = 'generating', updated_at = NOW() WHERE id = $1`, [brief.id]);
+
+    const prompt = buildBriefPrompt({
+      title: brief.title,
+      targetKeyword: brief.target_keyword || job.payload?.targetKeyword,
+      contentType: brief.content_type,
+      targetWordCount: brief.target_word_count || brief.word_count,
+      language: project?.language,
+      projectDomain: project?.normalized_domain || project?.domain,
+    });
+
+    let ai;
+    try {
+      ai = await provider.complete(prompt, { maxTokens: 2000, temperature: 0.4 });
+    } catch (error) {
+      await query(`UPDATE content_briefs SET status = 'failed', updated_at = NOW() WHERE id = $1`, [brief.id]);
+      throw aiErrorToJobError(error, `${provider.name} content brief request`);
+    }
+    if (signal.aborted) {
+      await query(`UPDATE content_briefs SET status = 'draft', updated_at = NOW() WHERE id = $1`, [brief.id]);
+      throw new JobError('Content brief aborted', 'TIMEOUT', true);
+    }
+
+    const { outline, parsed } = parseBriefOutline(ai.content);
+
+    await query(
+      `UPDATE content_briefs SET status = 'completed', outline = $2, provider = $3, model = $4, prompt_version = $5, updated_at = NOW() WHERE id = $1`,
+      [brief.id, JSON.stringify(outline), ai.provider, ai.model, BRIEF_PROMPT_VERSION]
+    );
+
+    await recordAiUsage(query, {
+      organizationId: job.organizationId,
+      projectId: brief.project_id,
+      provider: ai.provider,
+      model: ai.model,
+      inputTokens: ai.inputTokens,
+      outputTokens: ai.outputTokens,
+      estimatedCostUsd: ai.estimatedCostUsd,
+      operation: 'content_brief',
+      idempotencyKey: `brief_${job.id}`,
+      referenceType: 'content_brief',
+      referenceId: brief.id,
+    });
+
+    console.log(JSON.stringify({
+      level: 'info', msg: 'Content brief completed', job_id: job.id, brief_id: brief.id,
+      provider: ai.provider, model: ai.model, outlineParsed: parsed,
+      sections: Array.isArray(outline?.sections) ? outline.sections.length : 0,
+      costUsd: ai.estimatedCostUsd,
+    }));
+
+    return {
+      briefId: brief.id,
+      provider: ai.provider,
+      model: ai.model,
+      outlineParsed: parsed,
+      sections: Array.isArray(outline?.sections) ? outline.sections.length : 0,
+      estimatedCostUsd: ai.estimatedCostUsd,
+    };
   }
 
   private async handleReportGeneration(job: Job, signal: AbortSignal): Promise<any> {
@@ -1870,14 +2222,25 @@ class Worker {
   }
 
   private async handleDeadLetter(job: Job, error: string, errorCode: string) {
+    // alerts.project_id is a NOT NULL FK to projects — a project-less
+    // job (e.g. org-level ALERT_EVALUATION) has nowhere truthful to
+    // attach an alert, so it is logged and skipped instead of being
+    // pointed at a fabricated project id.
+    if (!job.projectId) {
+      console.log(JSON.stringify({ level: 'info', msg: 'Dead-letter alert skipped — job has no project', job_id: job.id, job_type: job.type }));
+      return;
+    }
     try {
+      // alerts.rule is NOT NULL — the system rule for dead-lettered
+      // jobs is 'job_dead_letter' (type 'job_failed' is the alert
+      // category the schema's CHECK intends for these).
       await query(
-        `INSERT INTO alerts (organization_id, project_id, type, severity, title, message, data, triggered_at)
-         VALUES ($1, $2, 'job_failed', 'high', $3, $4, $5, NOW())
+        `INSERT INTO alerts (organization_id, project_id, rule, type, severity, title, message, data, triggered_at)
+         VALUES ($1, $2, 'job_dead_letter', 'job_failed', 'high', $3, $4, $5, NOW())
          ON CONFLICT (organization_id, project_id, rule, type, triggered_at) DO NOTHING`,
         [
           job.organizationId,
-          job.projectId || job.organizationId, // fallback
+          job.projectId,
           `Job failed: ${job.type}`,
           `Job ${job.id} failed after ${job.attempts} attempts: ${error} (code: ${errorCode})`,
           JSON.stringify({ jobId: job.id, jobType: job.type, error, errorCode, executionId: job.executionId }),

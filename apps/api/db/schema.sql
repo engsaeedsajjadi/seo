@@ -471,6 +471,9 @@ CREATE TABLE IF NOT EXISTS content_briefs (
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   target_keyword TEXT,
+  intent VARCHAR(20),
+  word_count INTEGER,
+  created_by UUID REFERENCES users(id),
   content_type VARCHAR(20),
   target_word_count INTEGER,
   status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft','generating','completed','failed')),
@@ -509,6 +512,9 @@ CREATE TABLE IF NOT EXISTS geo_runs (
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   ai_engine VARCHAR(50) NOT NULL CHECK (ai_engine IN ('chatgpt','gemini','perplexity','claude','openai','anthropic','google')),
   prompt TEXT NOT NULL,
+  response TEXT,
+  visibility_score INTEGER,
+  cost DECIMAL(10,6),
   brand_mentioned BOOLEAN DEFAULT FALSE,
   brand_position INTEGER,
   cited_urls TEXT[],
@@ -530,7 +536,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
-  type VARCHAR(50) NOT NULL CHECK (type IN ('SITE_CRAWL','SEO_AUDIT','AUDIT','RANK_CHECK','KEYWORD_REFRESH','BACKLINK_REFRESH','BACKLINK_SYNC','GSC_SYNC','GA4_SYNC','PAGESPEED_CHECK','COMPETITOR_CHECK','AI_VISIBILITY_CHECK','REPORT_GENERATION','ALERT_EVALUATION','ALERT_PROCESSING')),
+  type VARCHAR(50) NOT NULL CHECK (type IN ('SITE_CRAWL','SEO_AUDIT','AUDIT','RANK_CHECK','KEYWORD_REFRESH','BACKLINK_REFRESH','BACKLINK_SYNC','GSC_SYNC','GA4_SYNC','PAGESPEED_CHECK','COMPETITOR_CHECK','AI_VISIBILITY_CHECK','CONTENT_BRIEF','REPORT_GENERATION','ALERT_EVALUATION','ALERT_PROCESSING')),
   status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending','running','completed','failed','retrying','cancelled','dead_letter')),
   payload JSONB DEFAULT '{}',
   result JSONB,
@@ -1317,5 +1323,47 @@ DO $$ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='keywords' AND column_name='language') THEN
     ALTER TABLE keywords ADD COLUMN language VARCHAR(5) DEFAULT 'en';
+  END IF;
+END $$;
+
+-- Jobs: allow CONTENT_BRIEF in the type CHECK for existing DBs
+-- (the API enqueues CONTENT_BRIEF jobs and scheduled_jobs already
+-- lists the type, but the jobs CHECK rejected every such insert)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'jobs_type_check'
+      AND pg_get_constraintdef(oid) LIKE '%CONTENT_BRIEF%'
+  ) THEN
+    ALTER TABLE jobs DROP CONSTRAINT jobs_type_check;
+    ALTER TABLE jobs ADD CONSTRAINT jobs_type_check CHECK (type IN ('SITE_CRAWL','SEO_AUDIT','AUDIT','RANK_CHECK','KEYWORD_REFRESH','BACKLINK_REFRESH','BACKLINK_SYNC','GSC_SYNC','GA4_SYNC','PAGESPEED_CHECK','COMPETITOR_CHECK','AI_VISIBILITY_CHECK','CONTENT_BRIEF','REPORT_GENERATION','ALERT_EVALUATION','ALERT_PROCESSING'));
+  END IF;
+END $$;
+
+-- Content briefs: add intent / word_count / created_by for existing DBs
+-- (the API's brief create + read paths use these column names)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='content_briefs' AND column_name='intent') THEN
+    ALTER TABLE content_briefs ADD COLUMN intent VARCHAR(20);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='content_briefs' AND column_name='word_count') THEN
+    ALTER TABLE content_briefs ADD COLUMN word_count INTEGER;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='content_briefs' AND column_name='created_by') THEN
+    ALTER TABLE content_briefs ADD COLUMN created_by UUID REFERENCES users(id);
+  END IF;
+END $$;
+
+-- GEO runs: add response / visibility_score / cost for existing DBs
+-- (the API's GEO read path selects these; the worker writes them)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='geo_runs' AND column_name='response') THEN
+    ALTER TABLE geo_runs ADD COLUMN response TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='geo_runs' AND column_name='visibility_score') THEN
+    ALTER TABLE geo_runs ADD COLUMN visibility_score INTEGER;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='geo_runs' AND column_name='cost') THEN
+    ALTER TABLE geo_runs ADD COLUMN cost DECIMAL(10,6);
   END IF;
 END $$;

@@ -119,6 +119,25 @@ export interface SerpSearchRequest {
   depth?: number;
 }
 
+export interface ParsedKeywordMetric {
+  keyword: string;
+  searchVolume: number | null;
+  cpc: number | null;
+  competition: number | null;
+  difficulty: number | null;
+  serpFeatures: string[];
+  raw: any;
+}
+
+export interface ParsedCompetitor {
+  domain: string;
+  /** Provider-reported average SERP position across shared keywords, when present. */
+  avgPosition?: number;
+  /** Provider-reported count of keywords both domains rank for, when present. */
+  intersections?: number;
+  raw: any;
+}
+
 export class DataForSeoClient {
   readonly baseUrl = 'https://api.dataforseo.com/v3';
   private fetchFn: FetchFn;
@@ -197,6 +216,63 @@ export class DataForSeoClient {
       totalResults: result?.se_results_count,
       requestId: task.id,
     };
+  }
+
+  /**
+   * Keyword metrics via DataForSEO Labs related-keywords — same
+   * endpoint/payload/parsing as the API lib's getKeywords(). The
+   * response carries metrics for the seeds and their close variants;
+   * the KEYWORD_REFRESH handler only applies rows that match a
+   * tracked keyword exactly (normalized) — no invented metrics for
+   * keywords the provider did not return data for.
+   */
+  async getKeywordData(seeds: string[], req: SerpSearchRequest & { limit?: number }): Promise<ParsedKeywordMetric[]> {
+    const task = await this.post('/dataforseo_labs/google/related_keywords/live', [{
+      keywords: seeds,
+      location_code: req.locationCode,
+      language_code: req.languageCode,
+      include_serp_info: true,
+      limit: req.limit ?? 100,
+    }], 'keyword data');
+
+    const items = task.result?.[0]?.items || [];
+    return items
+      .map((item: any) => ({
+        keyword: item.keyword,
+        searchVolume: item.keyword_info?.search_volume ?? null,
+        cpc: item.keyword_info?.cpc ?? null,
+        competition: item.keyword_info?.competition ?? null,
+        difficulty: item.keyword_properties?.keyword_difficulty ?? null,
+        serpFeatures: item.serp_info?.serp_item_types || [],
+        raw: item,
+      }))
+      .filter((k: ParsedKeywordMetric) => !!k.keyword);
+  }
+
+  /**
+   * Competitor discovery via DataForSEO Labs competitors_domain —
+   * same endpoint/payload as the API lib's getCompetitors(), but the
+   * parsed items keep the provider's overlap metrics (avg_position,
+   * intersections) for the competitors.evidence record instead of
+   * discarding everything except the domain.
+   */
+  async getCompetitorDomains(domain: string, req: SerpSearchRequest & { limit?: number }): Promise<ParsedCompetitor[]> {
+    const task = await this.post('/dataforseo_labs/google/competitors_domain/live', [{
+      target: domain,
+      location_code: req.locationCode,
+      language_code: req.languageCode,
+      limit: req.limit ?? 20,
+    }], 'competitors');
+
+    const items = task.result?.[0]?.items || [];
+    return items
+      .map((item: any) => ({
+        domain: item.domain,
+        avgPosition: typeof item.avg_position === 'number' ? item.avg_position : undefined,
+        intersections: typeof item.intersections === 'number' ? item.intersections : undefined,
+        raw: item,
+      }))
+      .filter((c: ParsedCompetitor) => !!c.domain);
   }
 
   /** Live backlinks for a domain — same endpoint/payload/parsing as the API lib client. */
@@ -363,4 +439,146 @@ export async function persistBacklinkSync(queryFn: QueryFn, input: BacklinkSyncI
   );
 
   return { fetched: input.backlinks.length, inserted, refreshed, lost: lostResult.rowCount ?? 0 };
+}
+
+// ============================================================
+// KEYWORD REFRESH + COMPETITOR DISCOVERY PERSISTENCE
+// ============================================================
+
+/** Normalize a keyword for matching: lowercase, trimmed, single-spaced. */
+export function normalizeKeywordForMatch(value: string): string {
+  return (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export interface KeywordRefreshInput {
+  organizationId: string;
+  projectId: string;
+  /** metrics returned by the provider for this refresh */
+  metrics: ParsedKeywordMetric[];
+}
+
+export interface KeywordRefreshStats {
+  providerResults: number;
+  updated: number;
+  /** tracked keywords the provider returned no exact-match row for — left untouched */
+  notReturned: number;
+}
+
+/**
+ * Apply provider keyword metrics to the project's tracked keywords.
+ * A tracked row is updated ONLY when the provider returned a row for
+ * that exact (normalized) keyword — anything else would be inventing
+ * metrics. Both legacy column spellings (volume/search_volume) are
+ * written so every existing reader sees the refreshed values.
+ */
+export async function persistKeywordMetrics(queryFn: QueryFn, input: KeywordRefreshInput): Promise<KeywordRefreshStats> {
+  const tracked = await queryFn(
+    `SELECT id, COALESCE(normalized_keyword, normalized_term, keyword, term) AS match_key FROM keywords WHERE project_id = $1 AND organization_id = $2`,
+    [input.projectId, input.organizationId],
+  );
+
+  const byKey = new Map<string, string>();
+  for (const row of tracked.rows) {
+    const key = normalizeKeywordForMatch(row.match_key || '');
+    if (key && !byKey.has(key)) byKey.set(key, row.id);
+  }
+
+  let updated = 0;
+  const matchedIds = new Set<string>();
+  for (const metric of input.metrics) {
+    const id = byKey.get(normalizeKeywordForMatch(metric.keyword));
+    if (!id || matchedIds.has(id)) continue;
+    matchedIds.add(id);
+
+    const difficulty = typeof metric.difficulty === 'number'
+      ? Math.max(0, Math.min(100, Math.round(metric.difficulty)))
+      : null;
+    const competition = typeof metric.competition === 'number'
+      ? Math.round(metric.competition * 100) / 100
+      : null;
+    const cpc = typeof metric.cpc === 'number' ? Math.round(metric.cpc * 100) / 100 : null;
+
+    await queryFn(
+      `UPDATE keywords
+       SET volume = $2, search_volume = $2, cpc = $3, competition = $4, difficulty = $5,
+           provider = 'dataforseo', last_checked_at = NOW(), updated_at = NOW()
+       WHERE id = $1`,
+      [id, metric.searchVolume, cpc, competition, difficulty],
+    );
+    updated++;
+  }
+
+  return {
+    providerResults: input.metrics.length,
+    updated,
+    notReturned: tracked.rows.length - updated,
+  };
+}
+
+export interface CompetitorDiscoveryInput {
+  organizationId: string;
+  projectId: string;
+  ownDomain: string;
+  competitors: ParsedCompetitor[];
+}
+
+export interface CompetitorDiscoveryStats {
+  discovered: number;
+  inserted: number;
+  refreshed: number;
+  skippedSelf: number;
+}
+
+/**
+ * Persist provider-discovered competitors:
+ * - the project's own domain is never stored as its own competitor
+ * - new domains insert with source='provider'; existing rows keep
+ *   their source (a manual competitor stays manual) and only get
+ *   their overlap evidence refreshed
+ * - visibility_score is left untouched: competitors_domain reports
+ *   avg_position/intersections, not a 0-100 visibility score, and
+ *   inventing one would be fabricating data. The provider's real
+ *   metrics live in `evidence`.
+ */
+export async function persistCompetitorDiscovery(queryFn: QueryFn, input: CompetitorDiscoveryInput): Promise<CompetitorDiscoveryStats> {
+  let inserted = 0;
+  let refreshed = 0;
+  let skippedSelf = 0;
+  const own = normalizeDomainForMatch(input.ownDomain);
+
+  for (const comp of input.competitors) {
+    const normalized = normalizeDomainForMatch(comp.domain);
+    if (!normalized) continue;
+    if (normalized === own) {
+      skippedSelf++;
+      continue;
+    }
+
+    const evidence = {
+      provider: 'dataforseo',
+      avgPosition: comp.avgPosition ?? null,
+      intersections: comp.intersections ?? null,
+      raw: comp.raw ?? {},
+      syncedAt: new Date().toISOString(),
+    };
+
+    const result = await queryFn(
+      `INSERT INTO competitors (project_id, organization_id, domain, normalized_domain, shared_keywords, source, evidence, last_analyzed_at)
+       VALUES ($1, $2, $3, $4, $5, 'provider', $6, NOW())
+       ON CONFLICT (project_id, normalized_domain)
+       DO UPDATE SET shared_keywords = EXCLUDED.shared_keywords,
+                     evidence = EXCLUDED.evidence,
+                     last_analyzed_at = NOW()
+       RETURNING (xmax = 0) AS was_inserted`,
+      [
+        input.projectId, input.organizationId, comp.domain, normalized,
+        typeof comp.intersections === 'number' ? Math.round(comp.intersections) : null,
+        JSON.stringify(evidence),
+      ],
+    );
+    if (result.rows[0]?.was_inserted) inserted++;
+    else refreshed++;
+  }
+
+  return { discovered: inserted + refreshed, inserted, refreshed, skippedSelf };
 }
