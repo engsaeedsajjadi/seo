@@ -24,6 +24,8 @@ import { apiKeyRepository } from './repositories/api-key.repository.js';
 import { auditLogRepository } from './repositories/audit-log.repository.js';
 import { authService } from './services/auth.service.js';
 import { googleService } from './services/google.service.js';
+import { billingService } from './services/billing.service.js';
+import { isStripeConfigured, isStripeWebhookConfigured, verifyStripeWebhookEvent } from './lib/stripe.js';
 import { generateApiKey } from './lib/encryption.js';
 
 export function createApp() {
@@ -77,7 +79,15 @@ export function createApp() {
     message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many auth attempts, please try again later' } },
   });
 
-  app.use(express.json({ limit: '10mb' }));
+  // The Stripe webhook route verifies the signature over the EXACT raw
+  // bytes Stripe sent (SDK constructEvent) — stash them here, because
+  // the parsed JSON body cannot be re-serialized byte-identically.
+  app.use(express.json({
+    limit: '10mb',
+    verify: (req: any, _res: Response, buf: Buffer) => {
+      req.rawBody = Buffer.from(buf);
+    },
+  }));
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
 
@@ -780,17 +790,28 @@ export function createApp() {
   // BILLING & CREDITS
   // ============================================================
 
-  app.get('/api/v1/billing/plans', (req, res) => {
-    res.json({
-      success: true,
-      data: [
-        { id: 'FREE', name: 'Free', priceMonthly: 0, priceAnnual: 0, limits: { projects: 1, keywords: 10 } },
-        { id: 'STARTER', name: 'Starter', priceMonthly: 29, priceAnnual: 290, limits: { projects: 3, keywords: 100 } },
-        { id: 'PRO', name: 'Professional', priceMonthly: 79, priceAnnual: 790, limits: { projects: 10, keywords: 500 } },
-        { id: 'AGENCY', name: 'Agency', priceMonthly: 199, priceAnnual: 1990, limits: { projects: 50, keywords: 2500 } },
-        { id: 'ENTERPRISE', name: 'Enterprise', priceMonthly: 499, priceAnnual: 4990, limits: { projects: 200, keywords: 10000 } },
-      ],
-    });
+  app.get('/api/v1/billing/plans', async (req, res, next) => {
+    try {
+      // The plans table is the canonical plan source (seeded); prices
+      // and limits shown to users come from the same rows checkout and
+      // the webhook flow read.
+      const plans = await billingService.listPlans();
+      res.json({
+        success: true,
+        data: plans.map((plan) => ({
+          id: plan.id,
+          name: plan.name,
+          description: plan.description,
+          priceMonthly: plan.priceMonthlyCents / 100,
+          priceAnnual: plan.priceAnnualCents / 100,
+          limits: plan.limits,
+          features: plan.features,
+          monthlyCredits: plan.monthlyCredits,
+        })),
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get('/api/v1/billing/subscription', authMiddleware, async (req: AuthRequest, res, next) => {
@@ -801,8 +822,38 @@ export function createApp() {
         data: {
           plan: org?.plan || 'FREE',
           status: org?.subscriptionStatus || 'active',
+          renewalDate: org?.subscriptionCurrentPeriodEnd || null,
+          hasStripeCustomer: !!org?.stripeCustomerId,
+          stripeConfigured: isStripeConfigured(),
         },
       });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/billing/checkout', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const schema = z.object({
+        planId: z.enum(['STARTER', 'PRO', 'AGENCY', 'ENTERPRISE']),
+        interval: z.enum(['month', 'year']).default('month'),
+      });
+      const { planId, interval } = schema.parse(req.body);
+      const result = await billingService.createCheckoutSession({
+        organizationId: req.organizationId!,
+        planId,
+        interval,
+      });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/billing/portal', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const result = await billingService.createPortalSession({ organizationId: req.organizationId! });
+      res.json({ success: true, data: result });
     } catch (error) {
       next(error);
     }
@@ -1600,36 +1651,44 @@ export function createApp() {
   });
 
   // ============================================================
-  // BILLING — Stripe webhook with sig verification + idempotency
+  // BILLING — Stripe webhook: REAL signature verification
+  // (SDK constructEvent over the raw body) + idempotent apply.
+  // Without a configured webhook secret the endpoint rejects every
+  // delivery — an event is never processed unverified.
   // ============================================================
 
-  app.post('/api/v1/billing/webhook', async (req, res, next) => {
+  app.post('/api/v1/billing/webhook', async (req, res) => {
+    if (!isStripeWebhookConfigured()) {
+      return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Stripe webhook secret not configured — deliveries are rejected, never processed unverified' } });
+    }
+
+    const sig = req.headers['stripe-signature'] as string | undefined;
+    if (!sig) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Missing Stripe-Signature header' } });
+    }
+
+    const rawBody = (req as any).rawBody as Buffer | undefined;
+    if (!rawBody || rawBody.length === 0) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Raw request body unavailable for signature verification' } });
+    }
+
+    let event;
     try {
-      const sig = req.headers['stripe-signature'] as string;
-      if (!sig) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Missing Stripe signature' } });
+      event = verifyStripeWebhookEvent(rawBody, sig, config.providers.stripe.webhookSecret, config.providers.stripe.secretKey);
+    } catch (error: any) {
+      // Bad signature / tampered payload / stale timestamp: reject
+      // with NO state change (nothing is recorded or applied).
+      return res.status(400).json({ success: false, error: { code: 'INVALID_SIGNATURE', message: error.message } });
+    }
 
-      if (!config.providers.stripe.webhookSecret) {
-        return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Stripe webhook secret not configured' } });
-      }
-
-      // Real Stripe webhook verification would use stripe.webhooks.constructEvent
-      // For production reality, we verify signature format and idempotency
-      const eventId = (req.body as any).id || `evt_${Date.now()}`;
-      const { query } = await import('./db/client.js');
-
-      const existing = await query(`SELECT id FROM stripe_events WHERE event_id = $1`, [eventId]);
-      if (existing.rows.length > 0) {
-        return res.json({ success: true, data: { message: 'Event already processed — idempotent' } });
-      }
-
-      await query(`INSERT INTO stripe_events (event_id, type, data) VALUES ($1, $2, $3) ON CONFLICT (event_id) DO NOTHING`, [eventId, (req.body as any).type || 'unknown', JSON.stringify(req.body)]);
-
-      // Process event: checkout.session.completed, customer.subscription.updated, etc
-      console.log(JSON.stringify({ level: 'info', message: 'Stripe webhook received', eventId, type: (req.body as any).type }));
-
-      res.json({ success: true, data: { received: true, eventId } });
-    } catch (error) {
-      next(error);
+    try {
+      const result = await billingService.processStripeEvent(event);
+      res.json({ success: true, data: { received: true, eventId: event.id, ...result } });
+    } catch (error: any) {
+      // Processing failure: the event stays unprocessed in
+      // stripe_events and Stripe redelivers on 5xx.
+      console.error(JSON.stringify({ level: 'error', message: 'Stripe webhook processing failed', eventId: event.id, type: event.type, error: error.message }));
+      res.status(500).json({ success: false, error: { code: 'WEBHOOK_PROCESSING_FAILED', message: 'Event recorded but processing failed — will be retried on redelivery' } });
     }
   });
 

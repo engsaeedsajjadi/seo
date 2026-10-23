@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS organizations (
   stripe_customer_id TEXT,
   stripe_subscription_id TEXT,
   subscription_status VARCHAR(20) DEFAULT 'active',
+  subscription_current_period_end TIMESTAMPTZ,
   settings JSONB DEFAULT '{}',
   white_label JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -638,6 +639,9 @@ CREATE TABLE IF NOT EXISTS plans (
   limits JSONB NOT NULL,
   features JSONB DEFAULT '[]',
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  stripe_price_id_monthly TEXT,
+  stripe_price_id_annual TEXT,
+  monthly_credits INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -1405,4 +1409,24 @@ END $$;
 DO $$ BEGIN
   CREATE UNIQUE INDEX IF NOT EXISTS uq_ga4_metrics_project_date_channel ON ga4_metrics(project_id, date, channel);
   CREATE UNIQUE INDEX IF NOT EXISTS uq_integrations_org_provider ON integrations(organization_id, provider) WHERE project_id IS NULL;
+END $$;
+
+-- Stripe billing (phase 5): plan → Stripe price mapping + monthly credit
+-- allotment live on the plans rows (the DB is the canonical plan source);
+-- organizations gain the subscription renewal timestamp the webhook flow
+-- maintains. Idempotent DO block for already-baselined DBs; the CREATE
+-- TABLE definitions above already carry these columns for fresh DBs.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='plans' AND column_name='stripe_price_id_monthly') THEN
+    ALTER TABLE plans ADD COLUMN stripe_price_id_monthly TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='plans' AND column_name='stripe_price_id_annual') THEN
+    ALTER TABLE plans ADD COLUMN stripe_price_id_annual TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='plans' AND column_name='monthly_credits') THEN
+    ALTER TABLE plans ADD COLUMN monthly_credits INTEGER NOT NULL DEFAULT 0;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='organizations' AND column_name='subscription_current_period_end') THEN
+    ALTER TABLE organizations ADD COLUMN subscription_current_period_end TIMESTAMPTZ;
+  END IF;
 END $$;

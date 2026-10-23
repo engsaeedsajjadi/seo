@@ -13,6 +13,7 @@ export interface Organization {
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;
   subscriptionStatus?: string;
+  subscriptionCurrentPeriodEnd?: Date | null;
   ownerId: string;
   settings?: any;
   whiteLabel?: any;
@@ -34,7 +35,7 @@ export const organizationRepository = {
   async findById(id: string): Promise<Organization | null> {
     const result = await query(
       `SELECT id, name, slug, plan, stripe_customer_id as "stripeCustomerId", 
-              stripe_subscription_id as "stripeSubscriptionId", subscription_status as "subscriptionStatus",
+              stripe_subscription_id as "stripeSubscriptionId", subscription_status as "subscriptionStatus", subscription_current_period_end as "subscriptionCurrentPeriodEnd",
               owner_id as "ownerId", settings, white_label as "whiteLabel",
               created_at as "createdAt", updated_at as "updatedAt", deleted_at as "deletedAt"
        FROM organizations WHERE id = $1 AND deleted_at IS NULL`,
@@ -46,7 +47,7 @@ export const organizationRepository = {
   async findBySlug(slug: string): Promise<Organization | null> {
     const result = await query(
       `SELECT id, name, slug, plan, stripe_customer_id as "stripeCustomerId", 
-              stripe_subscription_id as "stripeSubscriptionId", subscription_status as "subscriptionStatus",
+              stripe_subscription_id as "stripeSubscriptionId", subscription_status as "subscriptionStatus", subscription_current_period_end as "subscriptionCurrentPeriodEnd",
               owner_id as "ownerId", settings, white_label as "whiteLabel",
               created_at as "createdAt", updated_at as "updatedAt"
        FROM organizations WHERE slug = $1 AND deleted_at IS NULL`,
@@ -58,7 +59,7 @@ export const organizationRepository = {
   async findByUserId(userId: string): Promise<Organization[]> {
     const result = await query(
       `SELECT o.id, o.name, o.slug, o.plan, o.stripe_customer_id as "stripeCustomerId",
-              o.stripe_subscription_id as "stripeSubscriptionId", o.subscription_status as "subscriptionStatus",
+              o.stripe_subscription_id as "stripeSubscriptionId", o.subscription_status as "subscriptionStatus", o.subscription_current_period_end as "subscriptionCurrentPeriodEnd",
               o.owner_id as "ownerId", o.settings, o.white_label as "whiteLabel",
               o.created_at as "createdAt", o.updated_at as "updatedAt"
        FROM organizations o
@@ -80,7 +81,7 @@ export const organizationRepository = {
     return result.rows[0];
   },
 
-  async update(id: string, data: Partial<{ name: string; plan: string; settings: any; whiteLabel: any; stripeCustomerId: string; stripeSubscriptionId: string; subscriptionStatus: string }>): Promise<Organization | null> {
+  async update(id: string, data: Partial<{ name: string; plan: string; settings: any; whiteLabel: any; stripeCustomerId: string; stripeSubscriptionId: string; subscriptionStatus: string; subscriptionCurrentPeriodEnd: Date | null }>): Promise<Organization | null> {
     const fields: string[] = [];
     const values: any[] = [];
     let idx = 1;
@@ -112,6 +113,10 @@ export const organizationRepository = {
     if (data.subscriptionStatus !== undefined) {
       fields.push(`subscription_status = $${idx++}`);
       values.push(data.subscriptionStatus);
+    }
+    if (data.subscriptionCurrentPeriodEnd !== undefined) {
+      fields.push(`subscription_current_period_end = $${idx++}`);
+      values.push(data.subscriptionCurrentPeriodEnd);
     }
 
     if (fields.length === 0) return this.findById(id);

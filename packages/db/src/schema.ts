@@ -40,6 +40,7 @@ export const organizations = pgTable('organizations', {
   stripeCustomerId: text('stripe_customer_id'),
   stripeSubscriptionId: text('stripe_subscription_id'),
   subscriptionStatus: varchar('subscription_status', { length: 20 }).default('active'),
+  subscriptionCurrentPeriodEnd: timestamp('subscription_current_period_end'),
   trialEndsAt: timestamp('trial_ends_at'),
   settings: jsonb('settings').default({}),
   whiteLabel: jsonb('white_label').default({}),
@@ -625,6 +626,9 @@ export const plans = pgTable('plans', {
   limits: jsonb('limits').notNull(),
   features: jsonb('features').default([]),
   isActive: boolean('is_active').default(true).notNull(),
+  stripePriceIdMonthly: text('stripe_price_id_monthly'),
+  stripePriceIdAnnual: text('stripe_price_id_annual'),
+  monthlyCredits: integer('monthly_credits').default(0).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

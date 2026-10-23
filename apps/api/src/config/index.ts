@@ -85,6 +85,10 @@ export const config = {
       secretKey: getEnv('STRIPE_SECRET_KEY', false, ''),
       webhookSecret: getEnv('STRIPE_WEBHOOK_SECRET', false, ''),
       publishableKey: getEnv('STRIPE_PUBLISHABLE_KEY', false, ''),
+      // API base override — production always uses Stripe's default;
+      // the override exists so tests can point the client at a local
+      // mock of api.stripe.com.
+      apiBase: getEnv('STRIPE_API_BASE_URL', false, 'https://api.stripe.com'),
     },
     s3: {
       endpoint: getEnv('S3_ENDPOINT', false, ''),

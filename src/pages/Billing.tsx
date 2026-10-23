@@ -14,12 +14,23 @@ interface CreditWallet {
   totalConsumed: number;
 }
 
+interface SubscriptionState {
+  plan: string;
+  status: string;
+  renewalDate: string | null;
+  hasStripeCustomer: boolean;
+  stripeConfigured: boolean;
+}
+
 export default function Billing() {
   const { state } = useAppState();
   const currentPlan = state.currentOrg?.plan || 'FREE';
   const [credits, setCredits] = useState<CreditWallet | null>(null);
   const [loadingCredits, setLoadingCredits] = useState(true);
   const [providerStatus, setProviderStatus] = useState<Record<string, string>>({});
+  const [subscription, setSubscription] = useState<SubscriptionState | null>(null);
+  const [checkoutTier, setCheckoutTier] = useState<string | null>(null);
+  const [billingError, setBillingError] = useState<string | null>(null);
   const stripeConfigured = providerStatus.stripe === 'connected';
 
   useEffect(() => {
@@ -32,6 +43,10 @@ export default function Billing() {
         const resStatus = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/integrations/status`, { credentials: 'include' });
         const jsonStatus = await resStatus.json();
         if (jsonStatus.success) setProviderStatus(jsonStatus.data);
+
+        const resSub = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/billing/subscription`, { credentials: 'include' });
+        const jsonSub = await resSub.json();
+        if (jsonSub.success) setSubscription(jsonSub.data);
       } catch (e) {
         console.error(e);
       } finally {
@@ -40,6 +55,51 @@ export default function Billing() {
     }
     load();
   }, []);
+
+  // Real checkout: the API creates a Stripe Checkout Session and we
+  // redirect the browser to Stripe's hosted page.
+  async function startCheckout(tier: string) {
+    setBillingError(null);
+    setCheckoutTier(tier);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/billing/checkout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId: tier, interval: 'month' }),
+      });
+      const json = await res.json();
+      if (json.success && json.data?.url) {
+        window.location.href = json.data.url;
+        return;
+      }
+      setBillingError(json.error?.message || 'خطا در شروع پرداخت');
+    } catch (e) {
+      setBillingError('خطا در اتصال به سرور پرداخت');
+    } finally {
+      setCheckoutTier(null);
+    }
+  }
+
+  async function openPortal() {
+    setBillingError(null);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/billing/portal`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const json = await res.json();
+      if (json.success && json.data?.url) {
+        window.location.href = json.data.url;
+        return;
+      }
+      setBillingError(json.error?.message || 'خطا در باز کردن پورتال مشتری');
+    } catch (e) {
+      setBillingError('خطا در اتصال به سرور پرداخت');
+    }
+  }
 
   const plans: { tier: PlanTier; price: string; priceToman: string; features: string[]; popular?: boolean }[] = [
     { tier: 'FREE', price: '$0', priceToman: '۰ تومان', features: [`${toPersianDigits(1)} پروژه — محدودیت واقعی`, `${toPersianDigits(50)} کلمه کلیدی — محدودیت واقعی`, `${toPersianDigits(100)} صفحه خزش شده — واقعی`, `${toPersianDigits(30)} بررسی رتبه — واقعی`, `${toPersianDigits(5)} عملیات هوش مصنوعی — هزینه واقعی`, `${toPersianDigits(2)} گزارش — واقعی`, `${toPersianDigits(1)} کاربر — واقعی`] },
@@ -77,6 +137,20 @@ export default function Billing() {
               <p className="text-xs font-medium text-brand-300 uppercase tracking-wider font-vazirmatn-medium">پلن فعلی — واقعی از organizations.plan</p>
               <h2 className="text-2xl font-bold text-white mt-1 font-vazirmatn-bold">{getPlanName(currentPlan)} — واقعی</h2>
               <p className="text-xs text-slate-400 mt-1 font-vazirmatn-light">محدودیت‌ها: {toPersianDigits(PLAN_LIMITS[currentPlan].projects)} پروژه، {toPersianDigits(PLAN_LIMITS[currentPlan].keywords)} کلمه کلیدی — اجرای واقعی در projectRepository.countByOrganization + keywordRepository.countByOrganization</p>
+              {subscription && (
+                <p className="text-xs text-slate-400 mt-1 font-vazirmatn-light">
+                  وضعیت اشتراک: {subscription.status}
+                  {subscription.renewalDate && <> — تمدید بعدی: {formatPersianDate(new Date(subscription.renewalDate), { format: 'medium' })}</>}
+                </p>
+              )}
+              {subscription?.hasStripeCustomer && (
+                <button
+                  onClick={openPortal}
+                  className="mt-3 px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-3/60 hover:bg-surface-3 text-white font-vazirmatn-medium"
+                >
+                  مدیریت اشتراک و فاکتورها — پورتال Stripe
+                </button>
+              )}
             </div>
             <Crown className="w-6 h-6 text-brand-400" />
           </div>
@@ -114,20 +188,27 @@ export default function Billing() {
               </ul>
               <button
                 aria-label={plan.tier === currentPlan ? 'پلن فعلی' : 'ارتقا'}
+                onClick={() => { if (plan.tier !== currentPlan && stripeConfigured) startCheckout(plan.tier); }}
                 className={`mt-4 w-full px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1 font-vazirmatn-medium ${
                   plan.tier === currentPlan
                     ? 'bg-brand-600/20 text-brand-400 cursor-default'
                     : stripeConfigured ? 'bg-brand-600 hover:bg-brand-700 text-white' : 'bg-surface-3/50 text-slate-500 cursor-not-allowed'
                 }`}
-                disabled={plan.tier === currentPlan || !stripeConfigured}
+                disabled={plan.tier === currentPlan || !stripeConfigured || checkoutTier !== null}
               >
-                {plan.tier === currentPlan ? 'پلن فعلی — واقعی' : !stripeConfigured ? 'نیاز به Stripe — واقعی ۵۰۳' : 'ارتقا — پرداخت واقعی Stripe'}
+                {plan.tier === currentPlan ? 'پلن فعلی — واقعی' : !stripeConfigured ? 'نیاز به Stripe — واقعی ۵۰۳' : checkoutTier === plan.tier ? 'در حال انتقال به Stripe…' : 'ارتقا — پرداخت واقعی Stripe'}
                 {plan.tier !== currentPlan && stripeConfigured && <ArrowRight className="w-3 h-3 rotate-180" />}
               </button>
             </div>
           ))}
         </div>
         <p className="text-[11px] text-slate-500 mt-3 font-vazirmatn-light">جریان واقعی: GET /billing/plans → ۵ پلن با محدودیت‌ها، GET /billing/subscription → پلن/وضعیت سازمان، وب‌هوک Stripe POST /billing/webhook با تأیید امضا + idempotency stripe_events + لاگ ممیزی + اعطای اعتبار اتمیک FOR UPDATE — صورتحساب واقعی</p>
+        {billingError && (
+          <div className="mt-3 bg-surface-2 border border-accent-red/40 rounded-xl p-3 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-accent-red flex-shrink-0" />
+            <p className="text-xs text-white font-vazirmatn-regular">{billingError}</p>
+          </div>
+        )}
       </div>
 
       {/* Credits — Persian */}

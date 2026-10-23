@@ -17,23 +17,23 @@ async function seed() {
     // Seed plans
     console.log('📦 Seeding plans...');
     await query(`
-      INSERT INTO plans (id, name, description, price_monthly_cents, price_annual_cents, limits, features, is_active)
-      VALUES 
-        ('FREE', 'Free', 'Perfect for trying RankForge', 0, 0, 
+      INSERT INTO plans (id, name, description, price_monthly_cents, price_annual_cents, limits, features, is_active, monthly_credits)
+      VALUES
+        ('FREE', 'Free', 'Perfect for trying RankForge', 0, 0,
          '{"projects": 1, "keywords": 10, "crawledPages": 100, "rankChecks": 100, "aiOperations": 10, "reports": 5, "users": 1, "apiRequests": 100, "competitors": 2, "backlinks": 100, "crawlDepth": 2, "historyMonths": 1}',
-         '["1 Project", "10 Keywords", "Basic Crawl", "Community Support"]', true),
+         '["1 Project", "10 Keywords", "Basic Crawl", "Community Support"]', true, 0),
         ('STARTER', 'Starter', 'For small websites and bloggers', 2900, 29000,
          '{"projects": 3, "keywords": 100, "crawledPages": 1000, "rankChecks": 1000, "aiOperations": 100, "reports": 20, "users": 2, "apiRequests": 1000, "competitors": 5, "backlinks": 1000, "crawlDepth": 3, "historyMonths": 3}',
-         '["3 Projects", "100 Keywords", "GSC Integration", "Email Reports", "API Access"]', true),
+         '["3 Projects", "100 Keywords", "GSC Integration", "Email Reports", "API Access"]', true, 1000),
         ('PRO', 'Professional', 'For growing businesses and SEO pros', 7900, 79000,
          '{"projects": 10, "keywords": 500, "crawledPages": 10000, "rankChecks": 5000, "aiOperations": 500, "reports": 100, "users": 5, "apiRequests": 5000, "competitors": 10, "backlinks": 10000, "crawlDepth": 5, "historyMonths": 12}',
-         '["10 Projects", "500 Keywords", "AI Content", "GEO/AEO Tracking", "White-label Reports", "Priority Support"]', true),
+         '["10 Projects", "500 Keywords", "AI Content", "GEO/AEO Tracking", "White-label Reports", "Priority Support"]', true, 5000),
         ('AGENCY', 'Agency', 'For agencies managing multiple clients', 19900, 199000,
          '{"projects": 50, "keywords": 2500, "crawledPages": 50000, "rankChecks": 25000, "aiOperations": 2500, "reports": 500, "users": 20, "apiRequests": 25000, "competitors": 25, "backlinks": 50000, "crawlDepth": 10, "historyMonths": 24}',
-         '["50 Projects", "2500 Keywords", "Agency Mode", "Client Portal", "White-label", "Team Management", "API + Webhooks"]', true),
+         '["50 Projects", "2500 Keywords", "Agency Mode", "Client Portal", "White-label", "Team Management", "API + Webhooks"]', true, 25000),
         ('ENTERPRISE', 'Enterprise', 'For large organizations with custom needs', 49900, 499000,
          '{"projects": 200, "keywords": 10000, "crawledPages": 200000, "rankChecks": 100000, "aiOperations": 10000, "reports": 2000, "users": 100, "apiRequests": 100000, "competitors": 100, "backlinks": 200000, "crawlDepth": 15, "historyMonths": 36}',
-         '["200 Projects", "Unlimited Keywords", "SSO", "Custom Integrations", "Dedicated Support", "SLA", "On-premise Option"]', true)
+         '["200 Projects", "Unlimited Keywords", "SSO", "Custom Integrations", "Dedicated Support", "SLA", "On-premise Option"]', true, 100000)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         description = EXCLUDED.description,
@@ -41,7 +41,8 @@ async function seed() {
         price_annual_cents = EXCLUDED.price_annual_cents,
         limits = EXCLUDED.limits,
         features = EXCLUDED.features,
-        is_active = EXCLUDED.is_active
+        is_active = EXCLUDED.is_active,
+        monthly_credits = EXCLUDED.monthly_credits
     `);
     console.log('✅ Plans seeded');
 
