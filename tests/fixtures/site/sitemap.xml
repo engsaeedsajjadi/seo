@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.w3.org/2000/01/sitemap">
+  <url><loc>http://localhost:3002/</loc></url>
+  <url><loc>http://localhost:3002/about.html</loc></url>
+  <url><loc>http://localhost:3002/products.html</loc></url>
+  <url><loc>http://localhost:3002/contact.html</loc></url>
+</urlset>
