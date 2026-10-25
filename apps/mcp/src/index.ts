@@ -216,8 +216,8 @@ const tools: MCPTool[] = [
   },
   {
     name: 'generate_report',
-    description: 'Generate a report for a project (tenant-isolated)',
-    inputSchema: { type: 'object', properties: { projectId: { type: 'string' }, type: { type: 'string' }, format: { type: 'string' } }, required: ['projectId', 'type'] },
+    description: 'Generate a tenant-isolated SEO report as JSON, CSV or printable HTML',
+    inputSchema: { type: 'object', properties: { projectId: { type: 'string' }, type: { type: 'string', enum: ['seo','technical','keywords','rankings','competitors','backlinks','gsc','ga4','ai_visibility','executive','agency'] }, format: { type: 'string', enum: ['json','csv','html'] } }, required: ['projectId'] },
     handler: async (params, context) => {
       const projectCheck = await query('SELECT id FROM projects WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL', [params.projectId, context.organizationId]);
       if (projectCheck.rows.length === 0) throw new Error('Project not found or access denied');

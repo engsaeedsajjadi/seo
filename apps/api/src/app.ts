@@ -4,6 +4,7 @@
  * Separates app creation from server bootstrap
  */
 
+import { exportReport } from './lib/report-export.js';
 import bcrypt from 'bcryptjs';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
@@ -1438,7 +1439,7 @@ export function createApp() {
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
 
       const { query } = await import('./db/client.js');
-      const result = await query(`SELECT id, type, title, format, status, storage_key as "storageKey", download_url as "downloadUrl", data_snapshot as "dataSnapshot", created_at as "createdAt", completed_at as "completedAt" FROM reports WHERE project_id = $1 AND organization_id = $2 ORDER BY created_at DESC`, [project.id, req.organizationId!]);
+      const result = await query(`SELECT id, project_id as "projectId", type, title, format, status, storage_key as "storageKey", download_url as "downloadUrl", data_snapshot as "dataSnapshot", created_at as "createdAt", completed_at as "completedAt" FROM reports WHERE project_id = $1 AND organization_id = $2 ORDER BY created_at DESC`, [project.id, req.organizationId!]);
 
       res.json({ success: true, data: result.rows });
     } catch (error) {
@@ -1446,29 +1447,53 @@ export function createApp() {
     }
   });
 
+  app.get('/api/v1/projects/:projectId/reports/:reportId/download', authMiddleware, async(req:AuthRequest,res,next)=>{
+    try {
+      const result=await query('SELECT status,format,data_snapshot FROM reports WHERE id=$1 AND project_id=$2 AND organization_id=$3',
+        [req.params.reportId,req.params.projectId,req.organizationId!]);
+      const report=result.rows[0];
+      if(!report)throw new ApiError(404,'NOT_FOUND','Report not found');
+      if(report.status!=='completed' || !report.data_snapshot)throw new ApiError(409,'CONFLICT','Report is not ready');
+      const format=z.enum(['json','csv','html']).parse(req.query.format || report.format);
+      const output=exportReport(report.data_snapshot,format);
+      res.setHeader('Content-Type',output.contentType);
+      res.setHeader('Content-Disposition',`attachment; filename="report-${req.params.reportId}.${format}"`);
+      res.setHeader('Cache-Control','private, no-store');
+      res.send(output.body);
+    }catch(error){next(error);}
+  });
+
   app.post('/api/v1/projects/:projectId/reports', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
 
-      const schema = z.object({ type: z.string().min(1), format: z.enum(['pdf','html','csv','json']).default('json'), title: z.string().optional() });
+      const schema = z.object({ type: z.enum(['seo','technical','keywords','rankings','competitors','backlinks','gsc','ga4','ai_visibility','executive','agency']), format: z.enum(['html','csv','json']).default('json'), title: z.string().trim().min(1).max(255).optional() });
       const { type, format, title } = schema.parse(req.body);
 
-      const { query } = await import('./db/client.js');
-      const reportResult = await query(
-        `INSERT INTO reports (organization_id, project_id, type, title, format, status, config) VALUES ($1, $2, $3, $4, $5, 'pending', $6) RETURNING id, type, title, format, status, created_at as "createdAt"`,
-        [req.organizationId!, project.id, type, title || `${type} report for ${project.domain}`, format, JSON.stringify({ requestedBy: req.userId })]
-      );
+      const data=await transaction(async()=>{
+        const organization=await query('SELECT plan FROM organizations WHERE id=$1 FOR UPDATE',[req.organizationId!]);
+        const plan=await query('SELECT limits FROM plans WHERE id=$1',[organization.rows[0].plan]);
+        const limit=Number(plan.rows[0]?.limits?.reports);
+        if(!Number.isFinite(limit))throw new ApiError(503,'SERVICE_UNAVAILABLE','Report limit is not configured');
+        const used=await query("SELECT COUNT(*)::int AS total FROM reports WHERE organization_id=$1 AND created_at>=date_trunc('month',NOW())",[req.organizationId!]);
+        if(limit>=0 && used.rows[0].total>=limit)throw new ApiError(403,'LIMIT_REACHED','Monthly report limit reached');
+        const reportResult = await query(
+          `INSERT INTO reports (organization_id, project_id, type, title, format, status, config) VALUES ($1, $2, $3, $4, $5, 'pending', $6) RETURNING id, project_id as "projectId", type, title, format, status, created_at as "createdAt"`,
+          [req.organizationId!, project.id, type, title || `${type} report for ${project.domain}`, format, JSON.stringify({ requestedBy: req.userId })]
+        );
 
-      const job = await jobRepository.create({
-        organizationId: req.organizationId!,
-        projectId: project.id,
-        type: 'REPORT_GENERATION',
-        payload: { reportId: reportResult.rows[0].id, type, format },
-        idempotencyKey: `report_${reportResult.rows[0].id}`,
+        const job = await jobRepository.create({
+          organizationId: req.organizationId!,
+          projectId: project.id,
+          type: 'REPORT_GENERATION',
+          payload: { reportId: reportResult.rows[0].id, type, format },
+          idempotencyKey: `report_${reportResult.rows[0].id}`,
+        });
+
+        return {report:reportResult.rows[0],job};
       });
-
-      res.status(201).json({ success: true, data: { report: reportResult.rows[0], job, message: 'Report generation queued — real data from persisted project' } });
+      res.status(201).json({success:true,data});
     } catch (error: any) {
       if (error.name === 'ZodError') {
         return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });

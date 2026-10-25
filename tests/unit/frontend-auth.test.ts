@@ -23,6 +23,9 @@ try {
   check(requests.at(-1)?.auth==='Bearer stored-token','raw response transport attaches bearer token');
   await assert.rejects(()=>authenticatedFetch('https://untrusted.test/api/v1/users'));
   checks++;
+  globalThis.fetch=async()=>ok({report:{id:'persisted-report',status:'pending'},job:{id:'queued-job'}});
+  const report=await api.generateReport('project','seo','json');
+  check(report.success && report.data.id==='persisted-report','report client unwraps the persisted report instead of treating the job envelope as a report');
   let refreshes=0;
   globalThis.fetch=async(input:any,options:any)=>{
     if(String(input).endsWith('/auth/refresh')) { refreshes++;await new Promise(r=>setTimeout(r,5));return ok({token:'rotated-token'}); }

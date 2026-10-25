@@ -128,7 +128,7 @@ function getPool(): Pool {
     // postgres:16-alpine compose service) does not serve SSL, so forcing
     // SSL in production made the shipped stack unable to reach its own
     // database. Managed DBs that require SSL set DATABASE_SSL=true.
-    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: true } : false,
     max: 10,
   });
   pool.on('error', (err) => {
@@ -2285,13 +2285,13 @@ class Worker {
     const project = projectResult.rows[0];
 
     // Fetch latest crawl
-    const crawlResult = await query(`SELECT id, status, crawled_pages, total_pages FROM crawl_runs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`, [job.projectId]);
+    const crawlResult = await query(`SELECT id, status, crawled_pages, total_pages FROM crawl_runs WHERE project_id = $1 AND organization_id=$2 ORDER BY created_at DESC LIMIT 1`, [job.projectId,job.organizationId]);
     
     // Fetch findings
-    const findingsResult = await query(`SELECT rule_id, severity, category, title, affected_urls FROM audit_findings WHERE project_id = $1 ORDER BY severity LIMIT 100`, [job.projectId]);
+    const findingsResult = await query(`SELECT rule_id, severity, category, title, affected_urls FROM audit_findings WHERE project_id = $1 AND organization_id=$2 ORDER BY severity LIMIT 100`, [job.projectId,job.organizationId]);
 
     // Fetch keywords
-    const keywordsResult = await query(`SELECT term, volume, difficulty FROM keywords WHERE project_id = $1 LIMIT 100`, [job.projectId]);
+    const keywordsResult = await query(`SELECT COALESCE(keyword,term) AS term, COALESCE(search_volume,volume) AS volume, difficulty FROM keywords WHERE project_id = $1 AND organization_id=$2 LIMIT 100`, [job.projectId,job.organizationId]);
 
     // Build report from real data only — no fake
     const reportData = {
@@ -2312,15 +2312,15 @@ class Worker {
         dataforseo: config.providers.dataforseo.login ? 'configured' : 'not_configured',
         pagespeed: config.providers.pagespeed ? 'configured' : 'not_configured',
       },
-      note: 'Report built from real persisted data only. Integrations show not_configured when credentials missing.',
+      note: 'گزارش بر اساس اطلاعات ثبت‌شدهٔ پروژه در زمان تهیه تنظیم شده است.',
     };
 
     // Persist report
     const reportId = job.payload?.reportId;
     if (reportId) {
       await query(
-        `UPDATE reports SET status = 'completed', data_snapshot = $2, completed_at = NOW() WHERE id = $1`,
-        [reportId, JSON.stringify(reportData)]
+        `UPDATE reports SET status = 'completed', data_snapshot = $2, completed_at = NOW() WHERE id = $1 AND organization_id=$3 AND project_id=$4`,
+        [reportId, JSON.stringify(reportData),job.organizationId,job.projectId]
       );
     } else {
       // Create report if not exists

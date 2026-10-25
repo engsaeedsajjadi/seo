@@ -11,7 +11,7 @@ export async function callApiTool(tool: string, params: Record<string, unknown>,
     get_competitors: {path:`/projects/${projectId}/competitors`,key:'competitors'},
     get_backlinks: {path:`/projects/${projectId}/backlinks`,key:'backlinks'},
     run_crawl: {path:`/projects/${projectId}/crawl`,method:'POST',body:{maxPages:params.maxPages || 20}},
-    generate_report: {path:`/projects/${projectId}/reports`,method:'POST',body:{type:params.type || 'full',format:params.format || 'pdf'}},
+    generate_report: {path:`/projects/${projectId}/reports`,method:'POST',body:{type:params.type || 'seo',format:params.format || 'json'}},
     get_provider_status: {path:'/integrations/status'},
   };
   const route=routes[tool];

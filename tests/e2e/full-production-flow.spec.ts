@@ -296,60 +296,43 @@ test.describe('FULL Production Flow - Real Evidence Chain', () => {
     }
   });
 
-  test('8. SEO Audit → Findings → Score → Real Rules (No Hardcoded)', async ({ request }) => {
-    // Check audit code has real rules, not hardcoded scores
-    const fs = await import('fs');
-    const auditCode = fs.readFileSync('apps/api/src/services/audit.service.ts', 'utf-8');
-    
-    // Must have real audit rules
-    expect(auditCode).toContain('missing-title');
-    expect(auditCode).toContain('duplicate-title');
-    expect(auditCode).toContain('broken-link');
-    
-    // Must NOT have hardcoded fake scores in a suspicious way
-    // Real score is calculated from findings
-    const hasRealScoring = auditCode.includes('score') && (auditCode.includes('findings') || auditCode.includes('weight'));
-    expect(hasRealScoring).toBeTruthy();
-    
-    console.log('[FULL FLOW] ✅ Audit real rules: missing-title, duplicate-title, broken-link + real scoring');
+  async function ensureProject(request: any) {
+    expect(authToken,'native test signup must return a session').toBeTruthy();
+    if(projectId)return;
+    const response=await request.post(`${API_URL}/api/v1/projects`,{headers:{Authorization:`Bearer ${authToken}`},data:{name:'Audit test',domain:`audit-${Date.now()}.example.test`}});
+    expect(response.status()).toBe(201);
+    projectId=(await response.json()).data.id;
+  }
 
-    // If we have project, try to get audit
-    if (projectId && authToken) {
-      const auditRes = await request.get(`${API_URL}/api/v1/projects/${projectId}/audit`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      const auditJson = await auditRes.json();
-      console.log(`[FULL FLOW] Audit endpoint: ${auditRes.status()} ${JSON.stringify(auditJson).substring(0, 200)}`);
-    }
+  test('8. Persisted audit findings and score endpoints',async({request})=>{
+    test.skip(!DATABASE_URL,'requires a native test database');
+    await ensureProject(request);
+    const headers={Authorization:`Bearer ${authToken}`};
+    const findings=await request.get(`${API_URL}/api/v1/projects/${projectId}/audit/findings`,{headers});
+    expect(findings.status()).toBe(200);expect(Array.isArray((await findings.json()).data)).toBeTruthy();
+    const score=await request.get(`${API_URL}/api/v1/projects/${projectId}/audit/score`,{headers});
+    expect(score.status()).toBe(200);
+    const result=(await score.json()).data;
+    expect(result.overall).toBeGreaterThanOrEqual(0);expect(result.overall).toBeLessThanOrEqual(100);
+    expect(result.findingsCount).toBeGreaterThanOrEqual(0);
   });
 
-  test('9. Report → Real DB → No Fake Data → Persian', async ({ request }) => {
-    if (!projectId || !authToken) {
-      console.log('[FULL FLOW] ⚠️  No project - checking report code for real DB usage');
-      
-      const fs = await import('fs');
-      const reportCode = fs.readFileSync('apps/api/src/services/report.service.ts', 'utf-8');
-      expect(reportCode).toContain('SELECT');
-      expect(reportCode).not.toContain('mockData');
-      expect(reportCode).not.toContain('fakeReport');
-      console.log('[FULL FLOW] ✅ Report from real DB, no fake');
-      return;
-    }
-
-    const reportRes = await request.get(`${API_URL}/api/v1/projects/${projectId}/reports`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    
-    const json = await reportRes.json();
-    console.log(`[FULL FLOW] Report: ${reportRes.status()} ${JSON.stringify(json).substring(0, 200)}`);
-    
-    if (reportRes.ok()) {
-      expect(json.success).toBeTruthy();
-      console.log('[FULL FLOW] ✅ Report → Real DB → No fake data');
-    } else {
-      console.log(`[FULL FLOW] ✅ Report error handling: ${json.error?.code}`);
-      expect(json.success).toBeFalsy();
-    }
+  test('9. Report is persisted with its queued job',async({request})=>{
+    test.skip(!DATABASE_URL,'requires a native test database');
+    await ensureProject(request);
+    const headers={Authorization:`Bearer ${authToken}`};
+    const response=await request.post(`${API_URL}/api/v1/projects/${projectId}/reports`,{headers,data:{type:'seo',format:'json'}});
+    expect(response.status()).toBe(201);
+    const created=(await response.json()).data;
+    expect(created.report.id).toBeTruthy();expect(created.job.id).toBeTruthy();
+    const listed=await request.get(`${API_URL}/api/v1/projects/${projectId}/reports`,{headers});
+    expect(listed.status()).toBe(200);
+    expect((await listed.json()).data.some((report:any)=>report.id===created.report.id)).toBeTruthy();
+    const {Pool}=await import('pg');const pool=new Pool({connectionString:DATABASE_URL});
+    try {
+      const row=await pool.query('SELECT organization_id,project_id,status FROM reports WHERE id=$1',[created.report.id]);
+      expect(row.rows[0].organization_id).toBe(orgId);expect(row.rows[0].project_id).toBe(projectId);expect(row.rows[0].status).toBe('pending');
+    } finally {await pool.end();}
   });
 
   test('10. Frontend → Persian → Toman/Rial → Calendar → Final Verification', async ({ page }) => {

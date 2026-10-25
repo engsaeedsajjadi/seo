@@ -46,7 +46,7 @@ if(!nativeUrl){
     },release};
   };
 }
-await db.query(`INSERT INTO plans (id,name,price_monthly_cents,price_annual_cents,limits) VALUES ('FREE','Free',0,0,'{"users":5,"projects":1}')`);
+await db.query(`INSERT INTO plans (id,name,price_monthly_cents,price_annual_cents,limits) VALUES ('FREE','Free',0,0,'{"users":5,"projects":1,"reports":5}')`);
 const {createApp} = await import('../../apps/api/src/app.ts');
 const server = createApp().listen(0,'127.0.0.1');
 await new Promise<void>(resolve=>server.once('listening',resolve));
@@ -90,6 +90,14 @@ try {
   const mcpClient=await callApiTool('list_projects',{},`Bearer ${viewer.token}`,base) as any;
   check(mcpClient.projects.length===1,'MCP uses API client project filter');
   await assert.rejects(()=>callApiTool('run_crawl',{projectId:project.data.id},`Bearer ${viewer.token}`,base),(e:any)=>e.status===403);checks++;
+  const queuedReport=await request('/projects/'+project.data.id+'/reports','POST',a.data.token,{type:'seo',format:'json'});
+  check(queuedReport.status===201 && !!queuedReport.data.report.id,'report and job are persisted atomically');
+  check((await request(`/projects/${project.data.id}/reports/${queuedReport.data.report.id}/download`,'GET',a.data.token)).status===409,'pending report is not downloadable');
+  check((await request('/projects/'+project.data.id+'/reports','POST',a.data.token,{type:'seo',format:'pdf'})).status===400,'unsupported PDF is rejected instead of pretending an artifact exists');
+  await db.query("UPDATE reports SET status='completed',data_snapshot=$1 WHERE id=$2",[JSON.stringify({project:{id:project.data.id},findings:[]}),queuedReport.data.report.id]);
+  const download=await fetch(`${base}/api/v1/projects/${project.data.id}/reports/${queuedReport.data.report.id}/download`,{headers:{Authorization:`Bearer ${a.data.token}`}});
+  check(download.status===200 && (await download.json()).project.id===project.data.id,'completed report downloads its actual stored snapshot');
+  check((await request(`/projects/${project.data.id}/reports/${queuedReport.data.report.id}/download`,'GET',b.data.token)).status===404,'report download is tenant isolated');
   const switched = await request('/auth/organization','POST',b.data.token,{organizationId:a.data.organization.id});
   check(switched.status===200,'member can switch organizations');
   const switchedMe = await request('/auth/me','GET',switched.data.token);

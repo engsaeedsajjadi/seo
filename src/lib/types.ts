@@ -147,7 +147,7 @@ export interface Report {
   type: string;
   title: string;
   format: 'pdf' | 'html' | 'csv' | 'json';
-  status: 'generating' | 'ready' | 'failed';
+  status: 'pending' | 'generating' | 'completed' | 'ready' | 'failed';
   createdAt: string;
   downloadUrl: string | null;
 }

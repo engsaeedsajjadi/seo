@@ -71,7 +71,7 @@ JWT or supported scoped API key; userId/organizationId in the body are ignored.
 - Existing unit/security/integration/static localization scripts were run. Some existing
   scripts use simulations or SQL-pattern fallbacks without DATABASE_URL. Their green
   output must not be represented as native PostgreSQL integration or browser proof.
-- The added suites passed 47 backend/MCP/SQL/SMTP assertions and 10 frontend authentication assertions locally.
+- The added suites passed 52 backend/MCP/SQL/SMTP/report assertions and 11 frontend authentication assertions locally, plus the non-owner RLS and report-export suites.
 - npm run test:saas runs actual HTTP routes, production services/repositories and schema
   SQL with PGlite (embedded PostgreSQL), plus tests of the actual frontend transport.
   It verifies tenant isolation, role changes, client assignment, plan count, signup
@@ -112,3 +112,7 @@ The first CI run exposed vulnerable Vite/source-map-js, body-parser, undici and 
 ## Native acceptance pipeline follow-up
 
 The corrected RLS verification passed on native PostgreSQL with a non-owner role. Integration/browser jobs now seed canonical plans before testing billing. A browser regression covers UI signup, reload persistence, URL-selected project, real team data, settings persistence and server-side logout. Test-mode auth rate limits allow the isolated suite to run; development/production retain the existing limit. Browser/Docker outcomes are recorded by the linked GitHub Actions run, not assumed from compilation.
+
+## Report flow repair
+
+Report creation now validates database-compatible type/format values, enforces the monthly plan quota under an organization lock and commits its report/job together. The client unwraps the report payload and displays pending/completed states correctly. The Worker reads tenant-scoped persisted data and completed snapshots can be downloaded through authenticated JSON, CSV and printable HTML endpoints. CSV neutralizes spreadsheet formulas and HTML escapes stored content. Server-rendered PDF artifacts are not supplied; the UI offers supported formats only. The real golden-path test now waits for Worker report completion and verifies the downloaded findings. Obsolete browser source-file checks were replaced with API/database assertions.

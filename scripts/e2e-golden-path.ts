@@ -215,7 +215,25 @@ async function main() {
     check(balance1 < balance0, `wallet decreased (${balance0} → ${balance1})`);
     check((balance0 - balance1) % 5 === 0, `deduction is a multiple of the 5-credit crawl cost (${balance0 - balance1})`);
 
-    console.log('\n✅ GOLDEN PATH PASSED: signup → login → project → crawl → findings + score → credits');
+    step('11. Generate, persist and download a report');
+    const report=await api('POST',`/api/v1/projects/${projectId}/reports`,token,{type:'seo',format:'json'});
+    check(report.status===201 && report.json.data?.report?.id,'report queued with persisted id');
+    const reportId=report.json.data.report.id;
+    const reportDeadline=Date.now()+POLL_TIMEOUT_MS;
+    let ready=false;
+    while(Date.now()<reportDeadline){
+      const listed=await api('GET',`/api/v1/projects/${projectId}/reports`,token);
+      const row=(listed.json.data || []).find((r:any)=>r.id===reportId);
+      check(row?.status!=='failed','report must not fail');
+      if(row?.status==='completed'){ready=true;break;}
+      await sleep(2000);
+    }
+    check(ready,'worker completed the report');
+    const downloaded=await api('GET',`/api/v1/projects/${projectId}/reports/${reportId}/download`,token);
+    check(downloaded.status===200 && downloaded.json.project?.id===projectId,'download contains actual project snapshot');
+    check(Array.isArray(downloaded.json.findings) && downloaded.json.findings.length>=4,'report contains persisted audit findings');
+
+    console.log('\n✅ GOLDEN PATH PASSED: signup → login → project → crawl → findings + score → credits → report download');
   } finally {
     server.close();
     fs.rmSync(tmp, { recursive: true, force: true });

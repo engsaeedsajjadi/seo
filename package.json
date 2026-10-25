@@ -29,7 +29,7 @@
     "docker:build": "docker build -t rankforge-web . && docker build -t rankforge-api -f apps/api/Dockerfile .",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down -v",
-    "test:saas": "node --import tsx tests/integration/saas-hardening.test.ts && node --import tsx tests/unit/frontend-auth.test.ts && node --import tsx tests/security/rls-real.test.ts"
+    "test:saas": "node --import tsx tests/integration/saas-hardening.test.ts && node --import tsx tests/unit/frontend-auth.test.ts && node --import tsx tests/security/rls-real.test.ts && node --import tsx tests/unit/report-export.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

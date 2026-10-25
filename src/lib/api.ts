@@ -574,10 +574,10 @@ export class ApiClient {
   }
 
   async generateReport(projectId: string, type: string, format: string): Promise<ApiResult<Report>> {
-    return this.request(`/api/v1/projects/${encodeURIComponent(projectId)}/reports`, {
-      method: 'POST',
-      body: JSON.stringify({ type, format }),
+    const result=await this.request<{report:Report;job:Job}>(`/api/v1/projects/${encodeURIComponent(projectId)}/reports`, {
+      method:'POST',body:JSON.stringify({type,format}),
     });
+    return result.success ? {success:true,data:result.data.report} : result;
   }
 
   // ============================================================
