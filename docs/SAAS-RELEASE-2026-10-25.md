@@ -79,13 +79,13 @@ JWT or supported scoped API key; userId/organizationId in the body are ignored.
   Origin rejection, MCP guards and API key scopes/revocation.
 - PGlite serializes clients. It does NOT prove native PostgreSQL concurrency, connection
   pool behavior, production RLS role configuration or a distributed multi-instance load.
-- The first pushed revision passed the dedicated native PostgreSQL 16 suite in GitHub Actions (45 assertions), including concurrent project quota enforcement. It also passed the real golden path: signup, login, project creation, queued crawl, findings/score and credit deduction. Follow-up dependency and validation fixes are rechecked in CI.
-- Native PostgreSQL installation was unavailable locally; the native tests were run in CI instead. Browser binary download failed locally. Full browser and Docker acceptance remains unverified until CI completes.
+- The code revision passed the dedicated native PostgreSQL 16 suite in GitHub Actions, including concurrent quota enforcement, and the real golden path: signup, login, project creation, queued crawl, findings/score, credit deduction, Worker report completion and authenticated snapshot download.
+- Native PostgreSQL installation was unavailable locally; the native tests were run in CI instead. Browser binary download failed locally. GitHub Actions subsequently passed all 44 browser tests and the Docker build/runtime gate; final deployment-default hardening is checked by the subsequent run.
 
 ## Commercial acceptance still required
 
-1. Deploy the exact commit to staging with HTTPS and a real PostgreSQL database. Run the
-   real browser golden path and native-PG concurrency/tenant/RLS tests in CI. Verify the
+1. Deploy the exact commit to staging with HTTPS and a real PostgreSQL database. Repeat the
+   verified browser golden path and native-PG concurrency/tenant/RLS tests for the deployment environment. Verify the
    production database role: the shipped compose owner/superuser bypasses RLS. Migration
    004 removes the older permissive and recursive policies; the separate SQL test uses a
    non-owner role. Full API operation under a least-privilege runtime role remains an
@@ -116,3 +116,7 @@ The corrected RLS verification passed on native PostgreSQL with a non-owner role
 ## Report flow repair
 
 Report creation now validates database-compatible type/format values, enforces the monthly plan quota under an organization lock and commits its report/job together. The client unwraps the report payload and displays pending/completed states correctly. The Worker reads tenant-scoped persisted data and completed snapshots can be downloaded through authenticated JSON, CSV and printable HTML endpoints. CSV neutralizes spreadsheet formulas and HTML escapes stored content. Server-rendered PDF artifacts are not supplied; the UI offers supported formats only. The real golden-path test now waits for Worker report completion and verifies the downloaded findings. Obsolete browser source-file checks were replaced with API/database assertions.
+
+## Deployment defaults
+
+DATABASE_PASSWORD is required; the stack has no built-in database password fallback. For an existing database volume, set this to its current password and rotate credentials separately; changing an environment variable does not rotate a PostgreSQL volume password. Fresh installs must generate their own secret before the first start. Database, Redis, API and MCP host ports bind to 127.0.0.1 by default; web remains the public entry point and proxies /api internally. Explicit *_BIND_ADDRESS overrides are available for operator-controlled network designs. CI exercises authenticated Redis, Nginx readiness and production-mode signup/authentication through the web proxy.

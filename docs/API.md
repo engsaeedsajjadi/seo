@@ -17,16 +17,12 @@ Obtain token via:
 
 ### API Keys
 ```
-X-API-Key: rf_abc123...
-```
-Or:
-```
 Authorization: Bearer rf_abc123...
 ```
 
 Create via: POST /api/v1/api-keys (requires auth)
 
-Scopes: read, write, admin
+Scopes: `read`, `write` (request both when needed). Service keys are limited to permitted SEO/project/job operations; they cannot manage accounts, billing or administrative settings.
 
 ## Versioning
 - Current: v1
@@ -36,7 +32,7 @@ Scopes: read, write, admin
 ## Rate Limiting
 - 200 requests per 15 minutes per IP (general)
 - 10 auth attempts per 15 minutes per IP
-- Per API key limits based on plan
+- The global IP limit also applies to service keys; project/report/team quotas are enforced separately. Test mode uses a higher auth limit for isolated automated suites.
 - Headers: X-RateLimit-Limit, X-RateLimit-Remaining, Retry-After
 
 ## Error Format
@@ -58,19 +54,29 @@ Codes: UNAUTHENTICATED, SESSION_EXPIRED, FORBIDDEN, VALIDATION_ERROR, NOT_FOUND,
 
 ### Health
 - GET /health — service status
-- GET /health/ready — readiness
+- GET /ready — database readiness
 - GET /health/live — liveness
 
 ### Auth
 - POST /auth/signup — {email, password, name} → {user, organization, token}
 - POST /auth/login — {email, password} → {user, token}
 - GET /auth/me — current user (auth required)
-- POST /auth/logout — logout
+- POST /auth/logout — revoke the current server-side session
+- POST /auth/refresh — rotate the HttpOnly refresh cookie and return a new 15-minute access token
+- GET /auth/sessions — list this user's active sessions
+- DELETE /auth/sessions/:id — revoke one of this user's sessions
+- POST /auth/password — {currentPassword, password}; change the password and revoke all sessions
+- POST /auth/forgot-password — {email}; request a one-hour recovery link (requires configured SMTP)
+- POST /auth/reset-password — {token, password}; consume a recovery token and revoke all sessions
+- POST /auth/organization — {organizationId}; create a session in a verified membership and revoke the previous session
+
+Refresh credentials expire after 30 days and are never returned in JSON. Keep the response cookie; access tokens use `Authorization: Bearer`. Frontend and API must use the same site for the SameSite=Lax refresh cookie. Production requires HTTPS.
 
 ### Organizations
 - GET /organizations/current — current org
 - GET /organizations — list orgs for user
-- PATCH /organizations/current — update org (name, settings, whiteLabel)
+- PATCH /organizations/current — update org (name, settings; Owner/Admin only)
+- PATCH /organizations/current/white-label — update permitted branding fields (Agency/Enterprise plan)
 
 ### Projects
 - GET /projects — list projects in org
@@ -100,7 +106,7 @@ Codes: UNAUTHENTICATED, SESSION_EXPIRED, FORBIDDEN, VALIDATION_ERROR, NOT_FOUND,
 
 ### Backlinks
 - GET /projects/:projectId/backlinks — list
-- POST /projects/:projectId/backlinks/refresh — trigger refresh job (requires DataForSEO)
+- POST /projects/:projectId/backlinks/sync — trigger refresh job (requires DataForSEO)
 
 ### Jobs
 - GET /projects/:projectId/jobs — list jobs for project
@@ -108,7 +114,10 @@ Codes: UNAUTHENTICATED, SESSION_EXPIRED, FORBIDDEN, VALIDATION_ERROR, NOT_FOUND,
 
 ### Reports
 - GET /projects/:projectId/reports — list
-- POST /projects/:projectId/reports — {type, format, title} → report (generating → completed)
+- POST /projects/:projectId/reports — {type, format, title?} → {report, job}; pending → completed/failed
+- GET /projects/:projectId/reports/:reportId/download?format=json|csv|html — authenticated snapshot download; 409 before completion
+
+Supported formats are `json`, `csv`, and printable `html`. Server-rendered PDF is not implemented and new PDF requests return 400. Supported types: seo, technical, keywords, rankings, competitors, backlinks, gsc, ga4, ai_visibility, executive, agency. Creation is transactional and enforces the monthly report quota. Downloads enforce tenant and client project access.
 
 ### Alerts
 - GET /projects/:projectId/alerts — list alerts
@@ -148,11 +157,17 @@ Codes: UNAUTHENTICATED, SESSION_EXPIRED, FORBIDDEN, VALIDATION_ERROR, NOT_FOUND,
 
 ### Team
 - GET /organizations/current/members — list members
-- POST /organizations/current/invite — {email, role} → invite
+- POST /organizations/current/members — {email, role}; add an existing registered account within the plan limit
+- PATCH /organizations/current/members/:userId — {role}; privileged role change (Owner cannot be demoted)
+- DELETE /organizations/current/members/:userId — remove a member and revoke tenant sessions (Owner cannot be removed)
+- PUT /projects/:projectId/clients/:userId — grant a Client member access to this project
+- DELETE /projects/:projectId/clients/:userId — revoke the assignment
+
+Email invitations are not implemented; recipients must register first.
 
 ### MCP
 - GET /mcp/tools — list MCP tools
-- POST /mcp/call — {tool, params} → result (tenant-isolated)
+- POST /mcp/call — {tool, params} → result; send Authorization: Bearer with an access JWT or scoped API key. Identity comes from the authenticated API, never from body userId/organizationId. MCP is served on its own origin/port (default 3002), not under /api/v1.
 
 ## Webhooks Events
 - project.created

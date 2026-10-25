@@ -443,17 +443,37 @@ jobs:
         env:
           # Compose requires real secrets (placeholder defaults fail fast
           # in production mode by design); CI uses throwaway test values.
+          DATABASE_PASSWORD: ci-only-database-password-for-runtime-test
+          REDIS_PASSWORD: ci-only-redis-password-for-runtime-test
           JWT_SECRET: ci-test-jwt-secret-at-least-32-chars-long
           ENCRYPTION_KEY: ci-test-encryption-key-32-chars-min
         run: |
-          docker compose up -d --build
+          docker compose --profile with-redis up -d --build
           sleep 15
           docker compose ps
           docker compose logs --tail=100
           curl -f http://localhost:3001/api/v1/health || (docker compose logs; exit 1)
           curl -f http://localhost:3001/api/v1/ready || (docker compose logs api; exit 1)
+          curl -f http://localhost:3000/api/v1/ready
+          docker compose exec -T redis sh -c 'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" ping' | grep -qx PONG
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const base='http://localhost:3000/api/v1';
+          const signup=await fetch(base+'/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Docker smoke',email:`docker-${Date.now()}@example.test`,password:'DockerSmokePassword123!'})});
+          assert.equal(signup.status,201,'signup through Nginx');
+          const session=(await signup.json()).data;
+          assert.ok(session.token);
+          const cookie=signup.headers.get('set-cookie') || '';
+          assert.ok(cookie.includes('HttpOnly') && cookie.includes('Secure') && cookie.includes('SameSite=Lax'),'production refresh cookie flags');
+          const organization=await fetch(base+'/organizations/current',{headers:{Authorization:`Bearer ${session.token}`}});
+          assert.equal(organization.status,200,'authenticated request through Nginx');
+          const org=(await organization.json()).data;
+          assert.equal(org.members.length,1);
+          assert.equal(org.credits.balance,100);
+          console.log('Docker production auth through Nginx: PASS');
+          NODE
           echo "✅ Docker compose health check PASS - API real PG connected"
-          docker compose down -v
+          docker compose --profile with-redis down -v
 
   security:
     name: Security Scan
