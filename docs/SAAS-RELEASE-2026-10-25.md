@@ -22,6 +22,7 @@ This report supersedes older claims of "production ready" or "71/71" for the cha
   revoke. Keys cannot manage accounts, billing or administrative endpoints.
 - MCP no longer accepts identity from request body. Calls go through the authenticated
   API so its project-assignment, role, quota and credit checks also apply to MCP.
+- Tenant RLS policies replace the old permissive/recursive policies. A dedicated non-owner SQL test verifies tenant read/write isolation and denies an empty tenant context.
 - Client users see only explicitly assigned projects. Assignment CRUD is tenant-bound;
   schema foreign keys prevent cross-organization assignments.
 - Organization response includes real members and wallet, matching the frontend contract.
@@ -48,8 +49,8 @@ This report supersedes older claims of "production ready" or "71/71" for the cha
 
 Back up the production database before upgrading. Install dependencies at the root and
 in apps/api, apps/worker and apps/mcp with npm ci. Run the existing migration/seed process
-before starting the new API. New migrations: drizzle/002_sessions_and_client_projects.sql and drizzle/003_password_recovery.sql.
-The migration adds tables; it does not delete existing user/project/billing records.
+before starting the new API. New migrations: drizzle/002_sessions_and_client_projects.sql , drizzle/003_password_recovery.sql and drizzle/004_strict_tenant_policies.sql.
+The migrations add tables and replace tenant RLS policies; they do not delete existing user/project/billing records.
 Old JWTs without a session id intentionally stop working. Users must sign in again.
 No existing clients receive project access automatically: an owner/admin must assign it.
 
@@ -84,8 +85,10 @@ JWT or supported scoped API key; userId/organizationId in the body are ignored.
 
 1. Deploy the exact commit to staging with HTTPS and a real PostgreSQL database. Run the
    real browser golden path and native-PG concurrency/tenant/RLS tests in CI. Verify the
-   production database role: the shipped compose owner/superuser bypasses RLS, and older
-   permissive schema policies are not proof of independent database-level isolation.
+   production database role: the shipped compose owner/superuser bypasses RLS. Migration
+   004 removes the older permissive and recursive policies; the separate SQL test uses a
+   non-owner role. Full API operation under a least-privilege runtime role remains an
+   additional deployment requirement, including auth and provider callbacks.
 2. Configure the selected SEO/AI providers and test a paid crawl/keyword/ranking/report
    flow with real provider responses and reconciled credit/usage records.
 3. Configure a payment account that the operator can actually use; test checkout,

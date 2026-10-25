@@ -32,6 +32,7 @@ await db.exec(readFileSync('apps/api/db/schema.sql','utf8'));
 await db.exec(readFileSync('drizzle/001_tenant_rls.sql','utf8'));
 await db.exec(readFileSync('drizzle/002_sessions_and_client_projects.sql','utf8'));
 await db.exec(readFileSync('drizzle/003_password_recovery.sql','utf8'));
+await db.exec(readFileSync('drizzle/004_strict_tenant_policies.sql','utf8'));
 const {getPool,closePool} = await import('../../apps/api/src/db/client.ts');
 if(!nativeUrl){
   const pool=getPool();

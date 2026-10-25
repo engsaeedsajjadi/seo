@@ -256,7 +256,7 @@ jobs:
           PGPASSWORD=rankforge psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE rankforge_app LOGIN PASSWORD 'rankforge_app'" || true
           PGPASSWORD=rankforge psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO rankforge_app; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO rankforge_app; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO rankforge_app;"
       - name: Verify PostgreSQL RLS with non-owner role - real RLS policies
-        run: PGPASSWORD=rankforge_app psql "postgresql://rankforge_app:rankforge_app@localhost:5432/rankforge_test" -v ON_ERROR_STOP=1 -f tests/security/rls-postgres.sql
+        run: PGPASSWORD=rankforge psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/security/rls-postgres.sql
       - name: Run integration tests - real PG, FOR UPDATE SKIP LOCKED, credit atomic, SSRF, crawl safety, audit, idempotency
         run: npm run test:integration
 
