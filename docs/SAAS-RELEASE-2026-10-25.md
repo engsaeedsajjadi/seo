@@ -42,6 +42,7 @@ This report supersedes older claims of "production ready" or "71/71" for the cha
   were removed from the Enterprise seed feature list.
 - TLS certificate verification is enabled when DATABASE_SSL=true. Environment files,
   browser results and reports are excluded from git.
+- Docker migration, API, Worker and MCP now use the same database credential setting; Redis health checks authenticate and check PONG.
 - Incremental migrations and their migration records commit together. CI now runs on
   fix/frontend-auth-ux and includes the SaaS regression suite.
 
