@@ -69,7 +69,7 @@ JWT or supported scoped API key; userId/organizationId in the body are ignored.
 - Existing unit/security/integration/static localization scripts were run. Some existing
   scripts use simulations or SQL-pattern fallbacks without DATABASE_URL. Their green
   output must not be represented as native PostgreSQL integration or browser proof.
-- The added suites passed 45 backend/MCP/SQL/SMTP assertions and 10 frontend authentication assertions locally.
+- The added suites passed 47 backend/MCP/SQL/SMTP assertions and 10 frontend authentication assertions locally.
 - npm run test:saas runs actual HTTP routes, production services/repositories and schema
   SQL with PGlite (embedded PostgreSQL), plus tests of the actual frontend transport.
   It verifies tenant isolation, role changes, client assignment, plan count, signup
@@ -77,9 +77,8 @@ JWT or supported scoped API key; userId/organizationId in the body are ignored.
   Origin rejection, MCP guards and API key scopes/revocation.
 - PGlite serializes clients. It does NOT prove native PostgreSQL concurrency, connection
   pool behavior, production RLS role configuration or a distributed multi-instance load.
-- CI includes a second run of the same suite against a dedicated schema on native PostgreSQL 16; its remote result must be checked after push.
-- Native PostgreSQL installation was unavailable in this environment. Browser binary
-  download failed. Docker/native-PG/browser end-to-end acceptance remains unverified.
+- The first pushed revision passed the dedicated native PostgreSQL 16 suite in GitHub Actions (45 assertions), including concurrent project quota enforcement. It also passed the real golden path: signup, login, project creation, queued crawl, findings/score and credit deduction. Follow-up dependency and validation fixes are rechecked in CI.
+- Native PostgreSQL installation was unavailable locally; the native tests were run in CI instead. Browser binary download failed locally. Full browser and Docker acceptance remains unverified until CI completes.
 
 ## Commercial acceptance still required
 
@@ -101,3 +100,7 @@ JWT or supported scoped API key; userId/organizationId in the body are ignored.
    that have passed acceptance. No SSO, MFA or contractual SLA is delivered by this work.
 7. Run a customer pilot before collecting subscriptions. Successful builds and embedded
    SQL tests are not a statement that every commercial module works in production.
+
+## Dependency security follow-up
+
+The first CI run exposed vulnerable Vite/source-map-js, body-parser, undici and Zod versions. Compatible patched dependencies were installed; Zod was upgraded to 4.6.7 and validation error handling adapted to issues. CI now audits root, API, Worker and MCP dependencies and installs API dependencies before Stripe unit tests.

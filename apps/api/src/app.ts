@@ -319,7 +319,7 @@ export function createApp() {
       const body=z.object({currentPassword:z.string().min(1).max(128),password:z.string().min(12).max(128).refine(value=>Buffer.byteLength(value,'utf8')<=72,'Password is too long')}).parse(req.body);
       await transaction(async () => {
         const user=await query('SELECT password_hash FROM users WHERE id=$1 FOR UPDATE',[req.userId!]);
-        if (!await bcrypt.compare(body.currentPassword,user.rows[0].password_hash)) throw new ApiError(401,'UNAUTHENTICATED','Current password is incorrect');
+        if (!await bcrypt.compare(body.currentPassword,user.rows[0].password_hash)) throw new ApiError(400,'VALIDATION_ERROR','Current password is incorrect');
         await query('UPDATE users SET password_hash=$1,updated_at=NOW() WHERE id=$2',[await bcrypt.hash(body.password,12),req.userId!]);
         await query('UPDATE auth_sessions SET revoked_at=NOW() WHERE user_id=$1',[req.userId!]);
       });
@@ -391,7 +391,7 @@ export function createApp() {
   app.patch('/api/v1/organizations/current', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       const org = await organizationRepository.update(req.organizationId!, {
-        ...z.object({name:z.string().trim().min(1).max(255).optional(),settings:z.record(z.unknown()).optional()}).strict().parse(req.body),
+        ...z.object({name:z.string().trim().min(1).max(255).optional(),settings:z.record(z.string(), z.unknown()).optional()}).strict().parse(req.body),
       });
 
       if (!org) {
@@ -583,7 +583,7 @@ export function createApp() {
       res.status(201).json({success:true,data:createdProject});
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -687,7 +687,7 @@ export function createApp() {
       res.status(201).json({ success: true, data: { job, crawlRun } });
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -875,7 +875,7 @@ export function createApp() {
       res.status(201).json({ success: true, data: keywords });
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -1081,7 +1081,7 @@ export function createApp() {
       res.status(201).json({ success: true, data: { ...apiKey, key } });
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -1378,7 +1378,7 @@ export function createApp() {
       res.status(201).json({ success: true, data: result.rows[0] });
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -1471,7 +1471,7 @@ export function createApp() {
       res.status(201).json({ success: true, data: { report: reportResult.rows[0], job, message: 'Report generation queued — real data from persisted project' } });
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -1533,7 +1533,7 @@ export function createApp() {
       res.status(201).json({ success: true, data: result.rows[0] });
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -1593,7 +1593,7 @@ export function createApp() {
       res.status(201).json({ success: true, data: { brief: result.rows[0], job, message: 'Content brief queued — AI provider will generate outline with cost metering' } });
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -1693,7 +1693,7 @@ export function createApp() {
       res.status(201).json({ success: true, data: { job, message: 'PageSpeed check queued — real API call by worker' } });
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -1748,7 +1748,7 @@ export function createApp() {
       res.status(201).json({ success: true, data: { ...result.rows[0], secret: generatedSecret, message: 'Secret shown only once — store securely, webhook deliveries signed with HMAC-SHA256' } });
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -2007,7 +2007,7 @@ export function createApp() {
       res.status(201).json({ success: true, data: result.rows[0] });
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -2060,7 +2060,7 @@ export function createApp() {
       res.status(201).json({ success: true, data: { job, message: 'GEO visibility check queued — real AI provider call with cost metering' } });
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -2152,7 +2152,7 @@ export function createApp() {
       res.json({ success: true, data: { key: req.params.key, enabled, organizationId: req.organizationId! } });
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -2215,7 +2215,7 @@ export function createApp() {
       res.json({ success: true, data: updated?.whiteLabel });
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -2301,7 +2301,7 @@ export function createApp() {
       });
     } catch (error: any) {
       if (error.name === 'ZodError') {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
       }
       next(error);
     }
@@ -2413,7 +2413,7 @@ export function createApp() {
     if (error.name === 'ZodError') {
       return res.status(400).json({
         success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Validation failed', details: error.errors },
+        error: { code: 'VALIDATION_ERROR', message: 'Validation failed', details: error.issues },
       });
     }
 

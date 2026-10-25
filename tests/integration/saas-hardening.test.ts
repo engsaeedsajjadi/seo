@@ -115,6 +115,8 @@ try {
   check((await request('/auth/me','GET',signedIn.data.token)).status===401,'logout invalidates access token server-side');
   check((await request('/auth/refresh','POST',undefined,undefined,signedIn.cookie)).status===401,'logout invalidates refresh token');
   const passwordSession=await sessionService.create(a.data.user.id,a.data.organization.id,'Owner','owner-a@example.test');
+  check((await request('/auth/password','POST',passwordSession.token,{currentPassword:'WrongPassword!',password:'NewPassword12345!'})).status===400,'wrong current password returns validation error');
+  check((await request('/auth/me','GET',passwordSession.token)).status===200,'wrong password does not terminate a valid session');
   const passwordChanged=await request('/auth/password','POST',passwordSession.token,{currentPassword:'Password123!',password:'NewPassword12345!'});
   check(passwordChanged.status===200,'password changes after current credential verification');
   check((await request('/auth/me','GET',passwordSession.token)).status===401,'password change invalidates existing sessions');

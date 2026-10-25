@@ -188,6 +188,9 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm ci
+      - name: Install API dependencies for shared Stripe units
+        run: npm ci
+        working-directory: apps/api
       - name: Run unit tests - SSRF, audit, credit, job-atomic, credit-atomic, timeout
         run: npm run test:unit
 
@@ -460,6 +463,15 @@ jobs:
         run: npm ci
       - name: Audit - high level, no vulnerabilities or documented exceptions
         run: npm audit --audit-level=high
+      - name: Audit API dependencies
+        run: npm ci && npm audit --audit-level=high
+        working-directory: apps/api
+      - name: Audit Worker dependencies
+        run: npm ci && npm audit --audit-level=high
+        working-directory: apps/worker
+      - name: Audit MCP dependencies
+        run: npm ci && npm audit --audit-level=high
+        working-directory: apps/mcp
       - name: Secret scan - trufflehog verified only
         uses: trufflesecurity/trufflehog@main
         with:

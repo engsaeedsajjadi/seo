@@ -10,7 +10,7 @@ export function validateBody(schema: ZodSchema) {
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {
-        next(new ApiError(400, 'VALIDATION_ERROR', error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')));
+        next(new ApiError(400, 'VALIDATION_ERROR', error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')));
       } else {
         next(error);
       }
@@ -26,7 +26,7 @@ export function validateQuery(schema: ZodSchema) {
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {
-        next(new ApiError(400, 'VALIDATION_ERROR', error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')));
+        next(new ApiError(400, 'VALIDATION_ERROR', error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')));
       } else {
         next(error);
       }
@@ -42,7 +42,7 @@ export function validateParams(schema: ZodSchema) {
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {
-        next(new ApiError(400, 'VALIDATION_ERROR', error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')));
+        next(new ApiError(400, 'VALIDATION_ERROR', error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')));
       } else {
         next(error);
       }
