@@ -34,6 +34,10 @@ import { billingService } from './services/billing.service.js';
 import { isStripeConfigured, isStripeWebhookConfigured, verifyStripeWebhookEvent } from './lib/stripe.js';
 import { generateApiKey } from './lib/encryption.js';
 
+function organizationSummary(org:{id:string;name:string;slug:string;plan:string;createdAt:Date;whiteLabel?:unknown}) {
+  return {id:org.id,name:org.name,slug:org.slug,plan:org.plan,createdAt:org.createdAt,whiteLabel:org.whiteLabel};
+}
+
 export function createApp() {
   const app = express();
 
@@ -248,7 +252,7 @@ export function createApp() {
         success: true,
         data: {
           user: { id: result.user.id, email: result.user.email, name: result.user.name, organizationId: result.organization.id },
-          organization: result.organization,
+          organization: organizationSummary(result.organization),
           token: result.token,
         },
       });
@@ -271,7 +275,7 @@ export function createApp() {
         success: true,
         data: {
           user: { id: result.user.id, email: result.user.email, name: result.user.name, organizationId: result.organization.id },
-          organization: result.organization,
+          organization: organizationSummary(result.organization),
           token: result.token,
         },
       });
@@ -293,7 +297,7 @@ export function createApp() {
         success: true,
         data: {
           user: { id: data.user.id, email: data.user.email, name: data.user.name, organizationId: req.organizationId, role: req.user.role },
-          organizations: data.organizations,
+          organizations: data.organizations.map(organizationSummary),
         },
       });
     } catch (error) {
@@ -374,7 +378,9 @@ export function createApp() {
         return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Organization not found' } });
       }
       const [members, credits] = await Promise.all([organizationRepository.getMembers(org.id), creditRepository.getWallet(org.id)]);
-      res.json({ success: true, data: { ...org, members: members.map(m => ({ ...m, role: m.role.toLowerCase(), joinedAt: m.createdAt })), credits } });
+      const client=req.user.role==='Client';
+      res.json({success:true,data:{...(client?organizationSummary(org):org),role:req.user.role.toLowerCase(),
+        members:members.filter(m=>!client || m.userId===req.userId).map(m=>({...m,role:m.role.toLowerCase(),joinedAt:m.createdAt})),credits:client?null:credits}});
     } catch (error) {
       next(error);
     }
@@ -383,7 +389,7 @@ export function createApp() {
   app.get('/api/v1/organizations', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       const orgs = await organizationRepository.findByUserId(req.userId!);
-      res.json({ success: true, data: orgs });
+      res.json({ success: true, data: orgs.map(organizationSummary) });
     } catch (error) {
       next(error);
     }

@@ -71,7 +71,7 @@ JWT or supported scoped API key; userId/organizationId in the body are ignored.
 - Existing unit/security/integration/static localization scripts were run. Some existing
   scripts use simulations or SQL-pattern fallbacks without DATABASE_URL. Their green
   output must not be represented as native PostgreSQL integration or browser proof.
-- The added suites passed 52 backend/MCP/SQL/SMTP/report assertions and 11 frontend authentication assertions locally, plus the non-owner RLS and report-export suites.
+- The added suites passed 55 backend/MCP/SQL/SMTP/report/privacy assertions and 11 frontend authentication assertions locally, plus the non-owner RLS and report-export suites.
 - npm run test:saas runs actual HTTP routes, production services/repositories and schema
   SQL with PGlite (embedded PostgreSQL), plus tests of the actual frontend transport.
   It verifies tenant isolation, role changes, client assignment, plan count, signup
@@ -120,3 +120,9 @@ Report creation now validates database-compatible type/format values, enforces t
 ## Deployment defaults
 
 DATABASE_PASSWORD is required; the stack has no built-in database password fallback. For an existing database volume, set this to its current password and rotate credentials separately; changing an environment variable does not rotate a PostgreSQL volume password. Fresh installs must generate their own secret before the first start. Database, Redis, API and MCP host ports bind to 127.0.0.1 by default; web remains the public entry point and proxies /api internally. Explicit *_BIND_ADDRESS overrides are available for operator-controlled network designs. CI exercises authenticated Redis, Nginx readiness and production-mode signup/authentication through the web proxy.
+
+## Client privacy boundary
+
+Client organization responses contain public organization metadata, their own membership and no wallet, Stripe identifiers or private settings. Organization selectors and auth responses use public summaries for every role so switching to a personal organization cannot expose another organization's private configuration. Client navigation hides administrative destinations while retaining their own session/password settings. These boundaries are covered by the SaaS integration suite.
+
+The deployment-default revision passed its complete CI run, including authenticated Redis, production cookie flags and signup/session authentication through Nginx: https://github.com/engsaeedsajjadi/seo/actions/runs/40196972868 . The subsequent privacy revision runs the same acceptance pipeline.

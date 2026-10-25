@@ -16,7 +16,8 @@ export interface Organization {
   plan: PlanTier;
   createdAt: string;
   members: OrganizationMember[];
-  credits: CreditWallet;
+  credits: CreditWallet | null;
+  role?: Role;
 }
 
 export interface OrganizationMember {

@@ -94,7 +94,6 @@ Refresh credentials expire after 30 days and are never returned in JSON. Keep th
 - GET /projects/:projectId/keywords — list keywords
 - POST /projects/:projectId/keywords — {keywords: string[], country, language, groupId} → keywords (enriched if provider configured)
 - DELETE /projects/:projectId/keywords/:keywordId — delete
-- POST /projects/:projectId/keywords/cluster — cluster keywords by topic
 
 ### Rankings
 - GET /projects/:projectId/rankings — list rankings (historical)
@@ -124,7 +123,6 @@ Supported formats are `json`, `csv`, and printable `html`. Server-rendered PDF i
 
 ### Integrations
 - GET /integrations/status — provider status (connected/not_configured/error)
-- GET /integrations — list configured integrations
 
 ### Billing
 - GET /billing/plans — list plans
@@ -143,11 +141,9 @@ Supported formats are `json`, `csv`, and printable `html`. Server-rendered PDF i
 - POST /webhooks — {url, events, secret} → webhook
 
 ### Clients (Agency)
-- GET /clients — list clients
-- POST /clients — {name, email, logoUrl} → client
 
 ### Content & AI
-- POST /projects/:projectId/content/brief — {keyword, targetWordCount} → brief (requires AI provider)
+- POST /projects/:projectId/content/briefs — {keyword, targetWordCount} → brief (requires AI provider)
 - GET /projects/:projectId/geo — GEO tracking (requires AI)
 - GET /projects/:projectId/aeo — AEO tracking (requires AI)
 

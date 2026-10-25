@@ -151,7 +151,7 @@ export default function Layout() {
               )}
               {(expandedSections[section.title] || !sidebarOpen) && (
                 <div className="space-y-0.5">
-                  {section.items.map(item => {
+                  {section.items.filter(item=>state.currentOrg?.role!=='client' || !['/billing','/team','/agency','/api','/integrations','/automation'].includes(item.path)).map(item => {
                     const to = resolvePath(item.path);
                     return (
                       <Link
@@ -291,6 +291,7 @@ export default function Layout() {
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto scrollbar-thin p-6" dir="rtl">
+          {state.currentOrg?.role==='client' && <p role="status" className="mb-4 text-sm text-slate-400">دسترسی مشتری فقط برای مشاهدهٔ پروژه‌های تخصیص‌یافته است.</p>}
           <Outlet />
         </main>
       </div>

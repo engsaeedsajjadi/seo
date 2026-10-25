@@ -78,6 +78,11 @@ try {
   check((await request('/organizations/current','PATCH',viewer.token,{name:'Forbidden'})).status===403,'live Viewer role overrides stale Owner JWT');
   check((await request('/projects','POST',viewer.token,{name:'Forbidden',domain:'denied.test'})).status===403,'viewer cannot mutate projects in development either');
   await db.query("UPDATE organization_members SET role='Client' WHERE organization_id=$1 AND user_id=$2",[a.data.organization.id,b.data.user.id]);
+  const clientOrganization=await request('/organizations/current','GET',viewer.token);
+  check(clientOrganization.data.credits===null && !('stripeCustomerId' in clientOrganization.data),'client organization response excludes billing metadata');
+  check(clientOrganization.data.members.length===1 && clientOrganization.data.members[0].userId===b.data.user.id,'client sees only their own membership');
+  const clientIdentity=await request('/auth/me','GET',viewer.token);
+  check(clientIdentity.data.organizations.every((o:any)=>!('settings' in o)&&!('stripeCustomerId' in o)),'organization selector exposes public summaries only');
   const unassigned = await request('/client-portal/projects','GET',viewer.token);
   check(unassigned.status===200 && unassigned.data.length===0,'client sees no unassigned projects');
   check((await request('/projects/'+project.data.id,'GET',viewer.token)).status===404,'client direct URL denied before assignment');
