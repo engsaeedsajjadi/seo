@@ -108,3 +108,7 @@ JWT or supported scoped API key; userId/organizationId in the body are ignored.
 ## Dependency security follow-up
 
 The first CI run exposed vulnerable Vite/source-map-js, body-parser, undici and Zod versions. Compatible patched dependencies were installed; Zod was upgraded to 4.6.7 and validation error handling adapted to issues. CI now audits root, API, Worker and MCP dependencies and installs API dependencies before Stripe unit tests.
+
+## Native acceptance pipeline follow-up
+
+The corrected RLS verification passed on native PostgreSQL with a non-owner role. Integration/browser jobs now seed canonical plans before testing billing. A browser regression covers UI signup, reload persistence, URL-selected project, real team data, settings persistence and server-side logout. Test-mode auth rate limits allow the isolated suite to run; development/production retain the existing limit. Browser/Docker outcomes are recorded by the linked GitHub Actions run, not assumed from compilation.

@@ -251,6 +251,9 @@ jobs:
       - name: Run PostgreSQL migrations - STRICT, no swallow, exit 1 on fail
         run: npm run db:migrate
         working-directory: apps/api
+      - name: Seed canonical billing plans and audit rules
+        run: npm run db:seed
+        working-directory: apps/api
       - name: Create non-owner RLS test role
         run: |
           PGPASSWORD=rankforge psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE rankforge_app LOGIN PASSWORD 'rankforge_app'" || true
@@ -386,6 +389,9 @@ jobs:
         working-directory: apps/api
       - name: Run DB migrations
         run: npm run db:migrate
+        working-directory: apps/api
+      - name: Seed browser test database
+        run: npm run db:seed
         working-directory: apps/api
       - name: Start API server for E2E
         run: |
