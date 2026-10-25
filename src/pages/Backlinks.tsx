@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/api';
 import { useState, useEffect } from 'react';
 import { Link2, AlertCircle, Plus, RefreshCw, ExternalLink } from 'lucide-react';
 import { useAppState } from '../lib/store';
@@ -33,7 +34,7 @@ export default function Backlinks() {
         return;
       }
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/backlinks`, {
+        const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/backlinks`, {
           credentials: 'include',
         });
         const json = await res.json();
@@ -58,7 +59,7 @@ export default function Backlinks() {
     setSyncLoading(true);
     setSyncResult(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/backlinks/sync`, {
+      const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/backlinks/sync`, {
         method: 'POST',
         credentials: 'include',
       });

@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/api';
 import { useState, useEffect } from 'react';
 import {
   CreditCard, AlertCircle, CheckCircle2, Crown, ArrowRight, RefreshCw
@@ -36,15 +37,15 @@ export default function Billing() {
   useEffect(() => {
     async function load() {
       try {
-        const resCredits = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/billing/credits`, { credentials: 'include' });
+        const resCredits = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/billing/credits`, { credentials: 'include' });
         const jsonCredits = await resCredits.json();
         if (jsonCredits.success) setCredits(jsonCredits.data);
 
-        const resStatus = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/integrations/status`, { credentials: 'include' });
+        const resStatus = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/integrations/status`, { credentials: 'include' });
         const jsonStatus = await resStatus.json();
         if (jsonStatus.success) setProviderStatus(jsonStatus.data);
 
-        const resSub = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/billing/subscription`, { credentials: 'include' });
+        const resSub = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/billing/subscription`, { credentials: 'include' });
         const jsonSub = await resSub.json();
         if (jsonSub.success) setSubscription(jsonSub.data);
       } catch (e) {
@@ -62,7 +63,7 @@ export default function Billing() {
     setBillingError(null);
     setCheckoutTier(tier);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/billing/checkout`, {
+      const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/billing/checkout`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -84,7 +85,7 @@ export default function Billing() {
   async function openPortal() {
     setBillingError(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/billing/portal`, {
+      const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/billing/portal`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

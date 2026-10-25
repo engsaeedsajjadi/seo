@@ -4,13 +4,12 @@
  */
 
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { v4 as uuidv4 } from 'uuid';
+import { transaction } from '../db/client.js';
+import { sessionService } from './session.service.js';
 import { userRepository } from '../repositories/user.repository.js';
 import { organizationRepository } from '../repositories/organization.repository.js';
 import { creditRepository } from '../repositories/credit.repository.js';
 import { auditLogRepository } from '../repositories/audit-log.repository.js';
-import { config } from '../config/index.js';
 
 function generateSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 50) + '-' + Math.random().toString(36).substring(2, 6);
@@ -18,23 +17,24 @@ function generateSlug(name: string): string {
 
 export const authService = {
   async signup(email: string, password: string, name: string, ipAddress?: string, userAgent?: string) {
-    const existing = await userRepository.findByEmail(email);
-    if (existing) {
-      throw { status: 409, code: 'CONFLICT', message: 'Email already registered' };
-    }
+    return transaction(async () => {
+      const existing = await userRepository.findByEmail(email);
+      if (existing) {
+        throw { status: 409, code: 'CONFLICT', message: 'Email already registered' };
+      }
 
-    if (password.length < 8) {
-      throw { status: 400, code: 'VALIDATION_ERROR', message: 'Password must be at least 8 characters' };
-    }
+      if (password.length < 8) {
+        throw { status: 400, code: 'VALIDATION_ERROR', message: 'Password must be at least 8 characters' };
+      }
 
-    const passwordHash = await bcrypt.hash(password, 12);
-    const user = await userRepository.create({ email, name, passwordHash });
+      const passwordHash = await bcrypt.hash(password, 12);
+      const user = await userRepository.create({ email, name, passwordHash });
 
-    const org = await organizationRepository.create({
-      name: `${name}'s Organization`,
-      slug: generateSlug(name),
-      ownerId: user.id,
-      plan: 'FREE',
+      const org = await organizationRepository.create({
+        name: `${name}'s Organization`,
+        slug: generateSlug(name),
+        ownerId: user.id,
+        plan: 'FREE',
     });
 
     await organizationRepository.addMember(org.id, user.id, 'Owner');
@@ -51,13 +51,9 @@ export const authService = {
       userAgent,
     });
 
-    const token = jwt.sign(
-      { userId: user.id, organizationId: org.id, role: 'Owner', email: user.email },
-      config.auth.jwtSecret,
-      { expiresIn: '7d', issuer: 'rankforge', audience: 'rankforge-app' }
-    );
-
-    return { user, organization: org, token };
+    const session = await sessionService.create(user.id, org.id, 'Owner', user.email);
+    return { user, organization: org, ...session };
+    });
   },
 
   async login(email: string, password: string, ipAddress?: string, userAgent?: string) {
@@ -90,13 +86,8 @@ export const authService = {
       userAgent,
     });
 
-    const token = jwt.sign(
-      { userId: user.id, organizationId: org.id, role, email: user.email },
-      config.auth.jwtSecret,
-      { expiresIn: '7d', issuer: 'rankforge', audience: 'rankforge-app' }
-    );
-
-    return { user, organization: org, token };
+    const session = await sessionService.create(user.id, org.id, role, user.email);
+    return { user, organization: org, ...session };
   },
 
   async getCurrentUser(userId: string) {

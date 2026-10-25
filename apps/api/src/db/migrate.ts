@@ -6,7 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getPool, query, closePool } from './client.js';
+import { getPool, query, closePool, transaction } from './client.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -179,8 +179,10 @@ export async function runMigrations() {
         if (exists.rows.length) continue;
         console.log(`🔧 Executing drizzle migration: ${file}`);
         const sql = fs.readFileSync(path.join(drizzleFolder, file), 'utf8');
-        await query(sql);
-        await query('INSERT INTO _migrations (name) VALUES ($1)', [file]);
+        await transaction(async () => {
+          await query(sql);
+          await query('INSERT INTO _migrations (name) VALUES ($1)', [file]);
+        });
       }
     } else {
       throw new Error(`Drizzle migrations folder not found: ${drizzleFolder}`);

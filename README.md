@@ -1,3 +1,5 @@
+> **Current release gate (2026-10-25):** staging candidate; public sales readiness is not yet verified. See [SaaS release report](docs/SAAS-RELEASE-2026-10-25.md) for delivered fixes, upgrade instructions and outstanding acceptance gates. Older production-ready claims below do not replace this report.
+
 # رنک‌فورج — پلتفرم جامع سئو و اتوماسیون تجاری
 
 **پلتفرم سئو چندمستاجره، آماده‌ی تولید، کاملاً فارسی و راست‌به‌چپ**

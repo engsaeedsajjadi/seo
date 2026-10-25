@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/api';
 import { useState, useEffect } from 'react';
 import {
   Brain, AlertCircle, Sparkles, RefreshCw
@@ -32,7 +33,7 @@ export default function GEO() {
         return;
       }
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/geo`, {
+        const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/geo`, {
           credentials: 'include',
         });
         const json = await res.json();
@@ -56,7 +57,7 @@ export default function GEO() {
     setCheckLoading(true);
     setCheckResult(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/geo/check`, {
+      const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/geo/check`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

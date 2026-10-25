@@ -2,9 +2,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main, production-ready-seo-saas-aca82, arena/01a0ab8c-seo]
+    branches: [main, production-ready-seo-saas-aca82, arena/01a0ab8c-seo, fix/frontend-auth-ux]
   pull_request:
-    branches: [main, production-ready-seo-saas-aca82, arena/01a0ab8c-seo]
+    branches: [main, production-ready-seo-saas-aca82, arena/01a0ab8c-seo, fix/frontend-auth-ux]
 
 permissions:
   contents: read
@@ -46,6 +46,35 @@ jobs:
         run: |
           git diff --exit-code -- apps/mcp/package-lock.json
           echo "✅ apps/mcp/package-lock.json integrity verified"
+
+  saas-hardening:
+    name: SaaS Auth and Tenant Regression
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: saas_tests
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm ci
+        working-directory: apps/api
+      - run: npm run test:saas
+      - name: Native PostgreSQL auth, tenant and quota regression
+        run: npm run test:saas
+        env:
+          SAAS_TEST_DATABASE_URL: postgresql://postgres:ci-only-password@localhost:5432/saas_tests
 
   frontend:
     name: Frontend Build & Typecheck

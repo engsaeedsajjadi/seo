@@ -5,6 +5,7 @@
  */
 
 import express from 'express';
+import { callApiTool } from './api-gateway.js';
 import cors from 'cors';
 import { Pool } from 'pg';
 
@@ -61,7 +62,7 @@ function getPool(): Pool {
     // postgres:16-alpine compose service) does not serve SSL, so forcing
     // SSL in production made the shipped stack unable to reach its own
     // database. Managed DBs that require SSL set DATABASE_SSL=true.
-    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: true } : false,
     max: 10,
   });
   return pool;
@@ -257,33 +258,12 @@ app.get('/mcp/tools', (req, res) => {
 
 app.post('/mcp/call', async (req, res) => {
   try {
-    const { tool, params, organizationId, userId } = req.body;
-
-    if (!organizationId || !userId) {
-      return res.status(401).json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'organizationId and userId required for tenant isolation' } });
-    }
-
-    try {
-      const memberCheck = await query('SELECT id FROM organization_members WHERE organization_id = $1 AND user_id = $2', [organizationId, userId]);
-      if (memberCheck.rows.length === 0) {
-        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Not a member of this organization — tenant isolation enforced' } });
-      }
-    } catch (e) {
-      console.error('[MCP] Membership check failed:', e);
-      return res.status(503).json({ success: false, error: { code: 'SERVICE_UNAVAILABLE', message: 'Database unavailable' } });
-    }
-
-    const toolDef = tools.find(t => t.name === tool);
-    if (!toolDef) {
-      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `Tool ${tool} not found` } });
-    }
-
-    const result = await toolDef.handler(params || {}, { organizationId, userId });
-
-    res.json({ success: true, tool, result });
-  } catch (error) {
-    console.error('[MCP] Tool call failed:', error);
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: error instanceof Error ? error.message : String(error) } });
+    const authorization=req.headers.authorization || '';
+    const result=await callApiTool(req.body.tool,req.body.params || {},authorization,
+      process.env.API_INTERNAL_URL || (config.isProduction ? 'http://api:3001' : 'http://127.0.0.1:3001'));
+    res.json({success:true,tool:req.body.tool,result});
+  } catch (error: any) {
+    res.status(error.status || 503).json({success:false,error:{code:error.code || 'SERVICE_UNAVAILABLE',message:error.status?error.message:'API unavailable'}});
   }
 });
 

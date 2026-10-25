@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Globe, Search, BarChart3, Target, Link2, FileText,
@@ -94,6 +94,24 @@ export default function Layout() {
   };
 
   const isActive = (path: string) => location.pathname === path;
+
+  const [identity,setIdentity] = useState<{name:string;role:string}>({name:'',role:''});
+  const [organizations,setOrganizations] = useState<Array<{id:string;name:string}>>([]);
+  const [switching,setSwitching] = useState(false);
+  const [switchError,setSwitchError] = useState('');
+  useEffect(() => {
+    let active=true;
+    api.getCurrentUser().then(result=>{
+      if (active && result.success) {setIdentity(result.data.user);setOrganizations(result.data.organizations);}
+    });
+    return ()=>{active=false;};
+  },[]);
+  async function switchOrg(id:string) {
+    setSwitching(true); setSwitchError('');
+    const result=await api.switchOrganization(id);
+    if (result.success) window.location.reload();
+    else {setSwitchError('تغییر سازمان انجام نشد.');setSwitching(false);}
+  }
 
   const handleLogout = async () => {
     await api.logout();
@@ -218,14 +236,20 @@ export default function Layout() {
               )}
             </Link>
 
+            {organizations.length > 1 && <label className="text-slate-300 text-xs">سازمان
+              <select aria-label="سازمان فعال" disabled={switching} value={state.currentOrg?.id || ''} onChange={e=>switchOrg(e.target.value)} className="bg-surface-2 p-2 rounded">
+                {organizations.map(org=><option key={org.id} value={org.id}>{org.name}</option>)}
+              </select>
+              {switchError && <span role="alert">{switchError}</span>}
+            </label>}
             {/* User */}
             <div className="flex items-center gap-2 pr-3 border-r border-surface-3/50">
               <div className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center">
                 <User className="w-3.5 h-3.5 text-white" />
               </div>
               <div className="hidden md:block">
-                <p className="text-xs font-medium text-slate-200 font-vazirmatn-medium">مدیر سیستم</p>
-                <p className="text-[10px] text-slate-500 font-vazirmatn-light">مالک</p>
+                <p className="text-xs font-medium text-slate-200 font-vazirmatn-medium">{identity.name}</p>
+                <p className="text-[10px] text-slate-500 font-vazirmatn-light">{identity.role}</p>
               </div>
               <button
                 onClick={handleLogout}

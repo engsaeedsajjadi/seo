@@ -4,6 +4,7 @@
  * Separates app creation from server bootstrap
  */
 
+import bcrypt from 'bcryptjs';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -11,6 +12,10 @@ import cookieParser from 'cookie-parser';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { config } from './config/index.js';
+import { query, transaction } from './db/client.js';
+import { passwordRecoveryService } from './services/password-recovery.service.js';
+import { teamService } from './services/team.service.js';
+import { sessionService } from './services/session.service.js';
 import { checkDatabaseHealth } from './db/client.js';
 import { authMiddleware, AuthRequest, ApiError } from './middleware/auth.js';
 import { healthRouter } from './routes/health.js';
@@ -109,6 +114,7 @@ export function createApp() {
         durationMs: duration,
         userId: (req as any).userId || undefined,
         organizationId: (req as any).organizationId || undefined,
+        apiKeyId: (req as any).apiKeyId || undefined,
         ip: req.ip,
       };
       console.log(JSON.stringify(log));
@@ -122,7 +128,7 @@ export function createApp() {
 
   const signupSchema = z.object({
     email: z.string().email().max(255),
-    password: z.string().min(8).max(128),
+    password: z.string().min(8).max(128).refine(value=>Buffer.byteLength(value,'utf8')<=72,'Password is too long'),
     name: z.string().min(1).max(100),
   });
 
@@ -190,14 +196,53 @@ export function createApp() {
     });
   });
 
+  const refreshCookie = 'rankforge_refresh';
+  const cookieOptions = { httpOnly: true, secure: config.isProduction, sameSite: 'lax' as const,
+    path: '/api/v1/auth', maxAge: 30 * 24 * 60 * 60 * 1000 };
+  const requireTrustedOrigin = (req: Request, _res: Response, next: NextFunction) => {
+    const origin = req.headers.origin;
+    if (origin && ![config.appUrl, ...config.corsOrigins].includes(origin)) {
+      return next(new ApiError(403, 'FORBIDDEN', 'Untrusted origin'));
+    }
+    if (!origin && req.headers['sec-fetch-site'] === 'cross-site') return next(new ApiError(403, 'FORBIDDEN', 'Untrusted origin'));
+    next();
+  };
+  app.post('/api/v1/auth/forgot-password', authLimiter, requireTrustedOrigin, async (req, res, next) => {
+    try {
+      const {email}=z.object({email:z.string().email().max(255)}).parse(req.body);
+      await passwordRecoveryService.request(email);
+      res.status(202).json({success:true,data:{message:'If the account exists, a reset email will be sent.'}});
+    } catch (error) {next(error);}
+  });
+  app.post('/api/v1/auth/reset-password', authLimiter, requireTrustedOrigin, async (req,res,next)=>{
+    try {
+      const body=z.object({token:z.string().regex(/^[a-f0-9]{64}$/),password:z.string().min(12).max(128).refine(value=>Buffer.byteLength(value,'utf8')<=72,'Password is too long')}).parse(req.body);
+      await passwordRecoveryService.reset(body.token,body.password);
+      res.clearCookie(refreshCookie,{...cookieOptions,maxAge:undefined});
+      res.json({success:true,data:null});
+    } catch(error){next(error);}
+  });
+  app.post('/api/v1/auth/refresh', authLimiter, requireTrustedOrigin, async (req, res, next) => {
+    try {
+      const refresh = req.cookies?.[refreshCookie];
+      if (typeof refresh !== 'string' || !/^[a-f0-9]{64}$/.test(refresh)) throw new ApiError(401,'SESSION_EXPIRED','Session expired');
+      const session = await sessionService.refresh(refresh);
+      res.cookie(refreshCookie, session.refreshToken, cookieOptions);
+      res.setHeader('Cache-Control','no-store');
+      res.json({ success: true, data: { token: session.token } });
+    } catch (error) { res.clearCookie(refreshCookie, { ...cookieOptions, maxAge: undefined }); next(error); }
+  });
+
   // ============================================================
   // AUTH ROUTES
   // ============================================================
 
-  app.post('/api/v1/auth/signup', authLimiter, async (req, res, next) => {
+  app.post('/api/v1/auth/signup', authLimiter, requireTrustedOrigin, async (req, res, next) => {
     try {
       const { email, password, name } = signupSchema.parse(req.body);
       const result = await authService.signup(email, password, name, req.ip, req.headers['user-agent']);
+      res.cookie(refreshCookie, result.refreshToken, cookieOptions);
+      res.setHeader('Cache-Control','no-store');
       res.status(201).json({
         success: true,
         data: {
@@ -207,6 +252,7 @@ export function createApp() {
         },
       });
     } catch (error: any) {
+      if (error.code === '23505') return res.status(409).json({success:false,error:{code:'CONFLICT',message:'Account already exists'}});
       if (error.status) {
         return res.status(error.status).json({ success: false, error: { code: error.code, message: error.message } });
       }
@@ -214,10 +260,12 @@ export function createApp() {
     }
   });
 
-  app.post('/api/v1/auth/login', authLimiter, async (req, res, next) => {
+  app.post('/api/v1/auth/login', authLimiter, requireTrustedOrigin, async (req, res, next) => {
     try {
       const { email, password } = loginSchema.parse(req.body);
       const result = await authService.login(email, password, req.ip, req.headers['user-agent']);
+      res.cookie(refreshCookie, result.refreshToken, cookieOptions);
+      res.setHeader('Cache-Control','no-store');
       res.json({
         success: true,
         data: {
@@ -243,7 +291,7 @@ export function createApp() {
       res.json({
         success: true,
         data: {
-          user: { id: data.user.id, email: data.user.email, name: data.user.name, organizationId: data.organizationId },
+          user: { id: data.user.id, email: data.user.email, name: data.user.name, organizationId: req.organizationId, role: req.user.role },
           organizations: data.organizations,
         },
       });
@@ -252,8 +300,53 @@ export function createApp() {
     }
   });
 
-  app.post('/api/v1/auth/logout', authMiddleware, async (req: AuthRequest, res, next) => {
+  app.get('/api/v1/auth/sessions', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
+      const sessions = await query(`SELECT id,organization_id AS "organizationId",created_at AS "createdAt",expires_at AS "expiresAt"
+        FROM auth_sessions WHERE user_id=$1 AND revoked_at IS NULL AND expires_at>NOW() ORDER BY created_at DESC`,[req.userId!]);
+      res.json({success:true,data:sessions.rows.map((s: any)=>({...s,current:s.id===req.sessionId}))});
+    } catch (error) { next(error); }
+  });
+  app.delete('/api/v1/auth/sessions/:id', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const id=z.string().uuid().parse(req.params.id);
+      await query('UPDATE auth_sessions SET revoked_at=NOW() WHERE id=$1 AND user_id=$2',[id,req.userId!]);
+      res.json({success:true,data:null});
+    } catch (error) { next(error); }
+  });
+  app.post('/api/v1/auth/password', authLimiter, authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const body=z.object({currentPassword:z.string().min(1).max(128),password:z.string().min(12).max(128).refine(value=>Buffer.byteLength(value,'utf8')<=72,'Password is too long')}).parse(req.body);
+      await transaction(async () => {
+        const user=await query('SELECT password_hash FROM users WHERE id=$1 FOR UPDATE',[req.userId!]);
+        if (!await bcrypt.compare(body.currentPassword,user.rows[0].password_hash)) throw new ApiError(401,'UNAUTHENTICATED','Current password is incorrect');
+        await query('UPDATE users SET password_hash=$1,updated_at=NOW() WHERE id=$2',[await bcrypt.hash(body.password,12),req.userId!]);
+        await query('UPDATE auth_sessions SET revoked_at=NOW() WHERE user_id=$1',[req.userId!]);
+      });
+      res.clearCookie(refreshCookie,{...cookieOptions,maxAge:undefined});
+      res.json({success:true,data:null});
+    } catch (error) { next(error); }
+  });
+  app.post('/api/v1/auth/organization', requireTrustedOrigin, authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const id=z.string().uuid().parse(req.body.organizationId);
+      const role=await organizationRepository.getMemberRole(id,req.userId!);
+      const org=await organizationRepository.findById(id);
+      if (!role || !org) throw new ApiError(403,'FORBIDDEN','Not a member of this organization');
+      const session=await transaction(async()=>{
+        const created=await sessionService.create(req.userId!,id,role,req.user.email);
+        await sessionService.revoke(req.sessionId!);
+        return created;
+      });
+      res.cookie(refreshCookie,session.refreshToken,cookieOptions);
+      res.json({success:true,data:{token:session.token}});
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/v1/auth/logout', requireTrustedOrigin, authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      await sessionService.revoke(req.sessionId!);
+      res.clearCookie(refreshCookie, { ...cookieOptions, maxAge: undefined });
       await auditLogRepository.create({
         organizationId: req.organizationId!,
         userId: req.userId,
@@ -279,7 +372,8 @@ export function createApp() {
       if (!org) {
         return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Organization not found' } });
       }
-      res.json({ success: true, data: org });
+      const [members, credits] = await Promise.all([organizationRepository.getMembers(org.id), creditRepository.getWallet(org.id)]);
+      res.json({ success: true, data: { ...org, members: members.map(m => ({ ...m, role: m.role.toLowerCase(), joinedAt: m.createdAt })), credits } });
     } catch (error) {
       next(error);
     }
@@ -297,9 +391,7 @@ export function createApp() {
   app.patch('/api/v1/organizations/current', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       const org = await organizationRepository.update(req.organizationId!, {
-        name: req.body.name,
-        settings: req.body.settings,
-        whiteLabel: req.body.whiteLabel,
+        ...z.object({name:z.string().trim().min(1).max(255).optional(),settings:z.record(z.unknown()).optional()}).strict().parse(req.body),
       });
 
       if (!org) {
@@ -322,6 +414,65 @@ export function createApp() {
     }
   });
 
+  app.patch('/api/v1/organizations/current/members/:userId', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const userId=z.string().uuid().parse(req.params.userId);
+      const {role}=z.object({role:z.enum(['Admin','Manager','SEO_Manager','Analyst','Editor','Client','Viewer'])}).parse(req.body);
+      await transaction(async()=>{
+        const member=await query('SELECT role FROM organization_members WHERE organization_id=$1 AND user_id=$2 FOR UPDATE',[req.organizationId!,userId]);
+        if (!member.rows[0]) throw new ApiError(404,'NOT_FOUND','Member not found');
+        if (member.rows[0].role==='Owner' || (req.user.role!=='Owner' && (role==='Admin' || member.rows[0].role==='Admin'))) throw new ApiError(403,'FORBIDDEN','Cannot manage this role');
+        await query('UPDATE organization_members SET role=$1 WHERE organization_id=$2 AND user_id=$3',[role,req.organizationId!,userId]);
+        await query('DELETE FROM client_projects WHERE organization_id=$1 AND user_id=$2',[req.organizationId!,userId]);
+      });
+      res.json({success:true,data:null});
+    } catch (error) { next(error); }
+  });
+  app.delete('/api/v1/organizations/current/members/:userId', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const userId=z.string().uuid().parse(req.params.userId);
+      await transaction(async()=>{
+        const member=await query('SELECT role FROM organization_members WHERE organization_id=$1 AND user_id=$2 FOR UPDATE',[req.organizationId!,userId]);
+        if (!member.rows[0]) throw new ApiError(404,'NOT_FOUND','Member not found');
+        if (member.rows[0].role==='Owner' || (req.user.role!=='Owner' && member.rows[0].role==='Admin')) throw new ApiError(403,'FORBIDDEN','Cannot remove this member');
+        await query('DELETE FROM organization_members WHERE organization_id=$1 AND user_id=$2',[req.organizationId!,userId]);
+        await query('UPDATE auth_sessions SET revoked_at=NOW() WHERE organization_id=$1 AND user_id=$2',[req.organizationId!,userId]);
+      });
+      res.json({success:true,data:null});
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/v1/organizations/current/members', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const body = z.object({email:z.string().email(),role:z.enum(['Admin','Manager','SEO_Manager','Analyst','Editor','Client','Viewer'])}).parse(req.body);
+      const member = await teamService.add(req.organizationId!, req.user.role, body.email, body.role);
+      res.status(201).json({success:true,data:member});
+    } catch (error) { next(error); }
+  });
+
+  app.put('/api/v1/projects/:projectId/clients/:userId', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      if (!['Owner','Admin'].includes(req.user.role)) throw new ApiError(403,'FORBIDDEN','Admin required');
+      const projectId = z.string().uuid().parse(req.params.projectId);
+      const userId = z.string().uuid().parse(req.params.userId);
+      const result = await query(`INSERT INTO client_projects (organization_id,user_id,project_id)
+        SELECT m.organization_id,m.user_id,p.id FROM organization_members m JOIN projects p ON p.organization_id=m.organization_id
+        WHERE m.organization_id=$1 AND m.user_id=$2 AND m.role='Client' AND p.id=$3 AND p.deleted_at IS NULL
+        ON CONFLICT DO NOTHING RETURNING project_id`,[req.organizationId!,userId,projectId]);
+      if (!result.rows.length) throw new ApiError(409,'CONFLICT','Invalid client/project or already assigned');
+      res.json({success:true,data:result.rows[0]});
+    } catch (error) { next(error); }
+  });
+
+  app.delete('/api/v1/projects/:projectId/clients/:userId', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      if (!['Owner','Admin'].includes(req.user.role)) throw new ApiError(403,'FORBIDDEN','Admin required');
+      await query('DELETE FROM client_projects WHERE organization_id=$1 AND project_id=$2 AND user_id=$3',
+        [req.organizationId!,z.string().uuid().parse(req.params.projectId),z.string().uuid().parse(req.params.userId)]);
+      res.json({success:true,data:null});
+    } catch (error) { next(error); }
+  });
+
   app.get('/api/v1/organizations/current/members', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       const members = await organizationRepository.getMembers(req.organizationId!);
@@ -338,6 +489,12 @@ export function createApp() {
   app.get('/api/v1/projects', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       const { page, limit, search } = paginationSchema.parse(req.query);
+      if (req.user.role === 'Client') {
+        const assigned = await query(`SELECT p.* FROM projects p JOIN client_projects cp ON cp.project_id=p.id AND cp.organization_id=p.organization_id
+          WHERE cp.organization_id=$1 AND cp.user_id=$2 AND p.deleted_at IS NULL ORDER BY p.created_at DESC`, [req.organizationId!,req.userId!]);
+        const projects = await Promise.all(assigned.rows.map((p: any) => projectRepository.findById(p.id, req.organizationId!)));
+        return res.json({success:true,data:projects});
+      }
       const result = await projectRepository.findByOrganization(req.organizationId!, { page, limit, search });
 
       res.json({
@@ -369,25 +526,28 @@ export function createApp() {
 
   app.post('/api/v1/projects', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
+      const createdProject = await transaction(async () => {
+      await query('SELECT id FROM organizations WHERE id=$1 FOR UPDATE', [req.organizationId!]);
       const parsed = projectSchema.parse(req.body);
       const normalizedDomain = projectRepository.normalizeDomain(parsed.domain);
 
       const lowerDomain = normalizedDomain.toLowerCase();
       if (['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(lowerDomain) || lowerDomain.endsWith('.internal') || lowerDomain.endsWith('.local')) {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid domain: private/internal domains not allowed' } });
+        throw new ApiError(400,'VALIDATION_ERROR','Invalid domain: private/internal domains not allowed');
       }
 
       const org = await organizationRepository.findById(req.organizationId!);
       const count = await projectRepository.countByOrganization(req.organizationId!);
-      const planLimits: Record<string, number> = { FREE: 1, STARTER: 3, PRO: 10, AGENCY: 50, ENTERPRISE: 200 };
-      const limit = planLimits[org?.plan || 'FREE'] || 1;
-      if (count >= limit) {
-        return res.status(403).json({ success: false, error: { code: 'LIMIT_REACHED', message: `Project limit reached for ${org?.plan} plan (${limit}). Upgrade to create more.` } });
+      const plan = await query('SELECT limits FROM plans WHERE id=$1 AND is_active=true',[org?.plan]);
+      const limit = Number(plan.rows[0]?.limits?.projects);
+      if (!Number.isFinite(limit)) throw new ApiError(503,'SERVICE_UNAVAILABLE','Plan configuration unavailable');
+      if (limit >= 0 && count >= limit) {
+        throw new ApiError(403,'LIMIT_REACHED',`Project limit reached for ${org?.plan} plan (${limit}).`);
       }
 
       const existing = await projectRepository.findByDomain(req.organizationId!, normalizedDomain);
       if (existing) {
-        return res.status(409).json({ success: false, error: { code: 'CONFLICT', message: 'Project with this domain already exists' } });
+        throw new ApiError(409,'CONFLICT','Project with this domain already exists');
       }
 
       const project = await projectRepository.create({
@@ -418,7 +578,9 @@ export function createApp() {
         payload: { domain: normalizedDomain, maxPages: 50 },
       });
 
-      res.status(201).json({ success: true, data: project });
+      return project;
+      });
+      res.status(201).json({success:true,data:createdProject});
     } catch (error: any) {
       if (error.name === 'ZodError') {
         return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
@@ -892,7 +1054,7 @@ export function createApp() {
 
   app.post('/api/v1/api-keys', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
-      const schema = z.object({ name: z.string().min(1).max(100), scopes: z.array(z.string()).optional(), expiresAt: z.string().optional() });
+      const schema = z.object({ name: z.string().min(1).max(100), scopes: z.array(z.enum(['read','write'])).min(1).optional(), expiresAt: z.string().datetime().refine(value=>new Date(value).getTime()>Date.now(),'Expiry must be in the future').optional() });
       const { name, scopes, expiresAt } = schema.parse(req.body);
 
       const { key, hash, prefix } = generateApiKey();
@@ -1731,9 +1893,12 @@ export function createApp() {
   app.delete('/api/v1/gdpr/account', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       const { query } = await import('./db/client.js');
-      // Soft delete with PII minimization — real GDPR compliance
+      const ownership=await query('SELECT id FROM organizations WHERE owner_id=$1 AND deleted_at IS NULL',[req.userId!]);
+      if (ownership.rows.length) throw new ApiError(409,'CONFLICT','Transfer or close owned organizations before deleting your account');
+      // Soft delete with PII minimization
       await query(`UPDATE users SET email = $1, name = 'Deleted User', deleted_at = NOW() WHERE id = $2`, [`deleted_${req.userId!}@example.com`, req.userId!]);
-      await query(`UPDATE organization_members SET deleted_at = NOW() WHERE user_id = $1`, [req.userId!]);
+      await query('DELETE FROM organization_members WHERE user_id=$1', [req.userId!]);
+      await query('UPDATE auth_sessions SET revoked_at=NOW() WHERE user_id=$1',[req.userId!]);
 
       await auditLogRepository.create({
         organizationId: req.organizationId!,
@@ -2066,19 +2231,12 @@ export function createApp() {
       const member = await query(`SELECT role FROM organization_members WHERE user_id = $1 AND organization_id = $2`, [req.userId!, req.organizationId!]);
       const role = member.rows[0]?.role;
 
-      // Client role sees only assigned projects, owner/admin sees all
-      let projects;
-      if (role === 'client') {
-        // Real client portal: client sees only projects assigned via client_projects table or where they are explicitly assigned
-        const result = await query(`SELECT p.id, p.name, p.domain, p.seo_score as "seoScore", p.last_crawl_at as "lastCrawlAt" FROM projects p WHERE p.organization_id = $1 AND p.deleted_at IS NULL ORDER BY p.created_at DESC`, [req.organizationId!]);
-        // For client role, filter to only assigned — real implementation would have client_projects join
-        projects = result.rows;
-      } else {
-        const result = await projectRepository.findByOrganization(req.organizationId!, { page: 1, limit: 100 });
-        projects = result.items;
-      }
-
-      res.json({ success: true, data: projects, role, message: role === 'client' ? 'Client portal — read-only isolated access, real org_id filter' : 'Owner/admin view — all projects' });
+      const assigned = await query(`SELECT p.id FROM projects p
+        WHERE p.organization_id=$1 AND p.deleted_at IS NULL AND ($3::boolean OR EXISTS
+          (SELECT 1 FROM client_projects cp WHERE cp.project_id=p.id AND cp.organization_id=p.organization_id AND cp.user_id=$2))`,
+        [req.organizationId!, req.userId!, role !== 'Client']);
+      const projects = await Promise.all(assigned.rows.map((p: any) => projectRepository.findById(p.id, req.organizationId!)));
+      res.json({ success: true, data: projects });
     } catch (error) {
       next(error);
     }

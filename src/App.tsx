@@ -1,5 +1,6 @@
+import PasswordRecovery from './components/PasswordRecovery';
 import { useState, useEffect, useCallback } from 'react';
-import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, Outlet, useParams } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Projects from './pages/Projects';
@@ -20,10 +21,10 @@ import Team from './pages/Team';
 import Agency from './pages/Agency';
 import ApiPage from './pages/ApiPage';
 import SettingsPage from './pages/Settings';
-import { AppContext } from './lib/store';
+import { AppContext, useAppState } from './lib/store';
 import type { AppState, AppActions } from './lib/store';
 import type { Organization, Project, ProviderStatus } from './lib/types';
-import { api } from './lib/api';
+import { api, AUTH_EXPIRED_EVENT } from './lib/api';
 import { isApiError, ApiErrorCode } from './lib/api';
 import { t } from './i18n';
 import { formatPersianNumber, toPersianDigits } from './lib/persian';
@@ -51,10 +52,11 @@ function App() {
     theme: 'dark',
   });
 
+  const setCurrentProject = useCallback((project: Project | null) => setState(s => ({ ...s, currentProject: project })), []);
   const actions: AppActions = {
     setAuthenticated: (v) => setState(s => ({ ...s, isAuthenticated: v })),
     setCurrentOrg: (org) => setState(s => ({ ...s, currentOrg: org })),
-    setCurrentProject: (project) => setState(s => ({ ...s, currentProject: project })),
+    setCurrentProject,
     addProject: (project) => setState(s => ({ ...s, projects: [...s.projects, project] })),
     dismissAlert: (id) => setState(s => ({ ...s, alerts: s.alerts.filter(a => a.id !== id) })),
   };
@@ -74,6 +76,15 @@ function App() {
       currentProject: projectsResult.success && projectsResult.data.length > 0 ? projectsResult.data[0] : s.currentProject,
       providerStatus: providerResult.success ? providerResult.data : s.providerStatus,
     }));
+  }, []);
+
+  useEffect(() => {
+    const expired = () => {
+      setState(s => ({ ...s, isAuthenticated: false, currentOrg: null, currentProject: null, projects: [], jobs: [], alerts: [] }));
+      setStatus('unauthenticated');
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, expired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, expired);
   }, []);
 
   // Initialize app - set RTL and Persian
@@ -109,6 +120,13 @@ function App() {
 
     initialize();
   }, [refreshData]);
+
+  if (window.location.hash.startsWith('#/reset-password')) {
+    const token=new URLSearchParams(window.location.hash.split('?')[1] || '').get('token') || '';
+    return <div className="min-h-screen bg-surface flex items-center justify-center p-6"><div className="bg-surface-2 rounded-xl p-6 max-w-md w-full">
+      <PasswordRecovery token={token} onBack={()=>{window.location.hash='';window.location.reload();}} />
+    </div></div>;
+  }
 
   // Loading state - Persian
   if (status === 'loading') {
@@ -182,7 +200,7 @@ function App() {
           </div>
 
           <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-6">
-            <AuthForm onSuccess={() => { setStatus('ready'); refreshData(); }} />
+            <AuthForm onSuccess={() => { setState(s => ({ ...s, isAuthenticated: true })); setStatus('ready'); refreshData(); }} />
           </div>
         </div>
       </div>
@@ -229,6 +247,7 @@ function App() {
 
 // Auth form with login / signup tabs - Persian
 function AuthForm({ onSuccess }: { onSuccess: () => void }) {
+  const [recovering,setRecovering]=useState(false);
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -269,8 +288,11 @@ function AuthForm({ onSuccess }: { onSuccess: () => void }) {
     setError(null);
   };
 
+  if (recovering) return <PasswordRecovery onBack={()=>setRecovering(false)} />;
+
   return (
     <div dir="rtl">
+      <button type="button" onClick={()=>setRecovering(true)} className="text-brand-400 text-sm mb-4">رمز عبور را فراموش کرده‌اید؟</button>
       {/* Tabs */}
       <div className="flex gap-1 mb-6 p-1 bg-surface rounded-lg">
         <button
@@ -379,7 +401,26 @@ function AuthForm({ onSuccess }: { onSuccess: () => void }) {
 
 // Project layout wrapper - loads project by ID from URL
 function ProjectLayout() {
-  return <Outlet />;
+  const { projectId } = useParams();
+  const { state, actions } = useAppState();
+  const [resolved, setResolved] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const setCurrentProject = actions.setCurrentProject;
+  useEffect(() => {
+    let cancelled = false;
+    setResolved(null);
+    setError(null);
+    if (!projectId) return;
+    api.getProject(projectId).then(result => {
+      if (cancelled) return;
+      if (result.success) { setCurrentProject(result.data); setResolved(projectId); }
+      else setError(result.error.status === 404 ? 'پروژه پیدا نشد یا به آن دسترسی ندارید.' : 'بارگذاری پروژه ناموفق بود. دوباره تلاش کنید.');
+    });
+    return () => { cancelled = true; };
+  }, [projectId, setCurrentProject]);
+  if (error) return <div role="alert">{error}</div>;
+  if (resolved !== projectId || state.currentProject?.id !== projectId) return <p role="status">در حال بارگذاری پروژه…</p>;
+  return <Outlet key={projectId} />;
 }
 
 export default App;

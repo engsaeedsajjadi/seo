@@ -188,10 +188,11 @@ export interface PlanLimits {
   competitors: number;
 }
 
+// Display defaults mirror seeded plans. Server-side plan limits remain authoritative.
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
-  FREE: { projects: 1, keywords: 50, crawledPages: 100, rankChecks: 30, aiOperations: 5, reports: 2, users: 1, apiRequests: 100, competitors: 1 },
-  STARTER: { projects: 3, keywords: 500, crawledPages: 1000, rankChecks: 300, aiOperations: 50, reports: 10, users: 3, apiRequests: 1000, competitors: 5 },
-  PRO: { projects: 10, keywords: 5000, crawledPages: 10000, rankChecks: 3000, aiOperations: 500, reports: 50, users: 10, apiRequests: 10000, competitors: 20 },
-  AGENCY: { projects: 50, keywords: 25000, crawledPages: 50000, rankChecks: 15000, aiOperations: 2500, reports: 200, users: 50, apiRequests: 50000, competitors: 100 },
-  ENTERPRISE: { projects: -1, keywords: -1, crawledPages: -1, rankChecks: -1, aiOperations: -1, reports: -1, users: -1, apiRequests: -1, competitors: -1 },
+  FREE: { projects:1, keywords:10, crawledPages:100, rankChecks:100, aiOperations:10, reports:5, users:1, apiRequests:100, competitors:2 },
+  STARTER: { projects:3, keywords:100, crawledPages:1000, rankChecks:1000, aiOperations:100, reports:20, users:2, apiRequests:1000, competitors:5 },
+  PRO: { projects:10, keywords:500, crawledPages:10000, rankChecks:5000, aiOperations:500, reports:100, users:5, apiRequests:5000, competitors:10 },
+  AGENCY: { projects:50, keywords:2500, crawledPages:50000, rankChecks:25000, aiOperations:2500, reports:500, users:20, apiRequests:25000, competitors:25 },
+  ENTERPRISE: { projects:200, keywords:10000, crawledPages:200000, rankChecks:100000, aiOperations:10000, reports:2000, users:100, apiRequests:100000, competitors:100 },
 };

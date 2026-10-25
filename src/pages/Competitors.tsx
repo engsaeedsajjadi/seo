@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/api';
 import { useState, useEffect } from 'react';
 import { Target, Plus, AlertCircle, Globe, RefreshCw } from 'lucide-react';
 import { useAppState } from '../lib/store';
@@ -29,7 +30,7 @@ export default function Competitors() {
         return;
       }
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/competitors`, {
+        const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/competitors`, {
           credentials: 'include',
         });
         const json = await res.json();
@@ -56,7 +57,7 @@ export default function Competitors() {
     setAddLoading(true);
     setAddError(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/competitors`, {
+      const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/competitors`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

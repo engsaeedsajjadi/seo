@@ -10,6 +10,7 @@ import { config } from '../config/index.js';
 let pool: Pool | null = null;
 
 type DbContext = { userId: string; organizationId: string };
+const transactionContext = new AsyncLocalStorage<PoolClient>();
 const dbContext = new AsyncLocalStorage<DbContext>();
 
 export function runWithDbContext<T>(context: DbContext, callback: () => T): T {
@@ -31,7 +32,7 @@ export function getPool(): Pool {
     // postgres:16-alpine compose service) does not serve SSL, so forcing
     // SSL in production made the shipped stack unable to reach its own
     // database. Managed DBs that require SSL set DATABASE_SSL=true.
-    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: true } : false,
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
@@ -58,6 +59,8 @@ async function clearTenantContext(client: PoolClient): Promise<void> {
 }
 
 export async function query(text: string, params?: any[]): Promise<any> {
+  const active = transactionContext.getStore();
+  if (active) return active.query(text, params);
   const client = await getPool().connect();
   const start = Date.now();
   try {
@@ -76,23 +79,24 @@ export async function query(text: string, params?: any[]): Promise<any> {
 
 export async function getClient(): Promise<PoolClient> {
   const client = await getPool().connect();
-  await applyTenantContext(client);
-  return client;
+  try { await applyTenantContext(client); return client; }
+  catch (error) { client.release(); throw error; }
 }
 
 export async function transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const active = transactionContext.getStore();
+  if (active) return fn(active);
   const client = await getClient();
   try {
     await client.query('BEGIN');
-    const result = await fn(client);
+    const result = await transactionContext.run(client, () => fn(client));
     await client.query('COMMIT');
     return result;
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
   } finally {
-    await clearTenantContext(client);
-    client.release();
+    try { await clearTenantContext(client); } finally { client.release(); }
   }
 }
 

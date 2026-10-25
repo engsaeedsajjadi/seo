@@ -33,7 +33,7 @@ async function seed() {
          '["50 Projects", "2500 Keywords", "Agency Mode", "Client Portal", "White-label", "Team Management", "API + Webhooks"]', true, 25000),
         ('ENTERPRISE', 'Enterprise', 'For large organizations with custom needs', 49900, 499000,
          '{"projects": 200, "keywords": 10000, "crawledPages": 200000, "rankChecks": 100000, "aiOperations": 10000, "reports": 2000, "users": 100, "apiRequests": 100000, "competitors": 100, "backlinks": 200000, "crawlDepth": 15, "historyMonths": 36}',
-         '["200 Projects", "Unlimited Keywords", "SSO", "Custom Integrations", "Dedicated Support", "SLA", "On-premise Option"]', true, 100000)
+         '["200 Projects", "10000 Keywords", "Team Management", "API + Webhooks", "Self-hosted Option"]', true, 100000)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         description = EXCLUDED.description,

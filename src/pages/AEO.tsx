@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/api';
 import { useState, useEffect } from 'react';
 import {
   Radio, AlertCircle, MessageSquare, CheckCircle2,
@@ -26,7 +27,7 @@ export default function AEO() {
         return;
       }
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/aeo`, {
+        const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/aeo`, {
           credentials: 'include',
         });
         const json = await res.json();

@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/api';
 import { useState, useEffect } from 'react';
 import { t } from '../i18n';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
@@ -45,7 +46,7 @@ export default function ApiPage() {
   useEffect(() => {
     async function loadKeys() {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/api-keys`, { credentials: 'include' });
+        const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/api-keys`, { credentials: 'include' });
         const json = await res.json();
         if (json.success) setApiKeys(json.data);
       } catch (e) {
@@ -56,7 +57,7 @@ export default function ApiPage() {
     }
     async function loadWebhooks() {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/webhooks`, { credentials: 'include' });
+        const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/webhooks`, { credentials: 'include' });
         const json = await res.json();
         if (json.success) setWebhooks(json.data);
       } catch (e) {
@@ -77,7 +78,7 @@ export default function ApiPage() {
     setKeyLoading(true);
     setKeyError(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/api-keys`, {
+      const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/api-keys`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -101,7 +102,7 @@ export default function ApiPage() {
 
   async function handleRevokeKey(id: string) {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/api-keys/${encodeURIComponent(id)}`, {
+      const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/api-keys/${encodeURIComponent(id)}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -122,7 +123,7 @@ export default function ApiPage() {
     setWebhookLoading(true);
     setWebhookError(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/webhooks`, {
+      const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/webhooks`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -146,7 +147,7 @@ export default function ApiPage() {
 
   async function handleDeleteWebhook(id: string) {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/webhooks/${encodeURIComponent(id)}`, {
+      const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/webhooks/${encodeURIComponent(id)}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -161,7 +162,7 @@ export default function ApiPage() {
 
   async function handleTestWebhook(id: string) {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/webhooks/${encodeURIComponent(id)}/test`, {
+      const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/webhooks/${encodeURIComponent(id)}/test`, {
         method: 'POST',
         credentials: 'include',
       });

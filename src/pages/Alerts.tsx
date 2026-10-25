@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/api';
 import { useState, useEffect } from 'react';
 import {
   Bell, AlertTriangle, Check, Trash2, Settings, Filter,
@@ -49,7 +50,7 @@ export default function Alerts() {
     setRuleLoading(true);
     setRuleError(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/alerts`, {
+      const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/alerts`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -74,7 +75,7 @@ export default function Alerts() {
   async function handleMarkRead(alertId: string) {
     if (!state.currentProject) return;
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/alerts/${encodeURIComponent(alertId)}/read`, {
+      const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/alerts/${encodeURIComponent(alertId)}/read`, {
         method: 'PATCH',
         credentials: 'include',
       });

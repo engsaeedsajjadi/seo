@@ -10,7 +10,8 @@ import type {
   Job, 
   Report, 
   Alert,
-  ProviderStatus 
+  ProviderStatus,
+  OrganizationMember
 } from './types';
 
 // ============================================================
@@ -176,7 +177,7 @@ export type ApiResult<T> =
 // API CLIENT
 // ============================================================
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE_URL = import.meta.env?.VITE_API_URL?.replace(/\/$/, '') || '';
 const API_TIMEOUT = 30000;
 
 // ============================================================
@@ -186,16 +187,19 @@ const API_TIMEOUT = 30000;
 // `token` cookie). We persist it in localStorage so sessions
 // survive reloads, and attach it to every request.
 const TOKEN_STORAGE_KEY = 'rankforge_token';
+let memoryToken: string | null = null;
+export const AUTH_EXPIRED_EVENT = 'rankforge:session-expired';
 
 export function getAuthToken(): string | null {
   try {
-    return localStorage.getItem(TOKEN_STORAGE_KEY);
+    return localStorage.getItem(TOKEN_STORAGE_KEY) || memoryToken;
   } catch {
-    return null;
+    return memoryToken;
   }
 }
 
 export function setAuthToken(token: string): void {
+  memoryToken = token;
   try {
     localStorage.setItem(TOKEN_STORAGE_KEY, token);
   } catch {
@@ -204,6 +208,7 @@ export function setAuthToken(token: string): void {
 }
 
 export function clearAuthToken(): void {
+  memoryToken = null;
   try {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
   } catch {
@@ -211,9 +216,18 @@ export function clearAuthToken(): void {
   }
 }
 
-class ApiClient {
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', event => {
+    if (event.key !== TOKEN_STORAGE_KEY) return;
+    memoryToken = event.newValue;
+    if (!event.newValue) window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+  });
+}
+
+export class ApiClient {
   private baseUrl: string;
   private timeout: number;
+  private refreshPromise: Promise<boolean> | null = null;
 
   constructor(baseUrl: string = API_BASE_URL, timeout: number = API_TIMEOUT) {
     this.baseUrl = baseUrl;
@@ -224,7 +238,6 @@ class ApiClient {
    * Check if API backend is available
    */
   async checkAvailability(): Promise<boolean> {
-    if (!this.baseUrl) return false;
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -242,14 +255,7 @@ class ApiClient {
   /**
    * Core request method with proper error classification
    */
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResult<T>> {
-    if (!this.baseUrl) {
-      return { 
-        success: false, 
-        error: new NetworkError('Backend API not configured. Set VITE_API_URL environment variable.') 
-      };
-    }
-
+  private async request<T>(endpoint: string, options: RequestInit = {}, retry = true): Promise<ApiResult<T>> {
     const url = `${this.baseUrl}${endpoint}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -286,14 +292,11 @@ class ApiClient {
         // Classify error by status code
         switch (response.status) {
           case 401: {
-            // A stored token the server rejects as expired/invalid is dead —
-            // drop it so the app falls back to the login screen instead of
-            // looping on 401s. Bad-credential logins (UNAUTHENTICATED) keep
-            // whatever session exists. (Server session codes are plain
-            // strings outside the ApiErrorCode enum.)
-            const code = String(errorCode || '');
-            if (code === 'SESSION_EXPIRED' || code === 'INVALID_SESSION') {
+            const isAuthAction = /\/auth\/(login|signup|refresh|forgot-password|reset-password)$/.test(endpoint);
+            if (!isAuthAction && retry && await this.refreshSession()) return this.request<T>(endpoint, options, false);
+            if (!isAuthAction) {
               clearAuthToken();
+              window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
             }
             return { success: false, error: new AuthenticationError(errorMessage) };
           }
@@ -364,6 +367,41 @@ class ApiClient {
   // AUTHENTICATION
   // ============================================================
 
+  refreshSession(): Promise<boolean> {
+    if (!this.refreshPromise) {
+      const previous = getAuthToken();
+      const rotate = async () => {
+        if (getAuthToken() && getAuthToken() !== previous) return true;
+        const result = await this.request<{token:string}>('/api/v1/auth/refresh',{method:'POST'},false);
+        if (!result.success) return false;
+        setAuthToken(result.data.token);
+        return true;
+      };
+      // Serialize rotation across tabs sharing the same refresh cookie.
+      this.refreshPromise = (async () => {
+        if (typeof navigator !== 'undefined' && navigator.locks) return await navigator.locks.request('rankforge-refresh', rotate);
+        return await rotate();
+      })()
+        .finally(() => { this.refreshPromise = null; });
+    }
+    return this.refreshPromise!;
+  }
+
+  async getMembers(): Promise<ApiResult<OrganizationMember[]>> {
+    const result = await this.request<Array<OrganizationMember & { createdAt: string }>>('/api/v1/organizations/current/members');
+    return result.success ? { success: true, data: result.data.map(m => ({...m, role: m.role.toLowerCase() as OrganizationMember['role'], joinedAt: m.createdAt})) } : result;
+  }
+
+  async addMember(email: string, role: string): Promise<ApiResult<unknown>> {
+    return this.request('/api/v1/organizations/current/members', { method: 'POST', body: JSON.stringify({ email, role }) });
+  }
+
+  async requestPasswordReset(email:string):Promise<ApiResult<unknown>> {
+    return this.request('/api/v1/auth/forgot-password',{method:'POST',body:JSON.stringify({email})});
+  }
+  async resetPassword(token:string,password:string):Promise<ApiResult<unknown>> {
+    return this.request('/api/v1/auth/reset-password',{method:'POST',body:JSON.stringify({token,password})});
+  }
   async login(email: string, password: string): Promise<ApiResult<AuthSession>> {
     const result = await this.request<AuthSession>('/api/v1/auth/login', {
       method: 'POST',
@@ -394,13 +432,19 @@ class ApiClient {
     }
   }
 
-  async getCurrentUser(): Promise<ApiResult<{ user: { id: string; email: string; name: string; organizationId: string } }>> {
+  async getCurrentUser(): Promise<ApiResult<{ user: { id: string; email: string; name: string; organizationId: string; role: string }; organizations: Organization[] }>> {
     return this.request('/api/v1/auth/me');
   }
 
   // ============================================================
   // ORGANIZATIONS
   // ============================================================
+
+  async switchOrganization(organizationId: string): Promise<ApiResult<{token:string}>> {
+    const result = await this.request<{token:string}>('/api/v1/auth/organization',{method:'POST',body:JSON.stringify({organizationId})});
+    if (result.success) setAuthToken(result.data.token);
+    return result;
+  }
 
   async getCurrentOrganization(): Promise<ApiResult<Organization>> {
     return this.request('/api/v1/organizations/current');
@@ -588,4 +632,23 @@ export function isAuthError(error: unknown): error is AuthenticationError {
 
 export function isProviderError(error: unknown): error is ProviderNotConfiguredError | ProviderError {
   return error instanceof ProviderNotConfiguredError || error instanceof ProviderError;
+}
+
+/** Authenticated transport for pages that consume raw Response objects. */
+export async function authenticatedFetch(input: string, options: RequestInit = {}): Promise<Response> {
+  const url = new URL(input, window.location.origin);
+  const apiOrigin = new URL(API_BASE_URL || window.location.origin, window.location.origin).origin;
+  if (url.origin !== apiOrigin || !url.pathname.startsWith('/api/v1/')) throw new Error('Untrusted API URL');
+  async function send() {
+    const headers = new Headers(options.headers);
+    const token = getAuthToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    return fetch(input, { ...options, headers, credentials: 'include' });
+  }
+  let response = await send();
+  if (response.status === 401) {
+    if (await api.refreshSession()) response = await send();
+    if (response.status === 401) { clearAuthToken(); window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT)); }
+  }
+  return response;
 }

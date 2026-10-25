@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/api';
 import { useState, useEffect } from 'react';
 import {
   FileText, Plus, Bot, Sparkles, AlertCircle,
@@ -35,7 +36,7 @@ export default function Content() {
         return;
       }
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/content/briefs`, {
+        const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/content/briefs`, {
           credentials: 'include',
         });
         const json = await res.json();
@@ -63,7 +64,7 @@ export default function Content() {
     setCreateLoading(true);
     setCreateError(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/content/briefs`, {
+      const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(state.currentProject.id)}/content/briefs`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
