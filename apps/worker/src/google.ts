@@ -329,6 +329,51 @@ export function mapGa4ReportResponse(json: any): Ga4MetricRow[] {
 
 export type QueryFn = (text: string, params?: any[]) => Promise<any>;
 
+/**
+ * Turns stored Search Console data into rank history for tracked keywords, so rank tracking
+ * works with no paid SERP provider. It is an impression-weighted average position over the last
+ * 7 days of data, not an exact daily rank, and it never overwrites a rank from another source.
+ */
+export async function persistRanksFromGsc(
+  queryFn: QueryFn,
+  args: { organizationId: string; projectId: string; country: string; language: string },
+): Promise<{ updated: number }> {
+  const keywords = await queryFn(
+    `SELECT k.id, k.current_position, s.position, s.page
+     FROM keywords k
+     JOIN LATERAL (
+       SELECT SUM(g.position * g.impressions) / NULLIF(SUM(g.impressions), 0) AS position,
+              (ARRAY_AGG(g.page ORDER BY g.clicks DESC, g.impressions DESC))[1] AS page
+       FROM gsc_metrics g
+       WHERE g.project_id = k.project_id AND g.organization_id = k.organization_id
+         AND LOWER(g.query) = LOWER(COALESCE(k.keyword, k.term))
+         AND g.date >= (SELECT MAX(date) - 6 FROM gsc_metrics m WHERE m.project_id = k.project_id AND m.organization_id = k.organization_id)
+     ) s ON s.position IS NOT NULL
+     WHERE k.project_id = $1 AND k.organization_id = $2`,
+    [args.projectId, args.organizationId],
+  );
+  let updated = 0;
+  for (const row of keywords.rows) {
+    const position = Math.max(1, Math.round(Number(row.position)));
+    const written = await queryFn(
+      `INSERT INTO keyword_rankings (organization_id, project_id, keyword_id, position, previous_position, url, search_engine, country, language, device, date, provider, raw_data)
+       VALUES ($1, $2, $3, $4, $5, $6, 'google', $7, $8, 'desktop', CURRENT_DATE, 'gsc', $9)
+       ON CONFLICT (keyword_id, date, search_engine, country, device) DO UPDATE
+         SET position = EXCLUDED.position, url = EXCLUDED.url, raw_data = EXCLUDED.raw_data
+         WHERE keyword_rankings.provider = 'gsc'`,
+      [args.organizationId, args.projectId, row.id, position, row.current_position, row.page, args.country, args.language,
+        JSON.stringify({ source: 'gsc', averagePosition: Number(row.position), windowDays: 7 })],
+    );
+    if (!written.rowCount) continue;
+    await queryFn(
+      `UPDATE keywords SET previous_position = current_position, current_position = $2, last_checked_at = NOW(), updated_at = NOW() WHERE id = $1 AND organization_id = $3`,
+      [row.id, position, args.organizationId],
+    );
+    updated++;
+  }
+  return { updated };
+}
+
 export async function persistGscMetrics(
   queryFn: QueryFn,
   args: { organizationId: string; projectId: string; rows: GscMetricRow[] }

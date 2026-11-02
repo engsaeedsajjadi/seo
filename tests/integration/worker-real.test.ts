@@ -269,9 +269,16 @@ try {
   console.log('--- Test 5: GSC and GA4 (mock provider)');
   const tokens = serializeTokens({ accessToken: 'OLD-ACCESS-SECRET-MARKER', refreshToken: 'REFRESH-SECRET-MARKER', expiresAt: Date.now() - 1000 });
   await q(`INSERT INTO integrations (organization_id, project_id, provider, status, credentials_encrypted, config) VALUES ($1, $2, 'gsc', 'connected', $3, '{"siteUrl":"sc-domain:rank.rankforge.test"}'), ($1, $2, 'ga4', 'connected', $3, '{"propertyId":"properties/100"}')`, [A.orgId, A.projectId, tokens]);
+  const gscKeyword = await one(`INSERT INTO keywords (organization_id, project_id, keyword, term, normalized_keyword, normalized_term) VALUES ($1, $2, 'mock query', 'mock query', 'mock query', 'mock query') RETURNING id`, [A.orgId, A.projectId]);
   const g = await runJob(A, 'GSC_SYNC');
   check('T5 GSC sync completes after token refresh', g.job.status === 'completed', g.job);
   check('T5 gsc_metrics stored', await count(`gsc_metrics WHERE project_id = $1`, [A.projectId]) === 1);
+  const gscRank = await one(`SELECT position, provider FROM keyword_rankings WHERE keyword_id = $1`, [gscKeyword.id]);
+  check('T5 tracked keyword gets its rank from Search Console', gscRank?.position === 3 && gscRank?.provider === 'gsc' && g.job.result?.ranksUpdated === 1, { gscRank, result: g.job.result });
+  check('T5 a keyword absent from Search Console is left alone', (await one(`SELECT current_position FROM keywords WHERE id = $1`, [kw.id])).current_position === 7);
+  await q(`UPDATE keyword_rankings SET provider = 'csv', position = 9 WHERE keyword_id = $1`, [gscKeyword.id]);
+  await runJob(A, 'GSC_SYNC');
+  check('T5 Search Console does not overwrite a rank from another source', (await one(`SELECT position FROM keyword_rankings WHERE keyword_id = $1`, [gscKeyword.id])).position === 9);
   const stored = await one(`SELECT credentials_encrypted FROM integrations WHERE organization_id = $1 AND provider = 'gsc'`, [A.orgId]);
   check('T5 refreshed token is stored encrypted', !String(stored.credentials_encrypted).includes('REFRESHED-ACCESS-SECRET-MARKER'));
   const ga = await runJob(A, 'GA4_SYNC');
@@ -373,6 +380,35 @@ try {
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [orgs.map((o) => o.userId)]);
   await q(`DROP ROLE IF EXISTS ${loginRole}`);
   await owner.end();
+}
+
+// Common Crawl import on a tiny graph in the real file format.
+{
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { gzipSync } = await import('node:zlib');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const owner2 = new Pool({ connectionString: OWNER_URL, max: 2 });
+  const stamp = randomBytes(3).toString('hex');
+  const u = (await owner2.query(`INSERT INTO users (email, password_hash, name) VALUES ($1, 'x', 'cc') RETURNING id`, [`cc-${stamp}@example.invalid`])).rows[0].id;
+  const o = (await owner2.query(`INSERT INTO organizations (name, slug, owner_id) VALUES ('cc', $1, $2) RETURNING id`, [`cc-${stamp}`, u])).rows[0].id;
+  const domain = `shop${stamp}.ir`;
+  const p = (await owner2.query(`INSERT INTO projects (organization_id, name, domain, normalized_domain) VALUES ($1, 'cc', $2, $2) RETURNING id`, [o, domain])).rows[0].id;
+  const dir = mkdtempSync(join(tmpdir(), 'cc-'));
+  const write = (name: string, text: string) => { const f = join(dir, name); writeFileSync(f, gzipSync(text)); return f; };
+  const vertices = write('v.gz', `0\tir.${`shop${stamp}`}\t2\n1\tir.linker\t1\n2\tcom.other\t1\n3\tir.unrelated\t1\n`);
+  const runImport = (edges: string) => execFileSync(process.execPath, ['--import', 'tsx', 'scripts/ops/import-commoncrawl-backlinks.ts', vertices, write(`e${randomBytes(2).toString('hex')}.gz`, edges), 'test-release'], { env: { ...process.env, DATABASE_URL: OWNER_URL }, encoding: 'utf8' });
+  runImport('1\t0\n2\t0\n0\t0\n3\t2\n');
+  const links = (await owner2.query(`SELECT source_domain, status, provider FROM backlinks WHERE project_id = $1 ORDER BY 1`, [p])).rows;
+  check('Common Crawl import finds referring domains and ignores other edges', links.map((l: any) => l.source_domain).join() === 'linker.ir,other.com' && links.every((l: any) => l.provider === 'commoncrawl'), links);
+  await sleep(20);
+  runImport('1\t0\n');
+  const after = (await owner2.query(`SELECT source_domain, status FROM backlinks WHERE project_id = $1 ORDER BY 1`, [p])).rows;
+  check('a domain gone from the next release is marked lost', after[0].status === 'active' && after[1].status === 'lost', after);
+  await owner2.query(`DELETE FROM organizations WHERE id = $1`, [o]);
+  await owner2.query(`DELETE FROM users WHERE id = $1`, [u]);
+  await owner2.end();
 }
 
 console.log(`\nRESULT: ${passed} passed, ${failures.length} failed`);

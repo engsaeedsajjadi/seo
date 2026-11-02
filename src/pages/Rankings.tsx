@@ -3,6 +3,8 @@ import {
   BarChart3, Calendar, Monitor, Smartphone, AlertCircle, RefreshCw
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
+import CsvImport from '../components/CsvImport';
+import { toRankRows } from '../lib/csv-parse';
 import { api } from '../lib/api';
 import type { RankingEntry } from '../lib/types';
 import { t } from '../i18n';
@@ -13,7 +15,7 @@ export default function Rankings() {
   const [rankings, setRankings] = useState<RankingEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
-  const [providerError, setProviderError] = useState<string | null>(null);
+  const [importRevision, setImportRevision] = useState(0);
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState<string | null>(null);
 
@@ -30,14 +32,8 @@ export default function Rankings() {
         const result = await api.getRankings(state.currentProject.id);
         if (result.success) {
           setRankings(result.data);
-          setProviderError(null);
         } else {
-          // Real provider handling — if PROVIDER_NOT_CONFIGURED, show not connected UI
-          if (result.error.code === 'PROVIDER_NOT_CONFIGURED' || result.error.code === 'SERVICE_UNAVAILABLE') {
-            setProviderError(result.error.message);
-          } else {
             console.error('Failed to load rankings:', result.error);
-          }
         }
       } catch (error) {
         console.error('Failed to load rankings:', error);
@@ -47,7 +43,7 @@ export default function Rankings() {
     }
 
     loadRankings();
-  }, [state.currentProject]);
+  }, [state.currentProject, importRevision]);
 
   async function handleCheckNow() {
     if (!state.currentProject) return;
@@ -59,7 +55,6 @@ export default function Rankings() {
         setCheckResult(`بررسی رتبه در صف قرار گرفت. نتیجه به‌زودی نمایش داده می‌شود.`);
       } else {
         if (result.error.code === 'PROVIDER_NOT_CONFIGURED') {
-          setProviderError(result.error.message);
           setCheckResult(`سرویس بررسی رتبه هنوز فعال نشده است.`);
         } else {
           setCheckResult(`خطا: ${result.error.message}`);
@@ -78,38 +73,6 @@ export default function Rankings() {
         <BarChart3 className="w-12 h-12 text-slate-500 mb-4" />
         <h2 className="text-xl font-bold text-white mb-2">پروژه‌ای انتخاب نشده</h2>
         <p className="text-slate-400">برای پیگیری رتبه‌ها یک پروژه انتخاب یا ایجاد کنید.</p>
-      </div>
-    );
-  }
-
-  if (providerError) {
-    return (
-      <div className="space-y-6" dir="rtl">
-        <div>
-          <h1 className="text-2xl font-bold text-white">پیگیری رتبه</h1>
-          <p className="text-sm text-slate-400 mt-1">جایگاه خود را در موتورهای جست‌وجو در طول زمان ببینید</p>
-        </div>
-        <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-8 text-center">
-          <AlertCircle className="w-12 h-12 text-accent-yellow mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-white mb-2">پیگیری رتبه هنوز فعال نشده است</h3>
-          <p className="text-sm text-slate-400 max-w-md mx-auto mb-4">
-            سرویس بررسی رتبه هنوز فعال نشده است.
-          </p>
-          <div className="bg-surface/50 rounded-lg p-4 max-w-sm mx-auto text-left">
-            <p className="text-xs font-semibold text-slate-300 mb-2">برای فعال‌سازی:</p>
-            <ul className="text-xs text-slate-400 space-y-1">
-              <li>• مدیر سیستم باید اتصال DataForSEO را تنظیم کند</li>
-              <li>• یا اتصال SerpApi</li>
-              <li>• افزودن کلمات کلیدی به پروژه</li>
-              <li></li>
-            </ul>
-          </div>
-          <button onClick={handleCheckNow} disabled={checking} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg disabled:opacity-50">
-            {checking ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
-            Check Provider Status
-          </button>
-          {checkResult && <p className="mt-3 text-xs text-slate-400 max-w-md mx-auto">{checkResult}</p>}
-        </div>
       </div>
     );
   }
@@ -145,8 +108,20 @@ export default function Rankings() {
     };
   });
 
+  const importPanel = state.currentProject && (
+    <CsvImport
+      title="ورود رتبه از فایل"
+      help="در سرچ کنسول از بخش Performance خروجی CSV بگیرید و فایل Queries را اینجا بدهید. عدد سرچ کنسول میانگین موقعیت است، نه رتبهٔ دقیق همان روز."
+      endpoint={`/api/v1/projects/${state.currentProject.id}/rankings/import`}
+      toRows={toRankRows}
+      onImported={() => setImportRevision((n) => n + 1)}
+      summary={(d) => `${formatPersianNumber(d.matched + d.created)} کلمه ثبت شد (${formatPersianNumber(d.created)} کلمهٔ جدید).${d.skipped ? ` ${formatPersianNumber(d.skipped)} کلمه به دلیل سقف پلن ثبت نشد.` : ''}`}
+    />
+  );
+
   return (
     <div className="space-y-6">
+      {importPanel}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">پیگیری رتبه</h1>

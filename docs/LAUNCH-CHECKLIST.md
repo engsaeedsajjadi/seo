@@ -10,7 +10,7 @@ What must be true before taking payment. "Verified" means a test in this reposit
 - [ ] Real keys tested in staging: DataForSEO, Google OAuth, an AI provider, PageSpeed, SMTP.
 - [ ] Zarinpal merchant approved for the production domain, and a real payment and refund tested with `ZARINPAL_MERCHANT_ID`. Sandbox first with `ZARINPAL_SANDBOX=true`.
 - [ ] Toman prices reviewed in the platform panel. The seeded prices are placeholders.
-- [ ] Provider access from the production network checked: OpenAI, Google and DataForSEO may refuse Iranian addresses and cards.
+- [ ] Data sources chosen from `docs/IRAN-DATA-SOURCES.md`. DataForSEO's terms exclude Iran. Check OpenAI and Google access and terms from the production setup too.
 - [ ] `PLATFORM_ADMIN_EMAILS`, `METRICS_TOKEN`, `WORKER_DATABASE_PASSWORD` and `API_DATABASE_PASSWORD` set to real values.
 - [ ] Daily `scripts/ops/backup.sh` scheduled, copied off the host, and one restore rehearsed.
 - [ ] Alerts on `rankforge_queue_oldest_job_age_seconds` and on `rankforge_jobs{status="dead_letter"}`.

@@ -2,6 +2,9 @@ import { authenticatedFetch } from '../lib/api';
 import { useState, useEffect } from 'react';
 import { Link2, AlertCircle, Plus, RefreshCw, ExternalLink } from 'lucide-react';
 import { useAppState } from '../lib/store';
+import CsvImport from '../components/CsvImport';
+import { toBacklinkRows } from '../lib/csv-parse';
+import { formatPersianNumber as formatImportCount } from '../lib/persian';
 import { t } from '../i18n';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
@@ -23,7 +26,7 @@ export default function Backlinks() {
   const { state } = useAppState();
   const [backlinks, setBacklinks] = useState<Backlink[]>([]);
   const [loading, setLoading] = useState(true);
-  const [providerError, setProviderError] = useState<string | null>(null);
+  const [importRevision, setImportRevision] = useState(0);
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
 
@@ -40,10 +43,6 @@ export default function Backlinks() {
         const json = await res.json();
         if (json.success) {
           setBacklinks(json.data);
-          setProviderError(null);
-        } else if (json.error?.code === 'PROVIDER_NOT_CONFIGURED') {
-          setProviderError(json.error.message);
-          setBacklinks([]);
         }
       } catch (e) {
         console.error(e);
@@ -52,7 +51,7 @@ export default function Backlinks() {
       }
     }
     load();
-  }, [state.currentProject]);
+  }, [state.currentProject, importRevision]);
 
   async function handleSync() {
     if (!state.currentProject) return;
@@ -67,9 +66,6 @@ export default function Backlinks() {
       if (json.success) {
         setSyncResult('همگام‌سازی در صف قرار گرفت. نتیجه به‌زودی نمایش داده می‌شود.');
       } else {
-        if (json.error?.code === 'PROVIDER_NOT_CONFIGURED') {
-          setProviderError(json.error.message);
-        }
         setSyncResult(`خطا: ${json.error?.message || 'ناموفق'}`);
       }
     } catch (e) {
@@ -89,36 +85,6 @@ export default function Backlinks() {
     );
   }
 
-  if (providerError) {
-    return (
-      <div className="space-y-6" dir="rtl">
-        <div>
-          <h1 className="text-2xl font-bold text-white">بک‌لینک‌ها</h1>
-          <p className="text-sm text-slate-400 mt-1">نمایهٔ بک‌لینک خود را زیر نظر بگیرید</p>
-        </div>
-        <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-8 text-center">
-          <AlertCircle className="w-12 h-12 text-accent-yellow mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-white mb-2">سرویس‌دهندهٔ داده هنوز فعال نشده است</h3>
-          <p className="text-sm text-slate-400 max-w-md mx-auto mb-4">
-            سرویس‌دهندهٔ داده هنوز فعال نشده است.
-          </p>
-          <div className="bg-surface/50 rounded-lg p-4 max-w-sm mx-auto text-left">
-            <p className="text-xs font-semibold text-slate-300 mb-2">برای فعال‌سازی:</p>
-            <ul className="text-xs text-slate-400 space-y-1">
-              <li>• مدیر سیستم باید اتصال DataForSEO را تنظیم کند</li>
-              <li>• پس از آن می‌توانید بک‌لینک‌ها را همگام‌سازی کنید</li>
-            </ul>
-          </div>
-          <button onClick={handleSync} disabled={syncLoading} className="mt-4 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2 disabled:opacity-50">
-            {syncLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
-            Check Provider Status
-          </button>
-          {syncResult && <p className="mt-3 text-xs text-slate-400">{syncResult}</p>}
-        </div>
-      </div>
-    );
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -130,8 +96,20 @@ export default function Backlinks() {
     );
   }
 
+  const importPanel = (
+    <CsvImport
+      title="ورود بک‌لینک از فایل"
+      help="از بخش Links سرچ کنسول یا هر ابزار سئو خروجی CSV بگیرید. فقط ستون سایت یا صفحهٔ مبدأ الزامی است."
+      endpoint={`/api/v1/projects/${state.currentProject.id}/backlinks/import`}
+      toRows={toBacklinkRows}
+      onImported={() => setImportRevision((n) => n + 1)}
+      summary={(d) => `${formatImportCount(d.inserted)} بک‌لینک جدید و ${formatImportCount(d.refreshed)} بک‌لینک به‌روز شد.`}
+    />
+  );
+
   return (
     <div className="space-y-6">
+      {importPanel}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">بک‌لینک‌ها</h1>

@@ -30,6 +30,7 @@ import {
   mapGscSearchAnalyticsResponse,
   mapGa4ReportResponse,
   persistGscMetrics,
+  persistRanksFromGsc,
   persistGa4Metrics,
   ensureValidAccessToken,
   markIntegrationSyncSuccess,
@@ -1771,11 +1772,19 @@ class Worker {
     });
     await markIntegrationSyncSuccess(query, integration.id);
 
+    const projectRow = await query(`SELECT country, language FROM projects WHERE id = $1 AND organization_id = $2`, [job.projectId, job.organizationId]);
+    const ranks = await persistRanksFromGsc(query, {
+      organizationId: job.organizationId,
+      projectId: job.projectId,
+      country: String(projectRow.rows[0]?.country || 'IR').toUpperCase(),
+      language: projectRow.rows[0]?.language || 'fa',
+    });
+
     console.log(JSON.stringify({
-      level: 'info', msg: 'GSC sync completed', job_id: job.id, project_id: job.projectId, siteUrl, window, ...stats,
+      level: 'info', msg: 'GSC sync completed', ranksUpdated: ranks.updated, job_id: job.id, project_id: job.projectId, siteUrl, window, ...stats,
     }));
 
-    return { siteUrl, provider: 'gsc', window, ...stats };
+    return { siteUrl, provider: 'gsc', window, ranksUpdated: ranks.updated, ...stats };
   }
 
   private async handleGa4Sync(job: Job, signal: AbortSignal): Promise<any> {

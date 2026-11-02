@@ -1421,22 +1421,103 @@ export function createApp() {
   // REAL ENDPOINTS — Provider-aware, NOT_CONFIGURED explicit, no fake data
   // ============================================================
 
+  const IMPORT_MAX_ROWS = 5000;
+  const uniqueBy = <T,>(rows: T[], key: (row: T) => string) => [...new Map(rows.map((row) => [key(row), row])).values()];
+
+  // Ranks from a Search Console or SEO tool export: no external provider needed.
+  app.post('/api/v1/projects/:projectId/rankings/import', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      const body = z.object({
+        rows: z.array(z.object({
+          query: z.string().trim().min(1).max(500),
+          position: z.number().positive().max(10000),
+          clicks: z.number().min(0).optional(),
+          impressions: z.number().min(0).optional(),
+          url: z.string().url().max(2000).optional(),
+        })).min(1).max(IMPORT_MAX_ROWS),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        addMissing: z.boolean().default(true),
+      }).parse(req.body);
+
+      const result = await transaction(async () => {
+        const org = await query('SELECT plan FROM organizations WHERE id = $1 FOR UPDATE', [req.organizationId!]);
+        const plan = await query('SELECT limits FROM plans WHERE id = $1', [org.rows[0].plan]);
+        const limit = Number(plan.rows[0]?.limits?.keywords ?? 0);
+        let total = await keywordRepository.countByOrganization(req.organizationId!);
+        const country = String(project.country || 'IR').toUpperCase();
+        const language = project.language || 'fa';
+        let matched = 0, created = 0, skipped = 0;
+        for (const row of uniqueBy(body.rows, (r) => r.query.toLowerCase())) {
+          const normalized = row.query.toLowerCase();
+          let keywordId = (await query(
+            `SELECT id FROM keywords WHERE project_id = $1 AND organization_id = $2 AND normalized_keyword = $3 LIMIT 1`,
+            [project.id, req.organizationId!, normalized],
+          )).rows[0]?.id;
+          if (keywordId) matched++;
+          else if (body.addMissing && (limit < 0 || total < limit)) {
+            keywordId = (await keywordRepository.create({ organizationId: req.organizationId!, projectId: project.id, keyword: row.query, normalizedKeyword: normalized, country, language } as any)).id;
+            total++; created++;
+          } else { skipped++; continue; }
+          const position = Math.max(1, Math.round(row.position));
+          const previous = (await query('SELECT current_position FROM keywords WHERE id = $1', [keywordId])).rows[0]?.current_position ?? null;
+          const raw = { source: 'csv', exactPosition: row.position, clicks: row.clicks, impressions: row.impressions };
+          await query(
+            `INSERT INTO keyword_rankings (organization_id, project_id, keyword_id, position, previous_position, url, search_engine, country, language, device, date, provider, raw_data)
+             VALUES ($1, $2, $3, $4, $5, $6, 'google', $7, $8, 'desktop', COALESCE($9::date, CURRENT_DATE), 'csv', $10)
+             ON CONFLICT (keyword_id, date, search_engine, country, device) DO UPDATE SET position = EXCLUDED.position, url = EXCLUDED.url, provider = 'csv', raw_data = EXCLUDED.raw_data`,
+            [req.organizationId!, project.id, keywordId, position, previous, row.url ?? null, country, language, body.date ?? null, JSON.stringify(raw)],
+          );
+          await query(`UPDATE keywords SET previous_position = $2, current_position = $3, last_checked_at = NOW(), provider = 'csv', updated_at = NOW() WHERE id = $1`, [keywordId, previous, position]);
+        }
+        return { matched, created, skipped };
+      });
+      res.status(201).json({ success: true, data: result });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/v1/projects/:projectId/backlinks/import', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      const httpUrl = z.string().url().max(2000).refine((value) => /^https?:\/\//i.test(value), 'Only web addresses');
+      const body = z.object({
+        rows: z.array(z.object({
+          sourceUrl: httpUrl,
+          targetUrl: httpUrl.optional(),
+          anchor: z.string().max(1000).optional(),
+          domainRating: z.number().min(0).max(100).optional(),
+          nofollow: z.boolean().optional(),
+        })).min(1).max(IMPORT_MAX_ROWS),
+      }).parse(req.body);
+      const fallbackTarget = `https://${project.normalizedDomain}`;
+      const result = await transaction(async () => {
+        let inserted = 0, refreshed = 0;
+        for (const row of uniqueBy(body.rows, (r) => `${r.sourceUrl}|${r.targetUrl ?? ''}`)) {
+          const upserted = await query(
+            `INSERT INTO backlinks (project_id, organization_id, source_url, source_domain, target_url, anchor_text, domain_rating, is_nofollow, status, provider, evidence)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', 'csv', '{"source":"csv"}')
+             ON CONFLICT (project_id, source_url, target_url) DO UPDATE SET last_seen_at = NOW(), status = 'active',
+               anchor_text = COALESCE(EXCLUDED.anchor_text, backlinks.anchor_text), domain_rating = COALESCE(EXCLUDED.domain_rating, backlinks.domain_rating), is_nofollow = EXCLUDED.is_nofollow
+             RETURNING (xmax = 0) AS was_inserted`,
+            [project.id, req.organizationId!, row.sourceUrl, new URL(row.sourceUrl).hostname.replace(/^www\./, '').slice(0, 255), row.targetUrl ?? fallbackTarget, row.anchor ?? null, row.domainRating == null ? null : Math.round(row.domainRating), row.nofollow ?? false],
+          );
+          if (upserted.rows[0].was_inserted) inserted++; else refreshed++;
+        }
+        return { inserted, refreshed };
+      });
+      res.status(201).json({ success: true, data: result });
+    } catch (error) { next(error); }
+  });
+
   app.get('/api/v1/projects/:projectId/rankings', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
 
+      // Stored ranks may come from a file or Search Console, so reading them never needs a live provider.
       const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password) || !!config.providers.serpapi;
-      if (!hasProvider) {
-        return res.status(503).json({
-          success: false,
-          error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Rank tracking provider not configured. Configure DataForSEO or SerpApi in Integrations.' },
-          provider: { dataforseo: 'not_configured', serpapi: 'not_configured' },
-          data: [],
-          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
-        });
-      }
-
       const { page, limit } = paginationSchema.parse(req.query);
       const { query } = await import('./db/client.js');
       const result = await query(
@@ -1450,7 +1531,7 @@ export function createApp() {
       res.json({
         success: true,
         data: result.rows,
-        provider: { status: 'configured', message: 'Rank provider is configured' },
+        provider: { status: hasProvider ? 'configured' : 'not_configured' },
         pagination: { page, limit, total: parseInt(countResult.rows[0].total, 10), totalPages: Math.ceil(parseInt(countResult.rows[0].total, 10) / limit) },
       });
     } catch (error) {
@@ -1552,19 +1633,10 @@ export function createApp() {
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
 
       const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password);
-      if (!hasProvider) {
-        return res.status(503).json({
-          success: false,
-          error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Backlink provider not configured. Configure DataForSEO in Integrations.' },
-          provider: { dataforseo: 'not_configured' },
-          data: [],
-        });
-      }
-
       const { query } = await import('./db/client.js');
       const result = await query(`SELECT id, source_url as "sourceUrl", source_domain as "sourceDomain", target_url as "targetUrl", anchor_text as "anchorText", domain_rating as "domainRating", is_nofollow as "isNofollow", status, provider, evidence, first_seen_at as "firstSeenAt", last_seen_at as "lastSeenAt" FROM backlinks WHERE project_id = $1 AND organization_id = $2 ORDER BY last_seen_at DESC LIMIT 100`, [project.id, req.organizationId!]);
 
-      res.json({ success: true, data: result.rows, provider: { status: 'configured' } });
+      res.json({ success: true, data: result.rows, provider: { status: hasProvider ? 'configured' : 'not_configured' } });
     } catch (error) {
       next(error);
     }

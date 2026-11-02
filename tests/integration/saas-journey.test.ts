@@ -433,6 +433,33 @@ try {
   await call('PATCH', '/platform/plans/STARTER', TR, { priceMonthlyToman: starter.priceMonthlyToman, priceAnnualToman: starter.priceAnnualToman });
   check('operator sees toman revenue', (await call('GET', '/platform/overview', TR)).data?.revenue_toman_month > 0);
 
+  console.log('--- Data sources that need no foreign provider');
+  const noProviderApi = PROD_PORT; // Runs without DataForSEO credentials.
+  await owner.query(`UPDATE users SET email_verified = true`);
+  const relogin = async (port: number) => (await call('POST', '/auth/login', null, { email: `alice-${tag}@example.test`, password }, { port, headers: { 'x-forwarded-proto': 'https', 'x-forwarded-for': '198.51.100.77' } })).data?.token as string;
+  const tokenP = await relogin(noProviderApi);
+  const prodHeaders = { port: noProviderApi, headers: { 'x-forwarded-proto': 'https', 'x-forwarded-for': '198.51.100.77' } };
+  const rk = await call('GET', `/projects/${pid}/rankings`, tokenP, undefined, prodHeaders);
+  check('ranks can be read with no provider configured', rk.status === 200 && rk.json.provider?.status === 'not_configured', rk.json);
+  check('backlinks can be read with no provider configured', (await call('GET', `/projects/${pid}/backlinks`, tokenP, undefined, prodHeaders)).status === 200);
+  check('a live rank check still says it has no provider', (await call('POST', `/projects/${pid}/rankings/check`, tokenP, {}, prodHeaders)).code === 'PROVIDER_NOT_CONFIGURED');
+  await owner.query(`UPDATE organizations SET plan = 'FREE' WHERE id = $1`, [orgId]);
+  const planKeywords = (await owner.query(`SELECT count(*)::int AS n FROM keywords WHERE organization_id = $1`, [orgId])).rows[0].n;
+  const imported = await call('POST', `/projects/${pid}/rankings/import`, tokenP, {
+    rows: [{ query: 'Mock Keyword', position: 4.6, clicks: 3, impressions: 40 }, { query: 'واژهٔ تازه', position: 12 }, ...Array.from({ length: 30 }, (_, i) => ({ query: `extra ${i}`, position: 50 }))],
+  }, prodHeaders);
+  check('import updates tracked keywords and adds new ones up to the plan limit', imported.status === 201 && imported.data.matched === 1 && imported.data.created === 10 - planKeywords && imported.data.skipped > 0, imported.json);
+  const tracked = (await owner.query(`SELECT current_position FROM keywords WHERE organization_id = $1 AND normalized_keyword = 'mock keyword'`, [orgId])).rows[0];
+  check('imported position is rounded and stored', tracked.current_position === 5, tracked);
+  check('re-importing does not duplicate rank history', (await call('POST', `/projects/${pid}/rankings/import`, tokenP, { rows: [{ query: 'mock keyword', position: 3 }] }, prodHeaders)).status === 201 && (await owner.query(`SELECT count(*)::int AS n FROM keyword_rankings r JOIN keywords k ON k.id = r.keyword_id WHERE r.date = CURRENT_DATE AND k.normalized_keyword = 'mock keyword' AND k.organization_id = $1`, [orgId])).rows[0].n === 1);
+  check('import rejects a bad position', (await call('POST', `/projects/${pid}/rankings/import`, tokenP, { rows: [{ query: 'x', position: -1 }] }, prodHeaders)).status === 400);
+  check('import rejects too many rows', (await call('POST', `/projects/${pid}/rankings/import`, tokenP, { rows: Array.from({ length: 5001 }, (_, i) => ({ query: `q${i}`, position: 1 })) }, prodHeaders)).status === 400);
+  check('import cannot write to another tenant', (await call('POST', `/projects/${pidb}/rankings/import`, tokenP, { rows: [{ query: 'x', position: 1 }] }, prodHeaders)).status === 404);
+  const linksImport = await call('POST', `/projects/${pid}/backlinks/import`, tokenP, { rows: [{ sourceUrl: 'https://ref.ir/a', anchor: 'لینک', domainRating: 30, nofollow: true }, { sourceUrl: 'https://other.ir' }] }, prodHeaders);
+  check('backlinks are imported', linksImport.data?.inserted === 2, linksImport.json);
+  check('re-importing backlinks refreshes them', (await call('POST', `/projects/${pid}/backlinks/import`, tokenP, { rows: [{ sourceUrl: 'https://other.ir' }] }, prodHeaders)).data?.refreshed === 1);
+  check('a non-web address is rejected', (await call('POST', `/projects/${pid}/backlinks/import`, tokenP, { rows: [{ sourceUrl: 'javascript:alert(1)' }] }, prodHeaders)).status === 400);
+
   console.log('--- Metrics');
   const metrics = await fetch(`http://127.0.0.1:${PORT}/api/v1/metrics`, { headers: { authorization: `Bearer ${METRICS_TOKEN}` } });
   const metricsText = await metrics.text();

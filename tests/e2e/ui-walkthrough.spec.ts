@@ -61,6 +61,18 @@ for (const [label, viewport] of [['desktop', { width: 1366, height: 850 }], ['ph
     await page.getByRole('button', { name: 'حذف' }).first().click();
     await expect(page.getByText('هنوز زمان‌بندی‌ای ندارید.')).toBeVisible();
 
+    // A customer can bring ranks and backlinks from a file, with Persian headers and digits.
+    await page.goto(`${WEB}/#/projects/${id}/rankings`);
+    await page.locator('input[type=file]').setInputFiles({ name: 'Queries.csv', mimeType: 'text/csv', buffer: Buffer.from('\ufeffجستجوهای برتر,کلیک‌ها,نمایش‌ها,CTR,موقعیت\nخرید کفش,۱۲,۳۰۰,۴٪,۳٫۴\n') });
+    await expect(page.getByText('کلمه ثبت شد', { exact: false })).toBeVisible();
+    await expect(page.locator('main').getByText('خرید کفش').first()).toBeVisible();
+    await page.locator('input[type=file]').setInputFiles({ name: 'bad.csv', mimeType: 'text/csv', buffer: Buffer.from('foo,bar\n1,2\n') });
+    await expect(page.getByRole('alert')).toContainText('ستون‌های لازم');
+    await page.goto(`${WEB}/#/projects/${id}/backlinks`);
+    await page.locator('input[type=file]').setInputFiles({ name: 'links.csv', mimeType: 'text/csv', buffer: Buffer.from('Site,Linking pages\nexample-ref.ir,3\n') });
+    await expect(page.getByText('بک‌لینک جدید', { exact: false })).toBeVisible();
+    await expect(page.locator('main').getByText('example-ref.ir').first()).toBeVisible();
+
     // Prices are in toman, and the page explains each result of returning from the gateway.
     await page.goto(`${WEB}/#/billing`);
     await expect(page.locator('main').getByText('۱٬۲۹۰٬۰۰۰', { exact: false }).first()).toBeVisible();
