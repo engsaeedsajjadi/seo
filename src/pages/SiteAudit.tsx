@@ -55,7 +55,7 @@ export default function SiteAudit() {
         maxPages: crawlOptions.maxPages,
       });
       if (result.success) {
-        setCrawlSuccess(`Crawl queued: job ${result.data.job.id}, run ${result.data.crawlRun.id} — real crawler will execute via worker`);
+        setCrawlSuccess('خزش در صف قرار گرفت. نتیجه به‌زودی نمایش داده می‌شود.');
         setShowRunCrawl(false);
         // Optionally refresh findings after delay
         setTimeout(() => window.location.reload(), 2000);
@@ -102,7 +102,7 @@ export default function SiteAudit() {
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-slate-400">Loading audit findings...</p>
+          <p className="text-sm text-slate-400">در حال بارگذاری یافته‌ها…</p>
         </div>
       </div>
     );
@@ -113,22 +113,22 @@ export default function SiteAudit() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Site Audit</h1>
+          <h1 className="text-2xl font-bold text-white">ممیزی سایت</h1>
           <p className="text-sm text-slate-400 mt-1">
-            Technical SEO analysis for <span className="text-brand-400">{state.currentProject?.domain}</span>
+            تحلیل سئوی فنی <span className="text-brand-400">{state.currentProject?.domain}</span>
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="px-4 py-2 bg-surface-3/50 hover:bg-surface-3 text-slate-300 text-sm font-medium rounded-lg flex items-center gap-2">
+          <button disabled title="به‌زودی در دسترس خواهد بود" className="px-4 py-2 bg-surface-3/50 hover:bg-surface-3 text-slate-300 text-sm font-medium rounded-lg flex items-center gap-2">
             <Download className="w-4 h-4" />
-            Export
+            خروجی
           </button>
           <button
             onClick={() => setShowRunCrawl(true)}
             className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2"
           >
             <Play className="w-4 h-4" />
-            Run Crawl
+            اجرای خزش
           </button>
         </div>
       </div>
@@ -151,8 +151,8 @@ export default function SiteAudit() {
             <div className={`text-4xl font-bold ${overallScore >= 80 ? 'text-accent-green' : overallScore >= 60 ? 'text-accent-yellow' : 'text-accent-red'}`}>
               {overallScore}
             </div>
-            <p className="text-xs text-slate-400 mt-1">Overall Score</p>
-            <p className="text-[10px] text-slate-500 mt-1">Based on {findings.length} findings — deterministic from audit engine</p>
+            <p className="text-xs text-slate-400 mt-1">امتیاز کلی</p>
+            <p className="text-[10px] text-slate-500 mt-1">بر اساس {findings.length} یافته</p>
           </div>
           <SeverityCard severity="critical" count={severityCounts.critical} total={findings.length} />
           <SeverityCard severity="high" count={severityCounts.high} total={findings.length} />
@@ -163,16 +163,16 @@ export default function SiteAudit() {
       ) : (
         <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-8 text-center">
           <AlertCircle className="w-12 h-12 text-accent-yellow mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-white mb-2">No Audit Data</h3>
+          <h3 className="text-lg font-semibold text-white mb-2">هنوز ممیزی‌ای انجام نشده است</h3>
           <p className="text-sm text-slate-400 max-w-md mx-auto mb-4">
-            No audit findings available. Run a site crawl to analyze your website and identify SEO issues. Real crawler will fetch pages, persist results, run deterministic audit.
+            برای تحلیل سایت و پیداکردن مشکلات سئو، خزش سایت را اجرا کنید.
           </p>
           <button
             onClick={() => setShowRunCrawl(true)}
             className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2"
           >
             <Zap className="w-4 h-4" />
-            Run Crawl
+            اجرای خزش
           </button>
         </div>
       )}
@@ -187,32 +187,32 @@ export default function SiteAudit() {
               onChange={e => setSelectedSeverity(e.target.value as Severity | 'all')}
               className="px-3 py-1.5 bg-surface-2 border border-surface-3/50 rounded-lg text-xs text-white focus:outline-none focus:border-brand-600/50"
             >
-              <option value="all">All Severities</option>
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-              <option value="notice">Notice</option>
+              <option value="all">همهٔ شدت‌ها</option>
+              <option value="critical">بحرانی</option>
+              <option value="high">زیاد</option>
+              <option value="medium">متوسط</option>
+              <option value="low">کم</option>
+              <option value="notice">اطلاع</option>
             </select>
             <select
               value={selectedCategory}
               onChange={e => setSelectedCategory(e.target.value as AuditCategory | 'all')}
               className="px-3 py-1.5 bg-surface-2 border border-surface-3/50 rounded-lg text-xs text-white focus:outline-none focus:border-brand-600/50"
             >
-              <option value="all">All Categories</option>
-              <option value="crawlability">Crawlability</option>
-              <option value="indexability">Indexability</option>
-              <option value="metadata">Metadata</option>
+              <option value="all">همهٔ دسته‌ها</option>
+              <option value="crawlability">قابلیت خزش</option>
+              <option value="indexability">قابلیت ایندکس</option>
+              <option value="metadata">متادیتا</option>
               <option value="content">محتوا</option>
-              <option value="links">Links</option>
-              <option value="images">Images</option>
-              <option value="performance">Performance</option>
-              <option value="security">Security</option>
-              <option value="structured-data">Structured Data</option>
-              <option value="international">International SEO</option>
+              <option value="links">لینک‌ها</option>
+              <option value="images">تصاویر</option>
+              <option value="performance">کارایی</option>
+              <option value="security">امنیت</option>
+              <option value="structured-data">داده ساختاریافته</option>
+              <option value="international">سئوی بین‌المللی</option>
             </select>
             <span className="text-xs text-slate-500 ml-auto">
-              Showing {filteredFindings.length} of {findings.length} findings — real audit engine, no random
+              نمایش {filteredFindings.length} از {findings.length} یافته
             </span>
           </div>
 
@@ -246,33 +246,33 @@ export default function SiteAudit() {
                   <div className="px-4 pb-4 border-t border-surface-3/30 pt-3">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <h4 className="text-xs font-semibold text-slate-300 mb-1">Description</h4>
+                        <h4 className="text-xs font-semibold text-slate-300 mb-1">توضیح</h4>
                         <p className="text-xs text-slate-400">{finding.description}</p>
                       </div>
                       <div>
-                        <h4 className="text-xs font-semibold text-slate-300 mb-1">Recommendation</h4>
+                        <h4 className="text-xs font-semibold text-slate-300 mb-1">پیشنهاد</h4>
                         <p className="text-xs text-slate-400">{finding.recommendation}</p>
                       </div>
                     </div>
                     {finding.affectedUrls.length > 0 && (
                       <div className="mt-3">
-                        <h4 className="text-xs font-semibold text-slate-300 mb-1">Affected URLs — Real Evidence</h4>
+                        <h4 className="text-xs font-semibold text-slate-300 mb-1">صفحات درگیر</h4>
                         <div className="max-h-32 overflow-y-auto space-y-1">
                           {finding.affectedUrls.slice(0, 10).map((url, i) => (
                             <p key={i} className="text-xs text-slate-400 font-mono truncate">{url}</p>
                           ))}
                           {finding.affectedUrls.length > 10 && (
-                            <p className="text-xs text-slate-500">...and {finding.affectedUrls.length - 10} more</p>
+                            <p className="text-xs text-slate-500">… و {finding.affectedUrls.length - 10} more</p>
                           )}
                         </div>
                       </div>
                     )}
                     <div className="mt-3 flex items-center gap-2">
-                      <button className="px-3 py-1.5 bg-accent-green/20 text-accent-green text-xs rounded-lg hover:bg-accent-green/30">
-                        Mark as Fixed
+                      <button disabled title="به‌زودی در دسترس خواهد بود" className="px-3 py-1.5 bg-accent-green/20 text-accent-green text-xs rounded-lg hover:bg-accent-green/30">
+                        علامت‌گذاری به‌عنوان رفع‌شده
                       </button>
-                      <button className="px-3 py-1.5 bg-surface-3/50 text-slate-300 text-xs rounded-lg hover:bg-surface-3">
-                        Ignore
+                      <button disabled title="به‌زودی در دسترس خواهد بود" className="px-3 py-1.5 bg-surface-3/50 text-slate-300 text-xs rounded-lg hover:bg-surface-3">
+                        نادیده‌گرفتن
                       </button>
                     </div>
                   </div>
@@ -283,36 +283,36 @@ export default function SiteAudit() {
         </>
       )}
 
-      {/* Run Crawl Modal — Real API */}
+      {/* Run Crawl Modal */}
       {showRunCrawl && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-md bg-surface-2 border border-surface-3/50 rounded-xl p-6">
-            <h2 className="text-lg font-bold text-white mb-2">Run Site Crawl — Real Pipeline</h2>
+            <h2 className="text-lg font-bold text-white mb-2">اجرای خزش سایت</h2>
             <p className="text-sm text-slate-400 mb-4">
-              This will crawl {state.currentProject?.domain} and analyze SEO issues via real HTTP crawler → PG persistence → audit engine → score.
+              این کار خزش این دامنه را انجام می‌دهد: {state.currentProject?.domain}
             </p>
             <div className="bg-surface/50 border border-surface-3/30 rounded-lg p-3 mb-4">
               <div className="flex items-center gap-2 text-xs text-accent-yellow">
                 <AlertCircle className="w-3.5 h-3.5" />
-                <span>Crawl consumes 5 credits atomically with idempotency, FOR UPDATE ledger. Flow: API → crawl_runs → jobs → Worker (FOR UPDATE SKIP LOCKED) → Crawler → crawl_pages → audit_findings → projects.seo_score</span>
+                <span>هر خزش ۵ اعتبار مصرف می‌کند. اگر خزش ناموفق شود، اعتبار برمی‌گردد.</span>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
-                <label className="text-xs text-slate-400">Max Depth (1-10)</label>
+                <label className="text-xs text-slate-400">حداکثر عمق (۱ تا ۱۰)</label>
                 <input type="number" value={crawlOptions.maxDepth} onChange={e => setCrawlOptions(o => ({ ...o, maxDepth: parseInt(e.target.value) || 1 }))} min={1} max={10} className="w-full mt-1 px-3 py-2 bg-surface border border-surface-3/50 rounded-lg text-sm text-white" />
               </div>
               <div>
-                <label className="text-xs text-slate-400">Max Pages (1-1000)</label>
+                <label className="text-xs text-slate-400">حداکثر صفحات (۱ تا ۱۰۰۰)</label>
                 <input type="number" value={crawlOptions.maxPages} onChange={e => setCrawlOptions(o => ({ ...o, maxPages: parseInt(e.target.value) || 1 }))} min={1} max={1000} className="w-full mt-1 px-3 py-2 bg-surface border border-surface-3/50 rounded-lg text-sm text-white" />
               </div>
             </div>
             {crawlError && <p className="text-xs text-accent-red mb-3">{crawlError}</p>}
             <div className="flex items-center justify-end gap-3">
-              <button onClick={() => setShowRunCrawl(false)} disabled={crawlLoading} className="px-4 py-2 text-sm text-slate-400 hover:text-white disabled:opacity-50">Cancel</button>
+              <button onClick={() => setShowRunCrawl(false)} disabled={crawlLoading} className="px-4 py-2 text-sm text-slate-400 hover:text-white disabled:opacity-50">انصراف</button>
               <button onClick={handleStartCrawl} disabled={crawlLoading} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50">
                 {crawlLoading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Zap className="w-4 h-4" />}
-                {crawlLoading ? 'Queuing...' : 'Start Real Crawl'}
+                {crawlLoading ? 'در حال ثبت در صف…' : 'شروع خزش'}
               </button>
             </div>
           </div>

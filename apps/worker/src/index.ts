@@ -57,7 +57,7 @@ import {
 // local commands (db:migrate, dev servers) cannot see it. Variables
 // already present in the process environment always win: Docker
 // Compose injects env directly and its images contain no .env file.
-import { existsSync as _existsSync, readFileSync as _readFileSync } from 'node:fs';
+import { existsSync as _existsSync, readFileSync as _readFileSync, writeFileSync as _writeFileSync } from 'node:fs';
 import _path from 'node:path';
 import { fileURLToPath as _fileURLToPath } from 'node:url';
 (() => {
@@ -975,6 +975,13 @@ class JobError extends Error {
 // WORKER — Atomic claiming, real work, AbortController timeout
 // ============================================================
 
+const HEARTBEAT_FILE = process.env.WORKER_HEARTBEAT_FILE || '/tmp/rankforge-worker-heartbeat';
+
+/** Lets the container healthcheck detect a stuck loop, not only a dead process. */
+function writeHeartbeat() {
+  try { _writeFileSync(HEARTBEAT_FILE, String(Date.now())); } catch { /* read-only disk must not stop jobs */ }
+}
+
 const MAX_PAGES_PER_CRAWL = 1000;
 const MAX_CRAWL_DEPTH = 10;
 
@@ -996,6 +1003,7 @@ class Worker {
       try {
         await this.processNextJobs();
         await this.maybeRunScheduler();
+        writeHeartbeat();
         await this.sleep(this.pollInterval);
       } catch (error) {
         console.error(JSON.stringify({ level: 'error', msg: 'Worker loop error', error: error instanceof Error ? error.message : String(error) }));
@@ -2111,7 +2119,7 @@ class Worker {
     const crawlResult = await query(`SELECT id, status, crawled_pages, total_pages FROM crawl_runs WHERE project_id = $1 AND organization_id=$2 ORDER BY created_at DESC LIMIT 1`, [job.projectId,job.organizationId]);
     
     // Fetch findings
-    const findingsResult = await query(`SELECT rule_id, severity, category, title, affected_urls FROM audit_findings WHERE project_id = $1 AND organization_id=$2 ORDER BY severity LIMIT 100`, [job.projectId,job.organizationId]);
+    const findingsResult = await query(`SELECT rule_id, severity, category, title, affected_urls FROM audit_findings WHERE project_id = $1 AND organization_id = $2 AND crawl_run_id = (SELECT id FROM crawl_runs WHERE project_id = $1 AND organization_id = $2 AND status = 'completed' ORDER BY created_at DESC LIMIT 1) ORDER BY severity LIMIT 100`, [job.projectId,job.organizationId]);
 
     // Fetch keywords
     const keywordsResult = await query(`SELECT COALESCE(keyword,term) AS term, COALESCE(search_volume,volume) AS volume, difficulty FROM keywords WHERE project_id = $1 AND organization_id=$2 LIMIT 100`, [job.projectId,job.organizationId]);
@@ -2168,7 +2176,7 @@ class Worker {
     let alertsCreated = 0;
     for (const project of projectsResult.rows) {
       const criticalResult = await query(
-        `SELECT COUNT(*) AS count FROM audit_findings WHERE project_id = $1 AND organization_id = $2 AND severity = 'critical' AND status = 'open'`,
+        `SELECT COUNT(*) AS count FROM audit_findings WHERE project_id = $1 AND organization_id = $2 AND severity = 'critical' AND status = 'open' AND crawl_run_id = (SELECT id FROM crawl_runs WHERE project_id = $1 AND organization_id = $2 AND status = 'completed' ORDER BY created_at DESC LIMIT 1)`,
         [project.id, job.organizationId],
       );
       const criticalCount = parseInt(criticalResult.rows[0].count, 10);

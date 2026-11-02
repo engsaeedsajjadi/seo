@@ -183,3 +183,5 @@ pre,
     font-family: 'Vazirmatn', sans-serif;
   }
 }
+
+button:disabled { opacity: 0.5; cursor: not-allowed; }

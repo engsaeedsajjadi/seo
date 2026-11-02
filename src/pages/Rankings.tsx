@@ -56,13 +56,13 @@ export default function Rankings() {
     try {
       const result = await api.checkRankings(state.currentProject.id);
       if (result.success) {
-        setCheckResult(`Rank check queued: job ${result.data.job.id} — worker will call DataForSEO/SerpApi and persist keyword_rankings atomically`);
+        setCheckResult(`بررسی رتبه در صف قرار گرفت. نتیجه به‌زودی نمایش داده می‌شود.`);
       } else {
         if (result.error.code === 'PROVIDER_NOT_CONFIGURED') {
           setProviderError(result.error.message);
-          setCheckResult(`Provider not configured: ${result.error.message} — returns 503 {success:false,error:{code:PROVIDER_NOT_CONFIGURED}} never fake rank`);
+          setCheckResult(`سرویس بررسی رتبه هنوز فعال نشده است.`);
         } else {
-          setCheckResult(`Error: ${result.error.message}`);
+          setCheckResult(`خطا: ${result.error.message}`);
         }
       }
     } catch (e) {
@@ -77,7 +77,7 @@ export default function Rankings() {
       <div className="flex flex-col items-center justify-center h-[60vh] text-center" dir="rtl">
         <BarChart3 className="w-12 h-12 text-slate-500 mb-4" />
         <h2 className="text-xl font-bold text-white mb-2">پروژه‌ای انتخاب نشده</h2>
-        <p className="text-slate-400">Select or create a project to track rankings.</p>
+        <p className="text-slate-400">برای پیگیری رتبه‌ها یک پروژه انتخاب یا ایجاد کنید.</p>
       </div>
     );
   }
@@ -86,23 +86,22 @@ export default function Rankings() {
     return (
       <div className="space-y-6" dir="rtl">
         <div>
-          <h1 className="text-2xl font-bold text-white">Rank Tracking — Real Provider</h1>
-          <p className="text-sm text-slate-400 mt-1">Monitor your search engine positions over time — real SERP provider, no fake data</p>
+          <h1 className="text-2xl font-bold text-white">پیگیری رتبه</h1>
+          <p className="text-sm text-slate-400 mt-1">جایگاه خود را در موتورهای جست‌وجو در طول زمان ببینید</p>
         </div>
         <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-8 text-center">
           <AlertCircle className="w-12 h-12 text-accent-yellow mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-white mb-2">Rank Tracking Not Available — Provider Not Configured</h3>
+          <h3 className="text-lg font-semibold text-white mb-2">پیگیری رتبه هنوز فعال نشده است</h3>
           <p className="text-sm text-slate-400 max-w-md mx-auto mb-4">
-            {providerError} — Rankings endpoint returns 503 {'{success:false, error:{code:PROVIDER_NOT_CONFIGURED}}'} when DataForSEO/SerpApi absent, never fake [] with rank 3.
-            Positions are fetched in real-time from the configured provider via worker job with idempotencyKey, FOR UPDATE SKIP LOCKED, and persisted to keyword_rankings.
+            سرویس بررسی رتبه هنوز فعال نشده است.
           </p>
           <div className="bg-surface/50 rounded-lg p-4 max-w-sm mx-auto text-left">
-            <p className="text-xs font-semibold text-slate-300 mb-2">Required Configuration:</p>
+            <p className="text-xs font-semibold text-slate-300 mb-2">برای فعال‌سازی:</p>
             <ul className="text-xs text-slate-400 space-y-1">
-              <li>• DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD</li>
-              <li>• Or SERP API provider credentials</li>
-              <li>• Keywords must be added to the project</li>
-              <li>• Flow: API → jobs (RANK_CHECK, idempotencyKey) → Worker → SERP provider → keyword_rankings</li>
+              <li>• مدیر سیستم باید اتصال DataForSEO را تنظیم کند</li>
+              <li>• یا اتصال SerpApi</li>
+              <li>• افزودن کلمات کلیدی به پروژه</li>
+              <li></li>
             </ul>
           </div>
           <button onClick={handleCheckNow} disabled={checking} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg disabled:opacity-50">
@@ -120,7 +119,7 @@ export default function Rankings() {
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-slate-400">Loading rankings — real query from keyword_rankings with pagination, no fake...</p>
+          <p className="text-sm text-slate-400">در حال بارگذاری رتبه‌ها…</p>
         </div>
       </div>
     );
@@ -150,9 +149,9 @@ export default function Rankings() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Rank Tracking — Real Data</h1>
+          <h1 className="text-2xl font-bold text-white">پیگیری رتبه</h1>
           <p className="text-sm text-slate-400 mt-1">
-            Position tracking for <span className="text-brand-400">{state.currentProject?.domain}</span> — from keyword_rankings table, no fake
+            رتبه‌های <span className="text-brand-400">{state.currentProject?.domain}</span> 
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -161,18 +160,18 @@ export default function Rankings() {
               onClick={() => setDevice('desktop')}
               className={`px-3 py-1.5 text-xs flex items-center gap-1 ${device === 'desktop' ? 'bg-brand-600/20 text-brand-400' : 'text-slate-400 hover:text-white'}`}
             >
-              <Monitor className="w-3 h-3" /> Desktop
+              <Monitor className="w-3 h-3" /> دسکتاپ
             </button>
             <button
               onClick={() => setDevice('mobile')}
               className={`px-3 py-1.5 text-xs flex items-center gap-1 ${device === 'mobile' ? 'bg-brand-600/20 text-brand-400' : 'text-slate-400 hover:text-white'}`}
             >
-              <Smartphone className="w-3 h-3" /> Mobile
+              <Smartphone className="w-3 h-3" /> موبایل
             </button>
           </div>
           <button onClick={handleCheckNow} disabled={checking} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50">
             {checking ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
-            {checking ? 'Queuing...' : 'Check Now — Real API'}
+            {checking ? 'در حال ثبت در صف…' : 'بررسی رتبه'}
           </button>
         </div>
       </div>
@@ -186,8 +185,8 @@ export default function Rankings() {
       {rankings.length === 0 ? (
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-12 text-center">
           <BarChart3 className="w-12 h-12 text-slate-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-white mb-2">No Ranking Data — Real Table Empty</h3>
-          <p className="text-sm text-slate-400 mb-4">keyword_rankings table has no rows for this project. Add keywords and run a rank check to start tracking positions via real provider. No fake rank 3.</p>
+          <h3 className="text-lg font-semibold text-white mb-2">هنوز رتبه‌ای ثبت نشده است</h3>
+          <p className="text-sm text-slate-400 mb-4">کلمات کلیدی را اضافه کنید و بررسی رتبه را اجرا کنید.</p>
           <button onClick={handleCheckNow} disabled={checking} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2 disabled:opacity-50">
             {checking ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
             Check Now — Queues RANK_CHECK Job
@@ -198,25 +197,25 @@ export default function Rankings() {
           {/* Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-              <p className="text-xs text-slate-400">Top 3 — Real</p>
+              <p className="text-xs text-slate-400">۳ رتبهٔ اول</p>
               <p className="text-2xl font-bold text-accent-green mt-1">
                 {latestRankings.filter(r => r.position !== null && r.position <= 3).length}
               </p>
             </div>
             <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-              <p className="text-xs text-slate-400">Top 10 — Real</p>
+              <p className="text-xs text-slate-400">۱۰ رتبهٔ اول</p>
               <p className="text-2xl font-bold text-brand-400 mt-1">
                 {latestRankings.filter(r => r.position !== null && r.position <= 10).length}
               </p>
             </div>
             <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-              <p className="text-xs text-slate-400">Top 20 — Real</p>
+              <p className="text-xs text-slate-400">۲۰ رتبهٔ اول</p>
               <p className="text-2xl font-bold text-accent-yellow mt-1">
                 {latestRankings.filter(r => r.position !== null && r.position <= 20).length}
               </p>
             </div>
             <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-              <p className="text-xs text-slate-400">Tracked Keywords — Real Count</p>
+              <p className="text-xs text-slate-400">کلمات کلیدی پیگیری‌شده</p>
               <p className="text-2xl font-bold text-white mt-1">{latestRankings.length}</p>
             </div>
           </div>
@@ -224,7 +223,7 @@ export default function Rankings() {
           {/* Rankings Table */}
           <div className="bg-surface-2 border border-surface-3/50 rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-surface-3/50 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-white">Keyword Positions — From keyword_rankings</h3>
+              <h3 className="text-sm font-semibold text-white">رتبهٔ کلمات کلیدی</h3>
               <span className="text-xs text-slate-400">
                 <Calendar className="w-3 h-3 inline mr-1" />
                 {rankings.length > 0 && `Last checked: ${new Date(rankings[0].date).toLocaleString()}`}
@@ -233,11 +232,11 @@ export default function Rankings() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-surface-3/50">
-                  <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Keyword — Real</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Position — Real Provider</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Change</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">URL</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Best</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">کلمهٔ کلیدی</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">رتبه</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">تغییر</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">نشانی</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">بهترین</th>
                 </tr>
               </thead>
               <tbody>

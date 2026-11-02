@@ -100,7 +100,7 @@ export default function Keywords() {
       });
       if (result.success) {
         setKeywords(prev => [...prev, ...result.data]);
-        setAddSuccess(`Added ${result.data.length} keywords — real persistence with org/project isolation, no fake volume`);
+        setAddSuccess(`${result.data.length} کلمهٔ کلیدی اضافه شد`);
         setSeedInput('');
         setShowAddModal(false);
       } else {
@@ -118,7 +118,7 @@ export default function Keywords() {
       <div className="flex flex-col items-center justify-center h-[60vh] text-center" dir="rtl">
         <Search className="w-12 h-12 text-slate-500 mb-4" />
         <h2 className="text-xl font-bold text-white mb-2">پروژه‌ای انتخاب نشده</h2>
-        <p className="text-slate-400">Select or create a project to manage keywords.</p>
+        <p className="text-slate-400">برای مدیریت کلمات کلیدی یک پروژه انتخاب یا ایجاد کنید.</p>
       </div>
     );
   }
@@ -132,7 +132,7 @@ export default function Keywords() {
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-slate-400">Loading keywords — real query from keywords table...</p>
+          <p className="text-sm text-slate-400">در حال بارگذاری کلمات کلیدی…</p>
         </div>
       </div>
     );
@@ -142,22 +142,22 @@ export default function Keywords() {
     <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Keyword Research — Real</h1>
+          <h1 className="text-2xl font-bold text-white">تحقیق کلمات کلیدی</h1>
           <p className="text-sm text-slate-400 mt-1">
-            Track and discover keywords for <span className="text-brand-400">{state.currentProject?.domain}</span> — real DB, no fake
+            پیگیری و کشف کلمات کلیدی <span className="text-brand-400">{state.currentProject?.domain}</span> 
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="px-4 py-2 bg-surface-3/50 hover:bg-surface-3 text-slate-300 text-sm font-medium rounded-lg flex items-center gap-2">
+          <button disabled title="به‌زودی در دسترس خواهد بود" className="px-4 py-2 bg-surface-3/50 hover:bg-surface-3 text-slate-300 text-sm font-medium rounded-lg flex items-center gap-2">
             <Download className="w-4 h-4" />
-            Export
+            خروجی
           </button>
           <button
             onClick={() => setShowAddModal(true)}
             className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            Add Keywords — Real API
+            افزودن کلمات کلیدی
           </button>
         </div>
       </div>
@@ -185,18 +185,18 @@ export default function Keywords() {
           onChange={e => setIntentFilter(e.target.value)}
           className="px-3 py-2 bg-surface-2 border border-surface-3/50 rounded-lg text-xs text-white focus:outline-none"
         >
-          <option value="all">All Intents</option>
-          <option value="informational">Informational</option>
-          <option value="navigational">Navigational</option>
-          <option value="commercial">Commercial</option>
-          <option value="transactional">Transactional</option>
+          <option value="all">همهٔ هدف‌ها</option>
+          <option value="informational">اطلاعاتی</option>
+          <option value="navigational">ناوبری</option>
+          <option value="commercial">تجاری</option>
+          <option value="transactional">تراکنشی</option>
         </select>
         <button
           onClick={() => setSortBy(sortBy === 'position' ? 'volume' : sortBy === 'volume' ? 'difficulty' : 'position')}
           className="px-3 py-2 bg-surface-2 border border-surface-3/50 rounded-lg text-xs text-slate-300 flex items-center gap-1"
         >
           <ArrowUpDown className="w-3 h-3" />
-          Sort: {sortBy}
+          مرتب‌سازی: {sortBy}
         </button>
       </div>
 
@@ -204,14 +204,14 @@ export default function Keywords() {
       {filteredKeywords.length === 0 ? (
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-12 text-center">
           <Search className="w-12 h-12 text-slate-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-white mb-2">No Keywords Yet — Real Table Empty</h3>
-          <p className="text-sm text-slate-400 mb-4">Add keywords to start tracking their performance. Real persistence with org/project isolation; country and language follow the project's own settings.</p>
+          <h3 className="text-lg font-semibold text-white mb-2">هنوز کلمهٔ کلیدی‌ای ندارید</h3>
+          <p className="text-sm text-slate-400 mb-4">برای پیگیری عملکرد، کلمات کلیدی را اضافه کنید. کشور و زبان از تنظیمات پروژه گرفته می‌شوند.</p>
           <button
             onClick={() => setShowAddModal(true)}
             className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            Add Keywords — Real
+            افزودن کلمات کلیدی
           </button>
         </div>
       ) : (
@@ -219,12 +219,12 @@ export default function Keywords() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-3/50">
-                <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Keyword — Real</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Intent</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Volume — Real Provider or null</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">کلمهٔ کلیدی</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">هدف</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">حجم جست‌وجو</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">CPC</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">KD</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Position</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">رتبه</th>
               </tr>
             </thead>
             <tbody>
@@ -256,14 +256,14 @@ export default function Keywords() {
         </div>
       )}
 
-      {/* Add Keywords Modal — Real API */}
+      {/* Add Keywords Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-lg bg-surface-2 border border-surface-3/50 rounded-xl p-6">
-            <h2 className="text-lg font-bold text-white mb-4">Add Keywords — Real Persistence</h2>
+            <h2 className="text-lg font-bold text-white mb-4">افزودن کلمات کلیدی</h2>
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-medium text-slate-300 mb-1.5 block">Seed Keywords (one per line) — real normalized_term + project_id + org_id</label>
+                <label className="text-xs font-medium text-slate-300 mb-1.5 block">کلمات کلیدی (هر کدام در یک خط)</label>
                 <textarea
                   rows={5}
                   value={seedInput}
@@ -300,10 +300,10 @@ export default function Keywords() {
               <p className="text-[11px] text-slate-500">کشور و زبان به‌صورت پیش‌فرض از تنظیمات خود پروژه می‌آیند — همین‌ها برای چک رتبه و داده سرویس‌دهنده استفاده می‌شوند.</p>
             </div>
             <div className="flex items-center justify-end gap-3 mt-6">
-              <button onClick={() => setShowAddModal(false)} disabled={addLoading} className="px-4 py-2 text-sm text-slate-400 hover:text-white disabled:opacity-50">Cancel</button>
+              <button onClick={() => setShowAddModal(false)} disabled={addLoading} className="px-4 py-2 text-sm text-slate-400 hover:text-white disabled:opacity-50">انصراف</button>
               <button onClick={handleAddKeywords} disabled={addLoading} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50">
                 {addLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
-                {addLoading ? 'Adding...' : 'Add — Real API'}
+                {addLoading ? 'در حال افزودن…' : 'افزودن'}
               </button>
             </div>
           </div>

@@ -254,6 +254,14 @@ jobs:
       - name: Seed canonical billing plans and audit rules
         run: npm run db:seed
         working-directory: apps/api
+      - name: Worker suite - real process, restricted login, mocked providers
+        run: npm run test:worker
+        env:
+          WORKER_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+      - name: Customer journey suite - real API and Worker over HTTP
+        run: node --import tsx tests/integration/saas-journey.test.ts
+        env:
+          WORKER_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
       - name: Create non-owner RLS test role
         run: |
           PGPASSWORD=rankforge psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE rankforge_app LOGIN PASSWORD 'rankforge_app'" || true

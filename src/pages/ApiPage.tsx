@@ -91,7 +91,7 @@ export default function ApiPage() {
         setNewKeyName('');
         setKeyError(null);
       } else {
-        setKeyError(json.error?.message || 'Failed');
+        setKeyError(json.error?.message || 'انجام نشد');
       }
     } catch (e) {
       setKeyError(e instanceof Error ? e.message : String(e));
@@ -136,7 +136,7 @@ export default function ApiPage() {
         setWebhookUrl('');
         setWebhookError(null);
       } else {
-        setWebhookError(json.error?.message || 'Failed');
+        setWebhookError(json.error?.message || 'انجام نشد');
       }
     } catch (e) {
       setWebhookError(e instanceof Error ? e.message : String(e));
@@ -168,7 +168,7 @@ export default function ApiPage() {
       });
       const json = await res.json();
       if (json.success) {
-        setWebhookSuccess(`Test queued: job ${json.data.job.id} — signature ${json.data.signature.substring(0, 20)}... — real HMAC-SHA256 signed delivery with retry`);
+        setWebhookSuccess('ارسال آزمایشی در صف قرار گرفت.');
       }
     } catch (e) {
       console.error(e);
@@ -179,8 +179,8 @@ export default function ApiPage() {
     <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">API & MCP — Real</h1>
-          <p className="text-sm text-slate-400 mt-1">REST API with keys/scopes/rate-limit, MCP tenant-isolated, webhooks signed HMAC-SHA256 with retry — real PG</p>
+          <h1 className="text-2xl font-bold text-white">API و MCP</h1>
+          <p className="text-sm text-slate-400 mt-1">دسترسی برنامه‌نویسی با کلید API، سرور MCP و وب‌هوک‌های امضاشده</p>
         </div>
       </div>
 
@@ -194,75 +194,75 @@ export default function ApiPage() {
               activeTab === tab ? 'bg-brand-600/20 text-brand-400' : 'text-slate-400 hover:text-white'
             }`}
           >
-            {tab === 'rest' ? 'REST API — Real' : tab === 'mcp' ? 'MCP Server — Real' : 'Webhooks — Real Signed'}
+            {tab === 'rest' ? 'REST API' : tab === 'mcp' ? 'سرور MCP' : 'وب‌هوک‌ها'}
           </button>
         ))}
       </div>
 
       {activeTab === 'rest' && (
         <div className="space-y-6">
-          {/* API Keys — Real */}
+          {/* API Keys */}
           <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-white">API Keys — Real hash stored, raw only creation</h3>
+              <h3 className="text-sm font-semibold text-white">کلیدهای API</h3>
               <div className="flex items-center gap-2">
-                <input value={newKeyName} onChange={e => setNewKeyName(e.target.value)} placeholder="Production key" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500" />
+                <input value={newKeyName} onChange={e => setNewKeyName(e.target.value)} placeholder="کلید اصلی" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500" />
                 <input value={newKeyScopes} onChange={e => setNewKeyScopes(e.target.value)} placeholder="read,write" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500 w-24" />
                 <button onClick={handleCreateKey} disabled={keyLoading} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-lg flex items-center gap-1 disabled:opacity-50">
-                  {keyLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Key className="w-3 h-3" />} Generate — Real
+                  {keyLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Key className="w-3 h-3" />} Generate
                 </button>
               </div>
             </div>
             {keyError && <p className="text-xs text-accent-red mb-3">{keyError}</p>}
             {newKeyResult && (
               <div className="bg-accent-green/20 border border-accent-green/30 rounded-lg p-3 mb-4">
-                <p className="text-xs text-accent-green font-mono break-all">Key {newKeyResult.id}: {newKeyResult.key} — shown only once, hash stored, prefix {newKeyResult.key.substring(0, 12)}..., scopes, revoke, lastUsedAt — real</p>
+                <p className="text-xs text-accent-green font-mono break-all">کلید {newKeyResult.id}: {newKeyResult.key} — shown only once, hash stored, prefix {newKeyResult.key.substring(0, 12)}..., scopes, revoke, lastUsedAt</p>
               </div>
             )}
             {loadingKeys ? (
               <div className="flex justify-center py-4"><div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" /></div>
             ) : apiKeys.length === 0 ? (
-              <p className="text-xs text-slate-500 text-center py-4">No API keys — real table api_keys empty, no fake keys</p>
+              <p className="text-xs text-slate-500 text-center py-4">هنوز کلید API نساخته‌اید.</p>
             ) : (
               <div className="space-y-3">
                 {apiKeys.map((apiKey) => (
                   <div key={apiKey.id} className="flex items-center justify-between p-3 rounded-lg bg-surface/50">
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="text-sm text-white font-medium">{apiKey.name} — real</p>
+                        <p className="text-sm text-white font-medium">{apiKey.name}</p>
                         {apiKey.scopes.map(s => (
-                          <span key={s} className="px-1.5 py-0.5 rounded text-[10px] bg-brand-500/20 text-brand-400">{s} — real scope</span>
+                          <span key={s} className="px-1.5 py-0.5 rounded text-[10px] bg-brand-500/20 text-brand-400">{s}</span>
                         ))}
                       </div>
-                      <p className="text-xs text-slate-400 mt-1 font-mono">{apiKey.keyPrefix}... · Rate: 1000/min (real rateLimit) · Created: {new Date(apiKey.createdAt).toLocaleDateString()} · Last used: {apiKey.lastUsedAt ? new Date(apiKey.lastUsedAt).toLocaleDateString() : 'never'} — real</p>
+                      <p className="text-xs text-slate-400 mt-1 font-mono">{apiKey.keyPrefix}... · Rate: 1000/min · Created: {new Date(apiKey.createdAt).toLocaleDateString()} · Last used: {apiKey.lastUsedAt ? new Date(apiKey.lastUsedAt).toLocaleDateString() : 'never'}</p>
                     </div>
-                    <button onClick={() => handleRevokeKey(apiKey.id)} className="p-1.5 rounded hover:bg-surface-3/50 text-accent-red text-xs flex items-center gap-1"><Trash2 className="w-3 h-3" /> Revoke — real</button>
+                    <button onClick={() => handleRevokeKey(apiKey.id)} className="p-1.5 rounded hover:bg-surface-3/50 text-accent-red text-xs flex items-center gap-1"><Trash2 className="w-3 h-3" /> لغو</button>
                   </div>
                 ))}
               </div>
             )}
-            <p className="text-[11px] text-slate-500 mt-3">Real flow: POST /api-keys → generateApiKey() → hash stored (SHA256), prefix, scopes, expiresAt, raw only creation → audit log → GET lists prefix only, never raw — real security</p>
+            <p className="text-[11px] text-slate-500 mt-3">کلید کامل فقط هنگام ساخت نمایش داده می‌شود؛ آن را در جای امنی نگه دارید.</p>
           </div>
 
-          {/* API Endpoints — Real OpenAPI */}
+          {/* API Endpoints */}
           <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-white mb-4">API Endpoints — Real from /openapi.json</h3>
+            <h3 className="text-sm font-semibold text-white mb-4">مسیرهای API</h3>
             <div className="space-y-2">
               {[
-                { method: 'GET', path: '/api/v1/projects', desc: 'List all projects pagination tenant-isolated real' },
-                { method: 'POST', path: '/api/v1/projects', desc: 'Create project domain normalize/validate SSRF plan limits real' },
-                { method: 'GET', path: '/api/v1/projects/:id/audit', desc: 'Get audit results deterministic real' },
-                { method: 'POST', path: '/api/v1/projects/:id/crawl', desc: 'Trigger site crawl real Crawler+AuditEngine FOR UPDATE SKIP LOCKED credit atomic' },
-                { method: 'GET', path: '/api/v1/projects/:id/keywords', desc: 'List keywords real' },
-                { method: 'POST', path: '/api/v1/projects/:id/keywords', desc: 'Add keywords normalized dedup real' },
-                { method: 'GET', path: '/api/v1/projects/:id/rankings', desc: 'Get ranking real keyword_rankings 503 PROVIDER_NOT_CONFIGURED never fake' },
-                { method: 'GET', path: '/api/v1/projects/:id/competitors', desc: 'List competitors real table provider status explicit' },
-                { method: 'GET', path: '/api/v1/projects/:id/backlinks', desc: 'List backlinks real 503 when provider absent' },
-                { method: 'POST', path: '/api/v1/projects/:id/reports', desc: 'Generate report REPORT_GENERATION job idempotent real' },
-                { method: 'GET', path: '/api/v1/projects/:id/alerts', desc: 'Alerts real' },
-                { method: 'POST', path: '/api/v1/webhooks', desc: 'Create webhook SSRF HMAC-SHA256 signed real' },
-                { method: 'GET', path: '/api/v1/openapi.json', desc: 'OpenAPI 3.0.3 real spec' },
-                { method: 'GET', path: '/api/v1/gdpr/export', desc: 'GDPR export real user data audit logs retention policy' },
+                { method: 'GET', path: '/api/v1/projects', desc: 'فهرست پروژه‌ها' },
+                { method: 'POST', path: '/api/v1/projects', desc: 'ایجاد پروژه' },
+                { method: 'GET', path: '/api/v1/projects/:id/audit', desc: 'نتایج ممیزی' },
+                { method: 'POST', path: '/api/v1/projects/:id/crawl', desc: 'شروع خزش سایت' },
+                { method: 'GET', path: '/api/v1/projects/:id/keywords', desc: 'فهرست کلمات کلیدی' },
+                { method: 'POST', path: '/api/v1/projects/:id/keywords', desc: 'افزودن کلمات کلیدی' },
+                { method: 'GET', path: '/api/v1/projects/:id/rankings', desc: 'دریافت رتبه‌ها' },
+                { method: 'GET', path: '/api/v1/projects/:id/competitors', desc: 'فهرست رقبا' },
+                { method: 'GET', path: '/api/v1/projects/:id/backlinks', desc: 'فهرست بک‌لینک‌ها' },
+                { method: 'POST', path: '/api/v1/projects/:id/reports', desc: 'تهیهٔ گزارش' },
+                { method: 'GET', path: '/api/v1/projects/:id/alerts', desc: 'هشدارها' },
+                { method: 'POST', path: '/api/v1/webhooks', desc: 'ایجاد وب‌هوک' },
+                { method: 'GET', path: '/api/v1/openapi.json', desc: 'مشخصات OpenAPI' },
+                { method: 'GET', path: '/api/v1/gdpr/export', desc: 'خروجی داده‌های کاربر' },
               ].map((endpoint, i) => (
                 <div key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-3/20">
                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
@@ -284,46 +284,46 @@ export default function ApiPage() {
           <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
             <div className="flex items-center gap-3 mb-4">
               <Terminal className="w-5 h-5 text-accent-purple" />
-              <h3 className="text-sm font-semibold text-white">MCP Server — Real tenant-isolated</h3>
+              <h3 className="text-sm font-semibold text-white">سرور MCP</h3>
             </div>
             <p className="text-xs text-slate-400 mb-4">
-              Model Context Protocol server exposes RankForge tools to AI assistants. Every MCP request respects organization permissions and tenant isolation — real PG membership check, org_id filter, no direct DB without auth. 10 tools.
+              سرور MCP ابزارهای رنک‌فورج را در اختیار دستیارهای هوش مصنوعی می‌گذارد. هر درخواست تابع مجوزهای سازمان شماست.
             </p>
             <div className="bg-surface rounded-lg p-4 font-mono text-xs text-slate-300 overflow-x-auto mb-4">
-              <pre>{`# MCP Server Configuration — Real
+              <pre>{`# MCP Server Configuration
 {
   "mcpServers": {
     "rankforge": {
       "url": "https://mcp.rankforge.io",
       "headers": {
-        "Authorization": "Bearer rf_live_... (real hash stored, prefix, scopes)"
+        "Authorization": "Bearer rf_live_..."
       }
     }
   }
 }`}</pre>
             </div>
-            <h4 className="text-xs font-semibold text-slate-300 mb-3">Available Tools — Real 10 tools tenant-isolated</h4>
+            <h4 className="text-xs font-semibold text-slate-300 mb-3">ابزارهای موجود</h4>
             <div className="space-y-2">
               {[
-                { tool: 'list_projects', desc: 'List all projects in organization — real org_id filter' },
-                { tool: 'run_audit', desc: 'Trigger site audit — real SITE_CRAWL job' },
-                { tool: 'get_audit_results', desc: 'Retrieve audit findings — real deterministic' },
-                { tool: 'search_keywords', desc: 'Research keywords via provider — real provider abstraction 503 if not configured' },
-                { tool: 'get_rankings', desc: 'Get current ranking positions — real keyword_rankings' },
-                { tool: 'analyze_competitors', desc: 'Compare against competitors — real competitors table' },
-                { tool: 'generate_report', desc: 'Create SEO report — real REPORT_GENERATION job' },
-                { tool: 'get_gsc_data', desc: 'Fetch GSC data — real gsc_metrics or not_connected' },
-                { tool: 'check_ai_visibility', desc: 'Check brand visibility in AI answers — real AI provider abstraction cost metering' },
-                { tool: 'list_backlinks', desc: 'List backlinks — real backlinks table 503 if provider absent' },
+                { tool: 'list_projects', desc: 'فهرست پروژه‌های سازمان' },
+                { tool: 'run_audit', desc: 'شروع ممیزی سایت' },
+                { tool: 'get_audit_results', desc: 'دریافت یافته‌های ممیزی' },
+                { tool: 'search_keywords', desc: 'تحقیق کلمات کلیدی' },
+                { tool: 'get_rankings', desc: 'دریافت رتبه‌های فعلی' },
+                { tool: 'analyze_competitors', desc: 'مقایسه با رقبا' },
+                { tool: 'generate_report', desc: 'تهیهٔ گزارش سئو' },
+                { tool: 'get_gsc_data', desc: 'دریافت دادهٔ سرچ کنسول' },
+                { tool: 'check_ai_visibility', desc: 'بررسی دیده‌شدن برند در پاسخ‌های هوش مصنوعی' },
+                { tool: 'list_backlinks', desc: 'فهرست بک‌لینک‌ها' },
               ].map((mcpTool, i) => (
                 <div key={i} className="flex items-center gap-3 p-2 rounded-lg bg-surface/50">
                   <Code className="w-3.5 h-3.5 text-accent-purple flex-shrink-0" />
-                  <code className="text-xs text-brand-400 font-mono">{mcpTool.tool} — real</code>
+                  <code className="text-xs text-brand-400 font-mono">{mcpTool.tool}</code>
                   <span className="text-xs text-slate-400">{mcpTool.desc}</span>
                 </div>
               ))}
             </div>
-            <p className="text-[11px] text-slate-500 mt-3">Real implementation: apps/mcp/src/index.ts — 10 tools, membership check via organization_members, org_id filter on all queries, no direct DB without auth, structured logging, health /health/ready/version</p>
+            <p className="text-[11px] text-slate-500 mt-3"></p>
           </div>
         </div>
       )}
@@ -332,65 +332,65 @@ export default function ApiPage() {
         <div className="space-y-6">
           <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-white">Outbound Webhooks — Real signed HMAC-SHA256, retry, idempotency, SSRF</h3>
+              <h3 className="text-sm font-semibold text-white">وب‌هوک‌های خروجی</h3>
               <div className="flex items-center gap-2">
                 <input value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} placeholder="https://hooks.example.com/rankforge" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500 w-64" />
                 <input value={webhookEvents} onChange={e => setWebhookEvents(e.target.value)} placeholder="audit.completed,rank.updated" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500 w-48" />
                 <button onClick={handleCreateWebhook} disabled={webhookLoading} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-lg flex items-center gap-1 disabled:opacity-50">
-                  {webhookLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : null} Add — Real
+                  {webhookLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : null} افزودن
                 </button>
               </div>
             </div>
             {webhookError && <p className="text-xs text-accent-red mb-3">{webhookError}</p>}
             {webhookSuccess && <p className="text-xs text-accent-green mb-3">{webhookSuccess}</p>}
             <p className="text-xs text-slate-400 mb-4">
-              Receive real-time notifications when events occur. Webhook payloads are signed with HMAC-SHA256 using secret_hash, deliveries tracked in webhook_deliveries with status pending/delivered/failed/retrying, attempts, response_code, next_retry_at — real retry/backoff, SSRF protected via validateUrlForSSRF.
+              هنگام رخ‌دادن رویدادها اعلان دریافت کنید. محتوای هر ارسال با HMAC-SHA256 امضا می‌شود.
             </p>
             {loadingWebhooks ? (
               <div className="flex justify-center py-4"><div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" /></div>
             ) : webhooks.length === 0 ? (
-              <p className="text-xs text-slate-500 text-center py-4">No webhooks — real table webhooks empty, no fake hooks</p>
+              <p className="text-xs text-slate-500 text-center py-4">هنوز وب‌هوکی نساخته‌اید.</p>
             ) : (
               <div className="space-y-3">
                 {webhooks.map((webhook) => (
                   <div key={webhook.id} className="flex items-center justify-between p-3 rounded-lg bg-surface/50">
                     <div>
-                      <p className="text-xs text-white font-mono">{webhook.url} — real</p>
+                      <p className="text-xs text-white font-mono">{webhook.url}</p>
                       <div className="flex items-center gap-1 mt-1">
                         {(Array.isArray(webhook.events) ? webhook.events : JSON.parse(webhook.events as any || '[]')).map((e: string) => (
-                          <span key={e} className="px-1.5 py-0.5 rounded text-[10px] bg-surface-3/50 text-slate-400">{e} — real</span>
+                          <span key={e} className="px-1.5 py-0.5 rounded text-[10px] bg-surface-3/50 text-slate-400">{e}</span>
                         ))}
-                        <span className="text-[10px] text-slate-500">secret {webhook.secretPrefix}... — real hash stored</span>
-                        <span className="text-[10px] text-slate-500">status {webhook.status} — real</span>
+                        <span className="text-[10px] text-slate-500">کلید مخفی {webhook.secretPrefix}...</span>
+                        <span className="text-[10px] text-slate-500">وضعیت {webhook.status}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => handleTestWebhook(webhook.id)} className="px-2 py-1 bg-surface-3/50 text-slate-300 text-[10px] rounded hover:bg-surface-3">Test — Real HMAC</button>
+                      <button onClick={() => handleTestWebhook(webhook.id)} className="px-2 py-1 bg-surface-3/50 text-slate-300 text-[10px] rounded hover:bg-surface-3">آزمایش</button>
                       <button onClick={() => handleDeleteWebhook(webhook.id)} className="p-1.5 rounded hover:bg-surface-3/50 text-accent-red"><Trash2 className="w-3 h-3" /></button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
-            <p className="text-[11px] text-slate-500 mt-3">Real flow: POST /webhooks → validateUrlForSSRF blocks localhost/private/metadata → secret generated 32 bytes hex → SHA256 hash stored, prefix, raw only creation → audit log → GET lists prefix only → POST /webhooks/:id/test → HMAC-SHA256 signature → job WEBHOOK_DELIVERY idempotent → worker signed delivery with retry/backoff → webhook_deliveries tracking</p>
+            <p className="text-[11px] text-slate-500 mt-3">نشانی‌های داخلی و خصوصی پذیرفته نمی‌شوند. کلید مخفی فقط هنگام ساخت نمایش داده می‌شود.</p>
           </div>
 
           <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-white mb-4">Available Events — Real</h3>
+            <h3 className="text-sm font-semibold text-white mb-4">رویدادهای موجود</h3>
             <div className="grid grid-cols-2 gap-2">
               {[
-                'project.created — real audit log',
-                'audit.completed — real crawl + audit findings',
-                'rank.updated — real keyword_rankings',
-                'critical_issue.created — real alerts',
-                'report.generated — real reports.data_snapshot',
-                'subscription.updated — real Stripe webhook idempotency',
-                'payment.failed — real Stripe',
-                'credit.low — real credit wallet',
-                'crawl.completed — real crawl_runs',
-                'keyword.added — real keywords table',
-                'backlink.lost — real backlinks',
-                'competitor.changed — real competitors',
+                'project.created',
+                'audit.completed',
+                'rank.updated',
+                'critical_issue.created',
+                'report.generated',
+                'subscription.updated',
+                'payment.failed',
+                'credit.low',
+                'crawl.completed',
+                'keyword.added',
+                'backlink.lost',
+                'competitor.changed',
               ].map(event => (
                 <div key={event} className="flex items-center gap-2 p-2 rounded bg-surface/50">
                   <Zap className="w-3 h-3 text-accent-yellow" />

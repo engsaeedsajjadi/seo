@@ -124,8 +124,8 @@ export default function Billing() {
         <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-4 flex items-center gap-3">
           <AlertCircle className="w-5 h-5 text-accent-yellow flex-shrink-0" />
           <div className="flex-1">
-            <p className="text-sm text-white font-medium font-vazirmatn-bold">درگاه پرداخت پیکربندی نشده — برای وب‌هوک PROVIDER_NOT_CONFIGURED برمی‌گرداند، پلن‌ها واقعی لیست می‌شوند</p>
-            <p className="text-xs text-slate-400 font-vazirmatn-light">صورتحساب نیاز به یکپارچه‌سازی Stripe دارد. STRIPE_SECRET_KEY و STRIPE_WEBHOOK_SECRET را پیکربندی کنید تا اشتراک‌ها فعال شود. جریان واقعی: تأیید امضای وب‌هوک Stripe + idempotency stripe_events event_id یکتا + لاگ ممیزی + اجرای محدودیت پلن در بک‌اند. هرگز موفقیت جعلی نیست.</p>
+            <p className="text-sm text-white font-medium font-vazirmatn-bold">پرداخت آنلاین هنوز فعال نشده است</p>
+            <p className="text-xs text-slate-400 font-vazirmatn-light">فعلاً امکان خرید اشتراک وجود ندارد. برای ارتقای پلن با پشتیبانی تماس بگیرید.</p>
           </div>
         </div>
       )}
@@ -135,7 +135,7 @@ export default function Billing() {
         <div className="bg-gradient-to-r from-brand-600/20 to-brand-800/20 border border-brand-600/30 rounded-xl p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-brand-300 uppercase tracking-wider font-vazirmatn-medium">پلن فعلی — واقعی از organizations.plan</p>
+              <p className="text-xs font-medium text-brand-300 uppercase tracking-wider font-vazirmatn-medium">پلن فعلی</p>
               <h2 className="text-2xl font-bold text-white mt-1 font-vazirmatn-bold">{getPlanName(currentPlan)} — واقعی</h2>
               <p className="text-xs text-slate-400 mt-1 font-vazirmatn-light">محدودیت‌ها: {toPersianDigits(PLAN_LIMITS[currentPlan].projects)} پروژه، {toPersianDigits(PLAN_LIMITS[currentPlan].keywords)} کلمه کلیدی — اجرای واقعی در projectRepository.countByOrganization + keywordRepository.countByOrganization</p>
               {subscription && (
@@ -149,7 +149,7 @@ export default function Billing() {
                   onClick={openPortal}
                   className="mt-3 px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-3/60 hover:bg-surface-3 text-white font-vazirmatn-medium"
                 >
-                  مدیریت اشتراک و فاکتورها — پورتال Stripe
+                  مدیریت اشتراک و فاکتورها
                 </button>
               )}
             </div>
@@ -160,7 +160,7 @@ export default function Billing() {
 
       {/* Plans — Persian 5 */}
       <div>
-        <h3 className="text-sm font-semibold text-white mb-4 font-vazirmatn-bold">پلن‌های موجود — ۵ پلن واقعی FREE/STARTER/PRO/AGENCY/ENTERPRISE با اجرای بک‌اند</h3>
+        <h3 className="text-sm font-semibold text-white mb-4 font-vazirmatn-bold">پلن‌های موجود</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           {plans.map(plan => (
             <div
@@ -176,7 +176,7 @@ export default function Billing() {
               <h4 className="text-lg font-bold text-white mt-1 font-vazirmatn-bold">{getPlanName(plan.tier)} — واقعی</h4>
               <div className="mt-3">
                 <span className="text-2xl font-bold text-white persian-numbers font-vazirmatn-bold">{plan.priceToman}</span>
-                <span className="text-xs text-slate-400 font-vazirmatn-light">/ماه — Stripe واقعی</span>
+                <span className="text-xs text-slate-400 font-vazirmatn-light">/ماه</span>
                 <div className="text-[10px] text-slate-500 ltr-content">{plan.price}/month</div>
               </div>
               <ul className="mt-4 space-y-2">
@@ -197,13 +197,13 @@ export default function Billing() {
                 }`}
                 disabled={plan.tier === currentPlan || !stripeConfigured || checkoutTier !== null}
               >
-                {plan.tier === currentPlan ? 'پلن فعلی — واقعی' : !stripeConfigured ? 'نیاز به Stripe — واقعی ۵۰۳' : checkoutTier === plan.tier ? 'در حال انتقال به Stripe…' : 'ارتقا — پرداخت واقعی Stripe'}
+                {plan.tier === currentPlan ? 'پلن فعلی — واقعی' : !stripeConfigured ? 'نیاز به Stripe — واقعی ۵۰۳' : checkoutTier === plan.tier ? 'در حال انتقال به صفحهٔ پرداخت…' : 'ارتقای پلن'}
                 {plan.tier !== currentPlan && stripeConfigured && <ArrowRight className="w-3 h-3 rotate-180" />}
               </button>
             </div>
           ))}
         </div>
-        <p className="text-[11px] text-slate-500 mt-3 font-vazirmatn-light">جریان واقعی: GET /billing/plans → ۵ پلن با محدودیت‌ها، GET /billing/subscription → پلن/وضعیت سازمان، وب‌هوک Stripe POST /billing/webhook با تأیید امضا + idempotency stripe_events + لاگ ممیزی + اعطای اعتبار اتمیک FOR UPDATE — صورتحساب واقعی</p>
+        <p className="text-[11px] text-slate-500 mt-3 font-vazirmatn-light"></p>
         {billingError && (
           <div className="mt-3 bg-surface-2 border border-accent-red/40 rounded-xl p-3 flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-accent-red flex-shrink-0" />
@@ -221,8 +221,8 @@ export default function Billing() {
           <div className="grid grid-cols-3 gap-4">
             <div className="bg-surface/50 rounded-lg p-4 text-center">
               <p className="text-2xl font-bold text-white persian-numbers font-vazirmatn-bold">{toPersianDigits(credits.balance)} — واقعی</p>
-              <p className="text-xs text-slate-400 mt-1 font-vazirmatn-regular">اعتبار موجود — واقعی FOR UPDATE</p>
-              <p className="text-[10px] text-slate-500 mt-1 font-vazirmatn-light">بررسی موجودی ≥۰، بدون منفی، بدون دوبار خرج، idempotency_key یکتا</p>
+              <p className="text-xs text-slate-400 mt-1 font-vazirmatn-regular">اعتبار موجود</p>
+              <p className="text-[10px] text-slate-500 mt-1 font-vazirmatn-light">هر خزش سایت ۵ اعتبار مصرف می‌کند و اگر ناموفق شود، اعتبار برمی‌گردد.</p>
             </div>
             <div className="bg-surface/50 rounded-lg p-4 text-center">
               <p className="text-2xl font-bold text-accent-green persian-numbers font-vazirmatn-bold">{toPersianDigits(credits.totalGranted)} — واقعی</p>
@@ -234,9 +234,9 @@ export default function Billing() {
             </div>
           </div>
         ) : (
-          <p className="text-xs text-slate-500 text-center py-4 font-vazirmatn-regular">کیف پول وجود ندارد — جدول واقعی credit_wallets خالی است، موجودی جعلی نیست</p>
+          <p className="text-xs text-slate-500 text-center py-4 font-vazirmatn-regular">هنوز اعتباری برای این سازمان ثبت نشده است.</p>
         )}
-        <p className="text-[11px] text-slate-500 mt-3 font-vazirmatn-light">جریان واقعی: credit_repository.getWallet FOR UPDATE + مصرف/اعطا با idempotency_key یکتا + دفتر کل credit_transactions/usage_records/credit_wallets اتمیک + بررسی موجودی ≥۰ — سیستم اعتبار اتمیک واقعی</p>
+        <p className="text-[11px] text-slate-500 mt-3 font-vazirmatn-light"></p>
       </div>
 
       {/* Persian currency info */}
@@ -251,7 +251,7 @@ export default function Billing() {
           <div className="bg-surface/50 rounded-lg p-3">
             <p className="text-slate-400 font-vazirmatn-light">تاریخ صورتحساب</p>
             <p className="text-white font-medium mt-1 font-vazirmatn-bold">{formatPersianDate(new Date(), { format: 'medium' })}</p>
-            <p className="text-slate-500 mt-1 font-vazirmatn-light">تقویم شمسی — Intl.DateTimeFormat fa-IR-u-ca-persian</p>
+            <p className="text-slate-500 mt-1 font-vazirmatn-light">تاریخ‌ها به تقویم شمسی نمایش داده می‌شوند</p>
           </div>
         </div>
       </div>

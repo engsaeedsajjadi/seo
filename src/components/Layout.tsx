@@ -73,7 +73,8 @@ const PROJECT_SCOPED_PATHS = new Set([
 ]);
 
 export default function Layout() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // On a phone the expanded sidebar takes most of the screen, so it starts collapsed there.
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(
     Object.fromEntries(navSections.map(s => [s.title, true]))
   );

@@ -39,7 +39,7 @@ export default function Automation() {
       <div className="flex flex-col items-center justify-center h-[60vh] text-center" dir="rtl">
         <Zap className="w-12 h-12 text-slate-500 mb-4" />
         <h2 className="text-xl font-bold text-white mb-2">پروژه‌ای انتخاب نشده</h2>
-        <p className="text-slate-400">Select or create a project to manage automation.</p>
+        <p className="text-slate-400">برای مدیریت اتوماسیون یک پروژه انتخاب یا ایجاد کنید.</p>
       </div>
     );
   }
@@ -49,7 +49,7 @@ export default function Automation() {
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-slate-400">Loading jobs...</p>
+          <p className="text-sm text-slate-400">در حال بارگذاری کارها…</p>
         </div>
       </div>
     );
@@ -59,30 +59,30 @@ export default function Automation() {
     <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Automation</h1>
-          <p className="text-sm text-slate-400 mt-1">Scheduled jobs and background tasks</p>
+          <h1 className="text-2xl font-bold text-white">اتوماسیون</h1>
+          <p className="text-sm text-slate-400 mt-1">کارهای زمان‌بندی‌شده و پس‌زمینه</p>
         </div>
-        <button className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2">
-          <Plus className="w-4 h-4" /> New Schedule
+        <button disabled title="به‌زودی در دسترس خواهد بود" className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2">
+          <Plus className="w-4 h-4" /> زمان‌بندی جدید
         </button>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-          <p className="text-xs text-slate-400">Total Jobs</p>
+          <p className="text-xs text-slate-400">کل کارها</p>
           <p className="text-2xl font-bold text-white mt-1">{jobs.length}</p>
         </div>
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-          <p className="text-xs text-slate-400">Running</p>
+          <p className="text-xs text-slate-400">در حال اجرا</p>
           <p className="text-2xl font-bold text-brand-400 mt-1">{jobs.filter(j => j.status === 'running').length}</p>
         </div>
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-          <p className="text-xs text-slate-400">Completed</p>
+          <p className="text-xs text-slate-400">تکمیل‌شده</p>
           <p className="text-2xl font-bold text-accent-green mt-1">{jobs.filter(j => j.status === 'completed').length}</p>
         </div>
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
-          <p className="text-xs text-slate-400">Failed</p>
+          <p className="text-xs text-slate-400">ناموفق</p>
           <p className="text-2xl font-bold text-accent-red mt-1">{jobs.filter(j => j.status === 'failed').length}</p>
         </div>
       </div>
@@ -90,23 +90,23 @@ export default function Automation() {
       {/* Recent Job Executions */}
       <div className="bg-surface-2 border border-surface-3/50 rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-surface-3/50">
-          <h3 className="text-sm font-semibold text-white">Job History</h3>
+          <h3 className="text-sm font-semibold text-white">تاریخچهٔ کارها</h3>
         </div>
         {jobs.length === 0 ? (
           <div className="p-12 text-center">
             <Activity className="w-12 h-12 text-slate-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">No Jobs Yet</h3>
-            <p className="text-sm text-slate-400">Jobs will appear here when you run audits, crawls, or other operations.</p>
+            <h3 className="text-lg font-semibold text-white mb-2">هنوز کاری اجرا نشده است</h3>
+            <p className="text-sm text-slate-400">با اجرای ممیزی، خزش یا عملیات دیگر، کارها اینجا نمایش داده می‌شوند.</p>
           </div>
         ) : (
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-3/50">
-                <th className="text-left px-4 py-2 text-xs font-medium text-slate-400">Job</th>
-                <th className="text-left px-4 py-2 text-xs font-medium text-slate-400">Status</th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">Started</th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">Completed</th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">Attempts</th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-slate-400">کار</th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-slate-400">وضعیت</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">شروع</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">تکمیل‌شده</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">تلاش‌ها</th>
               </tr>
             </thead>
             <tbody>

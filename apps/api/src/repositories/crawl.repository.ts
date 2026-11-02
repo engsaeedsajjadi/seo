@@ -144,13 +144,22 @@ export const crawlRepository = {
     );
   },
 
-  async getFindings(projectId: string, organizationId: string, filters: { severity?: string; category?: string; limit?: number; offset?: number } = {}): Promise<{ items: any[]; total: number }> {
+  async getFindings(projectId: string, organizationId: string, filters: { severity?: string; category?: string; crawlRunId?: string; limit?: number; offset?: number } = {}): Promise<{ items: any[]; total: number }> {
     const limit = Math.min(filters.limit || 50, 100);
     const offset = filters.offset || 0;
 
     let where = 'WHERE project_id = $1 AND organization_id = $2';
     const params: any[] = [projectId, organizationId];
     let idx = 3;
+
+    // Current results by default. Each crawl keeps its findings as history, so without
+    // this every new crawl duplicated the list and pushed the score towards zero.
+    if (filters.crawlRunId) {
+      where += ` AND crawl_run_id = $${idx++}`;
+      params.push(filters.crawlRunId);
+    } else {
+      where += ` AND crawl_run_id = (SELECT id FROM crawl_runs WHERE project_id = $1 AND organization_id = $2 AND status = 'completed' ORDER BY created_at DESC LIMIT 1)`;
+    }
 
     if (filters.severity) {
       where += ` AND severity = $${idx++}`;

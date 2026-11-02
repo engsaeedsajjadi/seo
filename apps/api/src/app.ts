@@ -45,6 +45,10 @@ export function createApp() {
   // MIDDLEWARE
   // ============================================================
 
+  // Behind the bundled Nginx every request otherwise shares the proxy's address, so one
+  // customer's failed logins would rate-limit everybody. Set this to the real hop count.
+  app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? (config.isProduction ? 1 : 0)));
+
   app.use(helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
@@ -142,9 +146,47 @@ export function createApp() {
     password: z.string().min(1).max(128),
   });
 
+  // The API's alert types are finer than the categories alerts_type_check allows; the
+  // specific type is kept in alerts.rule.
+  const ALERT_CATEGORY: Record<string, string> = {
+    rank_drop: 'keyword', keyword_loss: 'keyword', traffic_drop: 'traffic', crawl_error: 'crawl',
+    broken_link: 'crawl', critical_issue: 'seo', provider_failure: 'provider',
+  };
+
+  const SCHEDULABLE_JOB_TYPES = ['SITE_CRAWL', 'SEO_AUDIT', 'RANK_CHECK', 'BACKLINK_SYNC', 'GSC_SYNC', 'GA4_SYNC', 'PAGESPEED_CHECK', 'COMPETITOR_CHECK', 'REPORT_GENERATION', 'ALERT_EVALUATION'] as const;
+  const isValidTimezone = (tz: string) => { try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; } };
+  const scheduleSchema = z.object({
+    type: z.enum(SCHEDULABLE_JOB_TYPES),
+    // Minute must be fixed, so a schedule fires at most hourly and cannot drain credits or provider budget.
+    cronExpression: z.string().regex(/^[0-5]?\d\s+(?:\S+\s+){3}\S+$/, 'Schedule must be five cron fields with a fixed minute (at most hourly)')
+      .refine((v) => v.split(/\s+/).every((f) => /^[\d*,/-]+$/.test(f)), 'Invalid cron field'),
+    timezone: z.string().default('UTC').refine(isValidTimezone, 'Unknown timezone'),
+    enabled: z.boolean().default(true),
+    projectId: z.string().uuid().optional(),
+  });
+
+  /** Rejects with 403 when a monthly plan limit is used up, and returns what remains (-1 = unlimited). */
+  async function remainingMonthlyQuota(organizationId: string, limitKey: string, usedSql: string): Promise<number> {
+    const plan = await query(`SELECT p.limits FROM organizations o JOIN plans p ON p.id = o.plan WHERE o.id = $1`, [organizationId]);
+    const limit = Number(plan.rows[0]?.limits?.[limitKey]);
+    if (!Number.isFinite(limit)) throw new ApiError(503, 'SERVICE_UNAVAILABLE', 'Plan configuration unavailable');
+    if (limit < 0) return -1;
+    const used = await query(usedSql, [organizationId]);
+    const remaining = limit - Number(used.rows[0].used);
+    if (remaining <= 0) throw new ApiError(403, 'LIMIT_REACHED', `Monthly ${limitKey} limit reached for your plan`);
+    return remaining;
+  }
+  const MONTH_START = `date_trunc('month', NOW())`;
+  const USED_CRAWL_PAGES = `SELECT COALESCE(SUM(crawled_pages), 0) AS used FROM crawl_runs WHERE organization_id = $1 AND created_at >= ${MONTH_START}`;
+  const USED_RANK_CHECKS = `SELECT COUNT(*) AS used FROM keyword_rankings WHERE organization_id = $1 AND created_at >= ${MONTH_START}`;
+  const USED_AI_OPERATIONS = `SELECT COUNT(*) AS used FROM ai_usage WHERE organization_id = $1 AND created_at >= ${MONTH_START}`;
+
   const projectSchema = z.object({
     name: z.string().min(1).max(255),
-    domain: z.string().min(1).max(255),
+    domain: z.string().min(1).max(255).refine((value) => {
+      const host = value.trim().toLowerCase().replace(/^https?:\/\//, '').split(/[/?#]/)[0].replace(/\.$/, '');
+      return /^(?:[\p{L}\p{N}](?:[\p{L}\p{N}-]{0,61}[\p{L}\p{N}])?\.)+[\p{L}\p{N}-]{2,63}$/u.test(host);
+    }, 'Invalid domain'),
     country: z.string().length(2).default('US'),
     language: z.string().length(2).default('en'),
     timezone: z.string().max(50).optional(),
@@ -663,8 +705,12 @@ export function createApp() {
 
       const options = crawlSchema.parse(req.body || {});
 
+      const remainingPages = await remainingMonthlyQuota(req.organizationId!, 'crawledPages', USED_CRAWL_PAGES);
+      if (remainingPages !== -1) options.maxPages = Math.min(options.maxPages ?? 100, remainingPages);
+
+      // Matches the price charged in rf_worker_charge_job.
       const wallet = await creditRepository.getWallet(req.organizationId!);
-      if (wallet && wallet.balance < 10) {
+      if (!wallet || wallet.balance < 5) {
         return res.status(402).json({ success: false, error: { code: 'INSUFFICIENT_CREDITS', message: 'Insufficient credits for crawl' } });
       }
 
@@ -728,6 +774,7 @@ export function createApp() {
       const result = await crawlRepository.getFindings(project.id, req.organizationId!, {
         severity,
         category,
+        crawlRunId: typeof req.query.crawlRunId === 'string' ? req.query.crawlRunId : undefined,
         limit,
         offset: (page - 1) * limit,
       });
@@ -1289,7 +1336,9 @@ export function createApp() {
       const { page, limit } = paginationSchema.parse(req.query);
       const { query } = await import('./db/client.js');
       const result = await query(
-        `SELECT id, keyword_id as "keywordId", position, previous_position as "previousPosition", url, search_engine as "searchEngine", country, device, date, provider FROM keyword_rankings WHERE project_id = $1 AND organization_id = $2 ORDER BY date DESC LIMIT $3 OFFSET $4`,
+        `SELECT r.id, r.keyword_id as "keywordId", COALESCE(k.keyword, k.term) as keyword, r.position, r.previous_position as "previousPosition", r.url, r.search_engine as "searchEngine", r.country, r.device, r.date, r.provider
+         FROM keyword_rankings r JOIN keywords k ON k.id = r.keyword_id AND k.organization_id = r.organization_id
+         WHERE r.project_id = $1 AND r.organization_id = $2 ORDER BY r.date DESC LIMIT $3 OFFSET $4`,
         [project.id, req.organizationId!, limit, (page - 1) * limit]
       );
       const countResult = await query(`SELECT COUNT(*) as total FROM keyword_rankings WHERE project_id = $1 AND organization_id = $2`, [project.id, req.organizationId!]);
@@ -1297,7 +1346,7 @@ export function createApp() {
       res.json({
         success: true,
         data: result.rows,
-        provider: { status: 'configured', message: 'Provider configured, rankings from real SERP provider via RANK_CHECK jobs' },
+        provider: { status: 'configured', message: 'Rank provider is configured' },
         pagination: { page, limit, total: parseInt(countResult.rows[0].total, 10), totalPages: Math.ceil(parseInt(countResult.rows[0].total, 10) / limit) },
       });
     } catch (error) {
@@ -1315,6 +1364,8 @@ export function createApp() {
         return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Rank provider not configured' } });
       }
 
+      await remainingMonthlyQuota(req.organizationId!, 'rankChecks', USED_RANK_CHECKS);
+
       const job = await jobRepository.create({
         organizationId: req.organizationId!,
         projectId: project.id,
@@ -1323,7 +1374,7 @@ export function createApp() {
         idempotencyKey: `rank_check_${project.id}_${Date.now()}`,
       });
 
-      res.status(201).json({ success: true, data: { job, message: 'Rank check queued — real provider will be called by worker' } });
+      res.status(201).json({ success: true, data: { job, message: 'Rank check queued' } });
     } catch (error) {
       next(error);
     }
@@ -1433,7 +1484,7 @@ export function createApp() {
         idempotencyKey: `backlink_${project.id}_${Date.now()}`,
       });
 
-      res.status(201).json({ success: true, data: { job, message: 'Backlink sync queued — real provider will be called' } });
+      res.status(201).json({ success: true, data: { job, message: 'Backlink sync queued' } });
     } catch (error) {
       next(error);
     }
@@ -1540,7 +1591,7 @@ export function createApp() {
       const { query } = await import('./db/client.js');
       const result = await query(
         `INSERT INTO alerts (organization_id, project_id, type, rule, title, message, severity, data, read, triggered_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, NOW()) RETURNING id, type, rule, title, message, severity, data, read, triggered_at as "triggeredAt", created_at as "createdAt"`,
-        [req.organizationId!, project.id, parsed.type, parsed.rule || parsed.type, parsed.title, parsed.message, parsed.severity, JSON.stringify({ channels: parsed.channels, createdBy: req.userId })]
+        [req.organizationId!, project.id, ALERT_CATEGORY[parsed.type], parsed.rule || parsed.type, parsed.title, parsed.message, parsed.severity === 'notice' ? 'low' : parsed.severity, JSON.stringify({ channels: parsed.channels, createdBy: req.userId })]
       );
 
       await auditLogRepository.create({
@@ -1603,6 +1654,8 @@ export function createApp() {
       if (!hasAI) {
         return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'AI provider not configured — content brief requires OpenAI/Anthropic/Google AI' } });
       }
+
+      await remainingMonthlyQuota(req.organizationId!, 'aiOperations', USED_AI_OPERATIONS);
 
       const schema = z.object({ title: z.string().min(1).max(255), targetKeyword: z.string().min(1).max(255), intent: z.string().optional(), wordCount: z.number().int().min(100).max(5000).optional() });
       const parsed = schema.parse(req.body);
@@ -1721,7 +1774,7 @@ export function createApp() {
         idempotencyKey: `pagespeed_${project.id}_${url}_${Date.now()}`,
       });
 
-      res.status(201).json({ success: true, data: { job, message: 'PageSpeed check queued — real API call by worker' } });
+      res.status(201).json({ success: true, data: { job, message: 'PageSpeed check queued' } });
     } catch (error: any) {
       if (error.name === 'ZodError') {
         return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
@@ -1825,19 +1878,8 @@ export function createApp() {
       const webhook = await query(`SELECT id, url, secret_hash as "secretHash" FROM webhooks WHERE id = $1 AND organization_id = $2`, [req.params.id, req.organizationId!]);
       if (webhook.rows.length === 0) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Webhook not found' } });
 
-      const crypto = await import('crypto');
-      const payload = JSON.stringify({ event: 'test', timestamp: new Date().toISOString(), organizationId: req.organizationId! });
-      const signature = crypto.createHmac('sha256', webhook.rows[0].secretHash).update(payload).digest('hex');
-
-      // Real signed delivery with retry logic would be queued via jobs
-      const job = await jobRepository.create({
-        organizationId: req.organizationId!,
-        type: 'WEBHOOK_DELIVERY',
-        payload: { webhookId: webhook.rows[0].id, event: 'test', payload, signature },
-        idempotencyKey: `webhook_test_${webhook.rows[0].id}_${Date.now()}`,
-      });
-
-      res.json({ success: true, data: { job, signature, message: 'Test webhook queued — real HMAC-SHA256 signed delivery with retry/backoff' } });
+      // Nothing delivers webhooks yet, so a queued "test" could never arrive.
+      res.status(501).json({ success: false, error: { code: 'NOT_IMPLEMENTED', message: 'Webhook delivery is not available yet' } });
     } catch (error) {
       next(error);
     }
@@ -1941,7 +1983,7 @@ export function createApp() {
         ipAddress: req.ip,
       });
 
-      res.json({ success: true, data: { message: 'Account soft-deleted, PII minimized, retention policy applied — real GDPR compliance' } });
+      res.json({ success: true, data: { message: 'Account deleted' } });
     } catch (error) {
       next(error);
     }
@@ -1954,7 +1996,7 @@ export function createApp() {
   app.get('/api/v1/openapi.json', (req, res) => {
     res.json({
       openapi: '3.0.3',
-      info: { title: 'RankForge API', version: '1.0.0', description: 'Production-ready SEO Automation SaaS — real PostgreSQL, no fake data' },
+      info: { title: 'RankForge API', version: '1.0.0', description: 'SEO automation API' },
       servers: [{ url: config.appUrl || 'http://localhost:3001', description: 'API server' }],
       paths: {
         '/api/v1/health': { get: { summary: 'Health check', responses: { '200': { description: 'Healthy' } } } },
@@ -1993,16 +2035,16 @@ export function createApp() {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin only' } });
       }
 
+      // Scoped to the caller's organization: a customer must not learn platform-wide totals.
       const stats = await query(`
-        SELECT 
-          (SELECT COUNT(*) FROM organizations) as orgs,
-          (SELECT COUNT(*) FROM projects) as projects,
-          (SELECT COUNT(*) FROM users) as users,
-          (SELECT COUNT(*) FROM jobs WHERE status = 'pending') as pending_jobs,
-          (SELECT COUNT(*) FROM jobs WHERE status = 'running') as running_jobs,
-          (SELECT COUNT(*) FROM crawl_runs) as crawl_runs,
-          (SELECT COUNT(*) FROM audit_findings) as audit_findings
-      `);
+        SELECT
+          (SELECT COUNT(*) FROM projects WHERE organization_id = $1 AND deleted_at IS NULL) AS projects,
+          (SELECT COUNT(*) FROM organization_members WHERE organization_id = $1) AS users,
+          (SELECT COUNT(*) FROM jobs WHERE organization_id = $1 AND status = 'pending') AS pending_jobs,
+          (SELECT COUNT(*) FROM jobs WHERE organization_id = $1 AND status = 'running') AS running_jobs,
+          (SELECT COUNT(*) FROM crawl_runs WHERE organization_id = $1) AS crawl_runs,
+          (SELECT COUNT(*) FROM audit_findings WHERE organization_id = $1) AS audit_findings
+      `, [req.organizationId!]);
 
       res.json({ success: true, data: stats.rows[0] });
     } catch (error) {
@@ -2018,7 +2060,7 @@ export function createApp() {
     try {
       const { query } = await import('./db/client.js');
       const result = await query(`SELECT id, type, cron_expression as "cronExpression", timezone, enabled, last_run_at as "lastRunAt", next_run_at as "nextRunAt" FROM scheduled_jobs WHERE organization_id = $1 ORDER BY next_run_at ASC`, [req.organizationId!]);
-      res.json({ success: true, data: result.rows, message: 'Scheduler timezone-aware — real cron with timezone, jobs SITE_CRAWL/SEO_AUDIT/RANK_CHECK/BACKLINK_SYNC/GSC_SYNC/GA4_SYNC/REPORT_GENERATION/ALERT_EVALUATION' });
+      res.json({ success: true, data: result.rows, message: 'Schedules run in their configured timezone' });
     } catch (error) {
       next(error);
     }
@@ -2026,8 +2068,10 @@ export function createApp() {
 
   app.post('/api/v1/scheduler/jobs', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
-      const schema = z.object({ type: z.string(), cronExpression: z.string(), timezone: z.string().default('UTC'), enabled: z.boolean().default(true), projectId: z.string().uuid().optional() });
-      const parsed = schema.parse(req.body);
+      const parsed = scheduleSchema.parse(req.body);
+      if (parsed.projectId && !(await projectRepository.findById(parsed.projectId, req.organizationId!))) {
+        return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      }
 
       const { query } = await import('./db/client.js');
       const result = await query(
@@ -2061,7 +2105,7 @@ export function createApp() {
       const { query } = await import('./db/client.js');
       const result = await query(`SELECT id, prompt, response, brand_mentioned as "brandMentioned", visibility_score as "visibilityScore", provider, cost, created_at as "createdAt" FROM geo_runs WHERE project_id = $1 AND organization_id = $2 ORDER BY created_at DESC LIMIT 50`, [project.id, req.organizationId!]);
 
-      res.json({ success: true, data: result.rows, provider: { status: 'configured', message: 'AI provider configured, GEO via real AI calls with cost metering' } });
+      res.json({ success: true, data: result.rows, provider: { status: 'configured', message: 'AI provider is configured' } });
     } catch (error) {
       next(error);
     }
@@ -2077,6 +2121,8 @@ export function createApp() {
         return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'AI provider not configured' } });
       }
 
+      await remainingMonthlyQuota(req.organizationId!, 'aiOperations', USED_AI_OPERATIONS);
+
       const schema = z.object({ prompt: z.string().min(1).max(1000).optional() });
       const { prompt } = schema.parse(req.body || {});
 
@@ -2088,7 +2134,7 @@ export function createApp() {
         idempotencyKey: `geo_${project.id}_${Date.now()}`,
       });
 
-      res.status(201).json({ success: true, data: { job, message: 'GEO visibility check queued — real AI provider call with cost metering' } });
+      res.status(201).json({ success: true, data: { job, message: 'Visibility check queued' } });
     } catch (error: any) {
       if (error.name === 'ZodError') {
         return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ') } });
@@ -2117,7 +2163,7 @@ export function createApp() {
         data: {
           pages: pages.rows,
           structuredDataFindings: findings.rows,
-          message: 'AEO analysis from real crawl_pages + audit_findings structured-data — no fake questions',
+          message: 'Based on crawled pages and audit findings',
         },
       });
     } catch (error) {
@@ -2281,7 +2327,7 @@ export function createApp() {
       const { query } = await import('./db/client.js');
       const result = await query(`SELECT id, type, title, format, status, download_url as "downloadUrl", created_at as "createdAt" FROM reports WHERE project_id = $1 AND organization_id = $2 AND status = 'ready' ORDER BY created_at DESC`, [project.id, req.organizationId!]);
 
-      res.json({ success: true, data: result.rows, message: 'Client portal reports — read-only, real reports table, no fake' });
+      res.json({ success: true, data: result.rows, message: 'Read-only client reports' });
     } catch (error) {
       next(error);
     }
@@ -2349,9 +2395,9 @@ export function createApp() {
         sentry: config.providers.sentryDsn ? 'configured' : 'not_configured',
         posthog: config.providers.posthogKey ? 'configured' : 'not_configured',
         logging: { level: 'info', structured: true, requestId: true, userId: true, orgId: true, route: true, durationMs: true, neverSecrets: true },
-        metrics: { enabled: true, endpoint: '/api/v1/metrics (if configured)' },
+        metrics: { enabled: false },
         tracing: { enabled: !!config.providers.sentryDsn, sampleRate: 0.1 },
-        message: 'Observability real — structured logs with requestId/userId/orgId/route/durationMs never secrets, Sentry DSN and PostHog key from env, no fake metrics',
+        message: 'Logs are structured. Metrics are not available.',
       },
     });
   });
@@ -2371,8 +2417,8 @@ export function createApp() {
         data: {
           s3: s3Configured ? 'configured' : 'not_configured',
           backups: result.rows,
-          retentionPolicy: 'Daily backups retained 7 days, weekly 4 weeks, monthly 12 months — real S3 + PG, no fake',
-          message: s3Configured ? 'Backups real — S3 storage for PG dumps, reports, exports' : 'S3 not configured — backups status still real, storage requires S3',
+          retentionPolicy: null,
+          message: 'Per-organization backups are not available. Database backups are an operator task; see docs/BACKUP-RESTORE.md',
         },
       });
     } catch (error) {
@@ -2382,34 +2428,9 @@ export function createApp() {
 
   app.post('/api/v1/backups/trigger', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
-      const s3Configured = !!(config.providers.s3.accessKey && config.providers.s3.secretKey);
-      if (!s3Configured) {
-        return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'S3 not configured — backup storage unavailable' } });
-      }
-
-      const { query } = await import('./db/client.js');
-      const result = await query(
-        `INSERT INTO backups (organization_id, type, status, config) VALUES ($1, 'full', 'pending', $2) RETURNING id, type, status, created_at as "createdAt"`,
-        [req.organizationId!, JSON.stringify({ triggeredBy: req.userId, timestamp: new Date().toISOString() })]
-      );
-
-      const job = await jobRepository.create({
-        organizationId: req.organizationId!,
-        type: 'BACKUP',
-        payload: { backupId: result.rows[0].id },
-        idempotencyKey: `backup_${result.rows[0].id}`,
-      });
-
-      await auditLogRepository.create({
-        organizationId: req.organizationId!,
-        userId: req.userId,
-        action: 'backup.trigger',
-        resourceType: 'backup',
-        resourceId: result.rows[0].id,
-        ipAddress: req.ip,
-      });
-
-      res.status(201).json({ success: true, data: { backup: result.rows[0], job, message: 'Backup queued — real PG dump + S3 upload with retention policy' } });
+      // No process consumes a per-organization backup, so accepting the request would
+      // promise a backup that never happens.
+      res.status(501).json({ success: false, error: { code: 'NOT_IMPLEMENTED', message: 'Per-organization backups are not available' } });
     } catch (error) {
       next(error);
     }
@@ -2438,6 +2459,15 @@ export function createApp() {
       return res.status(error.status).json({
         success: false,
         error: { code: error.code, message: error.message },
+      });
+    }
+
+    // An address a customer may not reach is their input error, not a server fault.
+    // The detail stays in the log: it can reveal internal DNS results.
+    if (error.name === 'SSRFError') {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'This address cannot be reached or is not allowed' },
       });
     }
 
