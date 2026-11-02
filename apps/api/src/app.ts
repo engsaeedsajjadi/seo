@@ -2131,7 +2131,7 @@ export function createApp() {
   app.get('/api/v1/scheduler/jobs', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       const { query } = await import('./db/client.js');
-      const result = await query(`SELECT id, type, cron_expression as "cronExpression", timezone, enabled, last_run_at as "lastRunAt", next_run_at as "nextRunAt" FROM scheduled_jobs WHERE organization_id = $1 ORDER BY next_run_at ASC`, [req.organizationId!]);
+      const result = await query(`SELECT id, project_id as "projectId", type, cron_expression as "cronExpression", timezone, enabled, last_run_at as "lastRunAt", next_run_at as "nextRunAt" FROM scheduled_jobs WHERE organization_id = $1 ORDER BY next_run_at ASC`, [req.organizationId!]);
       res.json({ success: true, data: result.rows, message: 'Schedules run in their configured timezone' });
     } catch (error) {
       next(error);

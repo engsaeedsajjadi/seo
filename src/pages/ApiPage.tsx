@@ -38,7 +38,7 @@ export default function ApiPage() {
   const [keyLoading, setKeyLoading] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState('');
-  const [webhookEvents, setWebhookEvents] = useState('audit.completed,rank.updated');
+  const [webhookEvents, setWebhookEvents] = useState('crawl.completed,rank.updated');
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [webhookError, setWebhookError] = useState<string | null>(null);
   const [webhookSuccess, setWebhookSuccess] = useState<string | null>(null);
@@ -234,7 +234,7 @@ export default function ApiPage() {
                           <span key={s} className="px-1.5 py-0.5 rounded text-[10px] bg-brand-500/20 text-brand-400">{s}</span>
                         ))}
                       </div>
-                      <p className="text-xs text-slate-400 mt-1 font-mono">{apiKey.keyPrefix}... · Rate: 1000/min · Created: {new Date(apiKey.createdAt).toLocaleDateString()} · Last used: {apiKey.lastUsedAt ? new Date(apiKey.lastUsedAt).toLocaleDateString() : 'never'}</p>
+                      <p className="text-xs text-slate-400 mt-1 font-mono">{apiKey.keyPrefix}...  · Created: {new Date(apiKey.createdAt).toLocaleDateString()} · Last used: {apiKey.lastUsedAt ? new Date(apiKey.lastUsedAt).toLocaleDateString() : 'never'}</p>
                     </div>
                     <button onClick={() => handleRevokeKey(apiKey.id)} className="p-1.5 rounded hover:bg-surface-3/50 text-accent-red text-xs flex items-center gap-1"><Trash2 className="w-3 h-3" /> لغو</button>
                   </div>
@@ -294,7 +294,7 @@ export default function ApiPage() {
 {
   "mcpServers": {
     "rankforge": {
-      "url": "https://mcp.rankforge.io",
+      "url": "https://YOUR-MCP-HOST",
       "headers": {
         "Authorization": "Bearer rf_live_..."
       }
@@ -335,7 +335,7 @@ export default function ApiPage() {
               <h3 className="text-sm font-semibold text-white">وب‌هوک‌های خروجی</h3>
               <div className="flex items-center gap-2">
                 <input value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} placeholder="https://hooks.example.com/rankforge" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500 w-64" />
-                <input value={webhookEvents} onChange={e => setWebhookEvents(e.target.value)} placeholder="audit.completed,rank.updated" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500 w-48" />
+                <input value={webhookEvents} onChange={e => setWebhookEvents(e.target.value)} placeholder="crawl.completed,rank.updated" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500 w-48" />
                 <button onClick={handleCreateWebhook} disabled={webhookLoading} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-lg flex items-center gap-1 disabled:opacity-50">
                   {webhookLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : null} افزودن
                 </button>
@@ -344,7 +344,7 @@ export default function ApiPage() {
             {webhookError && <p className="text-xs text-accent-red mb-3">{webhookError}</p>}
             {webhookSuccess && <p className="text-xs text-accent-green mb-3">{webhookSuccess}</p>}
             <p className="text-xs text-slate-400 mb-4">
-              هنگام رخ‌دادن رویدادها اعلان دریافت کنید. محتوای هر ارسال با HMAC-SHA256 امضا می‌شود.
+              هنگام رخ‌دادن رویدادها اعلان دریافت کنید. هر ارسال در هدر X-RankForge-Signature با HMAC-SHA256 امضا می‌شود؛ کلید امضا، هش SHA-256 کلید مخفی شماست. ارسال ناموفق تا ۵ بار تکرار می‌شود.
             </p>
             {loadingWebhooks ? (
               <div className="flex justify-center py-4"><div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" /></div>
@@ -378,20 +378,7 @@ export default function ApiPage() {
           <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
             <h3 className="text-sm font-semibold text-white mb-4">رویدادهای موجود</h3>
             <div className="grid grid-cols-2 gap-2">
-              {[
-                'project.created',
-                'audit.completed',
-                'rank.updated',
-                'critical_issue.created',
-                'report.generated',
-                'subscription.updated',
-                'payment.failed',
-                'credit.low',
-                'crawl.completed',
-                'keyword.added',
-                'backlink.lost',
-                'competitor.changed',
-              ].map(event => (
+              {['crawl.completed', 'audit.completed', 'rank.updated', 'report.generated', 'job.failed'].map(event => (
                 <div key={event} className="flex items-center gap-2 p-2 rounded bg-surface/50">
                   <Zap className="w-3 h-3 text-accent-yellow" />
                   <code className="text-xs text-slate-300 font-mono">{event}</code>

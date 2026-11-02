@@ -142,26 +142,6 @@ export default function Integrations() {
                         <XCircle className="w-3 h-3" /> قطع اتصال گوگل
                       </button>
                     )}
-                    {integration.key !== 'googleSearchConsole' && integration.key !== 'googleAnalytics' && integration.status === 'not_configured' && (
-                      <button disabled title="به‌زودی در دسترس خواهد بود" className="flex-1 px-3 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-lg flex items-center justify-center gap-1">
-                        <Settings className="w-3 h-3" /> پیکربندی
-                      </button>
-                    )}
-                    {integration.status === 'connected' && (
-                      <>
-                        <button disabled title="به‌زودی در دسترس خواهد بود" className="flex-1 px-3 py-2 bg-surface-3/30 hover:bg-surface-3/50 text-slate-300 text-xs font-medium rounded-lg flex items-center justify-center gap-1">
-                          <RefreshCw className="w-3 h-3" /> آزمایش اتصال
-                        </button>
-                        <button disabled title="به‌زودی در دسترس خواهد بود" className="px-3 py-2 bg-surface-3/30 hover:bg-surface-3/50 text-slate-300 text-xs font-medium rounded-lg">
-                          <Settings className="w-3 h-3" />
-                        </button>
-                      </>
-                    )}
-                    {integration.status === 'error' && (
-                      <button disabled title="به‌زودی در دسترس خواهد بود" className="flex-1 px-3 py-2 bg-accent-red/20 hover:bg-accent-red/30 text-accent-red text-xs font-medium rounded-lg flex items-center justify-center gap-1">
-                        <AlertCircle className="w-3 h-3" /> اصلاح تنظیمات
-                      </button>
-                    )}
                   </div>
                 </div>
               ))}

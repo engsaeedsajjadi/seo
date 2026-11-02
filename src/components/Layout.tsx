@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { VerifyEmailBanner } from './EmailVerification';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Globe, Search, BarChart3, Target, Link2, FileText,
@@ -96,7 +97,7 @@ export default function Layout() {
 
   const isActive = (path: string) => location.pathname === path;
 
-  const [identity,setIdentity] = useState<{name:string;role:string}>({name:'',role:''});
+  const [identity,setIdentity] = useState<{name:string;role:string;emailVerified?:boolean;platformAdmin?:boolean}>({name:'',role:''});
   const [organizations,setOrganizations] = useState<Array<{id:string;name:string}>>([]);
   const [switching,setSwitching] = useState(false);
   const [switchError,setSwitchError] = useState('');
@@ -293,6 +294,10 @@ export default function Layout() {
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto scrollbar-thin p-6" dir="rtl">
           {state.currentOrg?.role==='client' && <p role="status" className="mb-4 text-sm text-slate-400">دسترسی مشتری فقط برای مشاهدهٔ پروژه‌های تخصیص‌یافته است.</p>}
+          <VerifyEmailBanner visible={identity.emailVerified === false} />
+          {identity.platformAdmin && location.pathname !== '/platform' && (
+            <Link to="/platform" className="block mb-4 text-xs text-brand-400 hover:underline">مدیریت پلتفرم</Link>
+          )}
           <Outlet />
         </main>
       </div>

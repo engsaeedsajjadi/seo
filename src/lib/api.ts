@@ -186,6 +186,43 @@ const API_TIMEOUT = 30000;
 // accepts it back as an Authorization: Bearer header (or a
 // `token` cookie). We persist it in localStorage so sessions
 // survive reloads, and attach it to every request.
+export interface Schedule { id: string; type: string; cronExpression: string; timezone: string; enabled: boolean; projectId?: string; nextRunAt?: string; lastRunAt?: string }
+export interface PlatformOverview {
+  organizations: number; suspended: number; users: number; new_users_30d: number; projects: number;
+  revenue_cents_total: number; revenue_cents_month: number; credits_consumed_month: number; ai_cost_usd_month: number;
+  plans: Array<{ plan: string; organizations: number; price_monthly_cents: number }>;
+  jobsLast24h: Record<string, number>;
+}
+export interface PlatformOrganization {
+  id: string; name: string; plan: string; ownerEmail: string; suspendedAt: string | null; balance: number;
+  members: number; projects: number; revenueCents: number;
+}
+
+/** Customers see Persian text chosen from the error code. The API's English text stays for API clients. */
+const PERSIAN_ERRORS: Record<string, string> = {
+  VALIDATION_ERROR: 'اطلاعات واردشده معتبر نیست. لطفاً بررسی و دوباره تلاش کنید.',
+  LIMIT_REACHED: 'به سقف پلن فعلی رسیده‌اید. برای ادامه، پلن خود را ارتقا دهید.',
+  INSUFFICIENT_CREDITS: 'اعتبار کافی ندارید.',
+  EMAIL_NOT_VERIFIED: 'ابتدا ایمیل خود را تأیید کنید.',
+  ACCOUNT_SUSPENDED: 'این سازمان معلق شده است. با پشتیبانی تماس بگیرید.',
+  CONFLICT: 'این مورد از قبل وجود دارد.',
+  NOT_FOUND: 'مورد موردنظر پیدا نشد.',
+  FORBIDDEN: 'اجازهٔ این کار را ندارید.',
+  UNAUTHENTICATED: 'ایمیل یا رمز عبور نادرست است.',
+  SESSION_EXPIRED: 'نشست شما پایان یافته است. دوباره وارد شوید.',
+  RATE_LIMITED: 'تعداد درخواست‌ها زیاد است. کمی بعد دوباره تلاش کنید.',
+  PROVIDER_NOT_CONFIGURED: 'این سرویس هنوز فعال نشده است.',
+  SERVICE_UNAVAILABLE: 'سرویس موقتاً در دسترس نیست. کمی بعد دوباره تلاش کنید.',
+  NOT_IMPLEMENTED: 'این قابلیت هنوز در دسترس نیست.',
+};
+
+function persianErrorMessage(code: string | undefined, status: number): string {
+  if (code && PERSIAN_ERRORS[code]) return PERSIAN_ERRORS[code];
+  if (status === 429) return PERSIAN_ERRORS.RATE_LIMITED;
+  if (status >= 500) return 'خطایی در سرور رخ داد. لطفاً دوباره تلاش کنید.';
+  return 'درخواست انجام نشد. لطفاً دوباره تلاش کنید.';
+}
+
 const TOKEN_STORAGE_KEY = 'rankforge_token';
 let memoryToken: string | null = null;
 export const AUTH_EXPIRED_EVENT = 'rankforge:session-expired';
@@ -286,7 +323,7 @@ export class ApiClient {
         }
 
         const errorCode = parsedError.error?.code as ApiErrorCode;
-        const errorMessage = parsedError.error?.message || response.statusText || 'Request failed';
+        const errorMessage = persianErrorMessage(errorCode, response.status);
         const requestId = response.headers.get('x-request-id') || undefined;
 
         // Classify error by status code
@@ -301,7 +338,9 @@ export class ApiClient {
             return { success: false, error: new AuthenticationError(errorMessage) };
           }
           case 403: {
-            return { success: false, error: new AuthorizationError(errorMessage) };
+            const denied = new AuthorizationError(errorMessage);
+            if (errorCode) denied.code = errorCode;
+            return { success: false, error: denied };
           }
           case 404: {
             return { success: false, error: new NotFoundError() };
@@ -394,6 +433,40 @@ export class ApiClient {
 
   async addMember(email: string, role: string): Promise<ApiResult<unknown>> {
     return this.request('/api/v1/organizations/current/members', { method: 'POST', body: JSON.stringify({ email, role }) });
+  }
+
+  async verifyEmail(token: string): Promise<ApiResult<unknown>> {
+    return this.request('/api/v1/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) });
+  }
+  async resendVerification(): Promise<ApiResult<unknown>> {
+    return this.request('/api/v1/auth/resend-verification', { method: 'POST', body: '{}' });
+  }
+  async updateFindingStatus(projectId: string, findingId: string, status: 'open' | 'fixed' | 'ignored'): Promise<ApiResult<unknown>> {
+    return this.request(`/api/v1/projects/${projectId}/audit/findings/${findingId}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+  }
+  async getSchedules(): Promise<ApiResult<Schedule[]>> {
+    return this.request('/api/v1/scheduler/jobs');
+  }
+  async createSchedule(input: { type: string; cronExpression: string; timezone: string; projectId: string }): Promise<ApiResult<Schedule>> {
+    return this.request('/api/v1/scheduler/jobs', { method: 'POST', body: JSON.stringify(input) });
+  }
+  async setScheduleEnabled(id: string, enabled: boolean): Promise<ApiResult<unknown>> {
+    return this.request(`/api/v1/scheduler/jobs/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) });
+  }
+  async deleteSchedule(id: string): Promise<ApiResult<unknown>> {
+    return this.request(`/api/v1/scheduler/jobs/${id}`, { method: 'DELETE' });
+  }
+  async getPlatformOverview(): Promise<ApiResult<PlatformOverview>> {
+    return this.request('/api/v1/platform/overview');
+  }
+  async getPlatformOrganizations(search = ''): Promise<ApiResult<PlatformOrganization[]>> {
+    return this.request(`/api/v1/platform/organizations?search=${encodeURIComponent(search)}`);
+  }
+  async updatePlatformOrganization(id: string, changes: { plan?: string; suspended?: boolean }): Promise<ApiResult<unknown>> {
+    return this.request(`/api/v1/platform/organizations/${id}`, { method: 'PATCH', body: JSON.stringify(changes) });
+  }
+  async grantPlatformCredits(id: string, amount: number, reason: string, requestId: string): Promise<ApiResult<unknown>> {
+    return this.request(`/api/v1/platform/organizations/${id}/credits`, { method: 'POST', body: JSON.stringify({ amount, reason, requestId }) });
   }
 
   async requestPasswordReset(email:string):Promise<ApiResult<unknown>> {

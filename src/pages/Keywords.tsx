@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { useAppState, formatNumber } from '../lib/store';
 import { api } from '../lib/api';
+import { downloadCsv } from '../lib/csv';
 import type { Keyword } from '../lib/types';
 import { t } from '../i18n';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
@@ -53,6 +54,11 @@ export default function Keywords() {
   const [addLanguage, setAddLanguage] = useState('fa');
 
   const hasProject = state.currentProject !== null;
+
+  function exportKeywords() {
+    downloadCsv(`keywords-${state.currentProject?.domain}.csv`, ['کلمهٔ کلیدی', 'حجم جست‌وجو', 'CPC', 'سختی', 'رتبه'],
+      keywords.map((k: any) => [k.keyword ?? k.term, k.searchVolume ?? k.volume, k.cpc, k.difficulty, k.currentPosition]));
+  }
 
   useEffect(() => {
     async function loadKeywords() {
@@ -148,7 +154,7 @@ export default function Keywords() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button disabled title="به‌زودی در دسترس خواهد بود" className="px-4 py-2 bg-surface-3/50 hover:bg-surface-3 text-slate-300 text-sm font-medium rounded-lg flex items-center gap-2">
+          <button onClick={exportKeywords} disabled={keywords.length === 0} className="px-4 py-2 bg-surface-3/50 hover:bg-surface-3 text-slate-300 text-sm font-medium rounded-lg flex items-center gap-2">
             <Download className="w-4 h-4" />
             خروجی
           </button>

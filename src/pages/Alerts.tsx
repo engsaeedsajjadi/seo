@@ -181,9 +181,6 @@ export default function Alerts() {
                       <Check className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  <button disabled className="p-1.5 rounded hover:bg-surface-3/50 text-slate-400 hover:text-accent-red" title="بستن">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
                 </div>
               </div>
             </div>

@@ -101,9 +101,6 @@ export default function AEO() {
           <h1 className="text-2xl font-bold text-white">بهینه‌سازی برای موتورهای پاسخ (AEO)</h1>
           <p className="text-sm text-slate-400 mt-1">بهینه‌سازی برای پاسخ‌های هوش مصنوعی و نتایج ویژه</p>
         </div>
-        <button disabled title="به‌زودی در دسترس خواهد بود" className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2">
-          <Search className="w-4 h-4" /> تحلیل
-        </button>
       </div>
 
       {data && (

@@ -4,6 +4,7 @@ import {
   ChevronDown, ChevronRight, Download, Filter, AlertCircle, Zap
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
+import { downloadCsv } from '../lib/csv';
 import { api } from '../lib/api';
 import type { Severity, AuditCategory, AuditFinding } from '../lib/types';
 import { t } from '../i18n';
@@ -24,8 +25,20 @@ export default function SiteAudit() {
 
   const hasProject = state.currentProject !== null;
 
+  function exportFindings() {
+    downloadCsv(`audit-${state.currentProject?.domain}.csv`, ['شدت', 'دسته', 'عنوان', 'وضعیت', 'پیشنهاد', 'صفحات درگیر'],
+      findings.map((f) => [f.severity, f.category, f.title, f.status, f.recommendation, (f.affectedUrls || []).join(' ')]));
+  }
+
+  async function setFindingStatus(findingId: string, status: 'fixed' | 'ignored') {
+    if (!state.currentProject) return;
+    const result = await api.updateFindingStatus(state.currentProject.id, findingId, status);
+    if (result.success) setFindings((prev) => prev.map((f) => (f.id === findingId ? { ...f, status } : f)));
+  }
+
   useEffect(() => {
-    async function loadFindings() {
+  
+  async function loadFindings() {
       if (!state.currentProject) {
         setLoading(false);
         return;
@@ -119,7 +132,7 @@ export default function SiteAudit() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button disabled title="به‌زودی در دسترس خواهد بود" className="px-4 py-2 bg-surface-3/50 hover:bg-surface-3 text-slate-300 text-sm font-medium rounded-lg flex items-center gap-2">
+          <button onClick={exportFindings} disabled={findings.length === 0} className="px-4 py-2 bg-surface-3/50 hover:bg-surface-3 text-slate-300 text-sm font-medium rounded-lg flex items-center gap-2">
             <Download className="w-4 h-4" />
             خروجی
           </button>
@@ -262,16 +275,16 @@ export default function SiteAudit() {
                             <p key={i} className="text-xs text-slate-400 font-mono truncate">{url}</p>
                           ))}
                           {finding.affectedUrls.length > 10 && (
-                            <p className="text-xs text-slate-500">… و {finding.affectedUrls.length - 10} more</p>
+                            <p className="text-xs text-slate-500">… و {finding.affectedUrls.length - 10} مورد دیگر</p>
                           )}
                         </div>
                       </div>
                     )}
                     <div className="mt-3 flex items-center gap-2">
-                      <button disabled title="به‌زودی در دسترس خواهد بود" className="px-3 py-1.5 bg-accent-green/20 text-accent-green text-xs rounded-lg hover:bg-accent-green/30">
+                      <button onClick={() => setFindingStatus(finding.id, 'fixed')} className="px-3 py-1.5 bg-accent-green/20 text-accent-green text-xs rounded-lg hover:bg-accent-green/30">
                         علامت‌گذاری به‌عنوان رفع‌شده
                       </button>
-                      <button disabled title="به‌زودی در دسترس خواهد بود" className="px-3 py-1.5 bg-surface-3/50 text-slate-300 text-xs rounded-lg hover:bg-surface-3">
+                      <button onClick={() => setFindingStatus(finding.id, 'ignored')} className="px-3 py-1.5 bg-surface-3/50 text-slate-300 text-xs rounded-lg hover:bg-surface-3">
                         نادیده‌گرفتن
                       </button>
                     </div>

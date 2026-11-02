@@ -6,7 +6,7 @@ const API = process.env.API_URL || 'http://localhost:3001';
 const WEB = process.env.FRONTEND_URL || 'http://localhost:5173';
 const JARGON = /no fake|— real|real api|PROVIDER_NOT_CONFIGURED|keyword_rankings|FOR UPDATE|idempotency|undefined|\bNaN\b|\[object Object\]/i;
 const PAGES = ['', 'audit', 'keywords', 'rankings', 'competitors', 'backlinks', 'content', 'geo', 'aeo', 'reports', 'alerts', 'automation'];
-const GLOBAL = ['projects', 'billing', 'team', 'settings', 'api', 'agency', 'integrations'];
+const GLOBAL = ['projects', 'billing', 'team', 'settings', 'api', 'agency', 'integrations', 'platform'];
 
 for (const [label, viewport] of [['desktop', { width: 1366, height: 850 }], ['phone', { width: 390, height: 844 }]] as const) {
   test(`all pages are clean on ${label}`, async ({ page, request }) => {
@@ -28,6 +28,7 @@ for (const [label, viewport] of [['desktop', { width: 1366, height: 850 }], ['ph
 
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => { if (/Content Security Policy/i.test(m.text())) errors.push(m.text()); });
     await page.goto(WEB);
     await page.locator('input[type=email]').fill(email);
     await page.locator('input[type=password]').fill(password);
@@ -47,6 +48,21 @@ for (const [label, viewport] of [['desktop', { width: 1366, height: 850 }], ['ph
         expect.soft(box!.width, `content width on ${path}`).toBeGreaterThan(280);
       }
     }
+    // Every interactive control must do something: no placeholder buttons remain.
+    for (const path of [`projects/${id}/audit`, `projects/${id}/automation`, 'integrations', 'agency']) {
+      await page.goto(`${WEB}/#/${path}`);
+      await page.waitForTimeout(600);
+      expect.soft(await page.locator('[title="به‌زودی در دسترس خواهد بود"]').count(), `placeholder on ${path}`).toBe(0);
+    }
+
+    await page.goto(`${WEB}/#/projects/${id}/automation`);
+    await page.getByRole('button', { name: 'افزودن زمان‌بندی' }).click();
+    await expect(page.getByText('خزش و ممیزی سایت ·', { exact: false })).toBeVisible();
+    await page.getByRole('button', { name: 'حذف' }).first().click();
+    await expect(page.getByText('هنوز زمان‌بندی‌ای ندارید.')).toBeVisible();
+
+    await page.goto(`${WEB}/#/projects`);
+    await page.waitForTimeout(500);
     expect(errors).toEqual([]);
   });
 }

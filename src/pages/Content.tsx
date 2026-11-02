@@ -175,14 +175,16 @@ export default function Content() {
                 </div>
                 <StatusBadge status={brief.status} />
               </div>
-              <div className="flex items-center gap-2 mt-4">
-                <button disabled title="به‌زودی در دسترس خواهد بود" className="flex-1 px-3 py-1.5 bg-brand-600/20 text-brand-400 text-xs rounded-lg hover:bg-brand-600/30 flex items-center justify-center gap-1">
-                  <Bot className="w-3 h-3" /> تولید ساختار
-                </button>
-                <button disabled title="به‌زودی در دسترس خواهد بود" className="flex-1 px-3 py-1.5 bg-surface-3/30 text-slate-300 text-xs rounded-lg hover:bg-surface-3/50 flex items-center justify-center gap-1">
-                  <FileText className="w-3 h-3" /> مشاهدهٔ بریف
-                </button>
-              </div>
+              {Array.isArray((brief as any).outline?.sections) && (
+                <details className="mt-4 text-xs text-slate-300">
+                  <summary className="cursor-pointer text-brand-400 flex items-center gap-1"><FileText className="w-3 h-3" /> مشاهدهٔ ساختار</summary>
+                  <ul className="mt-2 space-y-1 list-disc pr-4">
+                    {(brief as any).outline.sections.map((section: any, i: number) => (
+                      <li key={i}>{typeof section === 'string' ? section : section.heading || section.title}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
               <p className="text-[10px] text-slate-500 mt-3">ایجادشده {new Date(brief.createdAt).toLocaleDateString()}</p>
             </div>
           ))}

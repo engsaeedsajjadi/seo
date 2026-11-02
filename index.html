@@ -7,16 +7,6 @@
     <meta name="description" content="رنک‌فورج — پلتفرم جامع اتوماسیون سئو برای کسب‌وکارها" />
     <title>رنک‌فورج — پلتفرم اتوماسیون سئو</title>
     <!-- Vazirmatn font for Persian - optimized loading -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;200;300;400;500;600;700;800;900&display=swap"
-      rel="stylesheet"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
-    />
     <style>
       /* Vazirmatn as primary font for Persian */
       :root {
@@ -79,75 +69,10 @@
         font-size: 14px;
       }
     </style>
-    <script>
-      // Set Persian as default, RTL direction
-      (function () {
-        const isInIframe = window.self !== window.top;
-
-        function applyThemeToDOM(theme) {
-          document.documentElement.classList.remove("light", "dark");
-          document.documentElement.classList.add(theme);
-          document.documentElement.setAttribute("data-theme", theme);
-          // Ensure RTL and Persian lang are set
-          document.documentElement.setAttribute("lang", "fa");
-          document.documentElement.setAttribute("dir", "rtl");
-        }
-
-        if (isInIframe) {
-          window.addEventListener("message", function (event) {
-            if (event.data && typeof event.data.theme === "string") {
-              const theme = event.data.theme;
-              if (theme === "light" || theme === "dark") {
-                applyThemeToDOM(theme);
-              }
-            }
-          });
-        } else {
-          // Default dark theme for RankForge
-          applyThemeToDOM("dark");
-        }
-        
-        // Always ensure RTL
-        document.documentElement.setAttribute("lang", "fa");
-        document.documentElement.setAttribute("dir", "rtl");
-      })();
-    </script>
-    <script>
-      (function () {
-        if (window.self === window.top) return;
-        var reported = {};
-        window.addEventListener("error", function (event) {
-          if (!event || !event.message) return;
-          var key =
-            event.message + "|" + (event.filename || "") + "|" + (event.lineno || 0);
-          if (reported[key]) return;
-          reported[key] = true;
-          try {
-            window.parent.postMessage(
-              {
-                type: "sandbox-runtime-error",
-                payload: {
-                  message: String(event.message).slice(0, 500),
-                  filename: event.filename || "",
-                  lineno: event.lineno || 0,
-                  colno: event.colno || 0,
-                  stack:
-                    event.error && event.error.stack
-                      ? String(event.error.stack).slice(0, 2000)
-                      : ""
-                }
-              },
-              "*"
-            );
-          } catch (e) {
-            /* ignore */
-          }
-        });
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>
+    <script src="/boot.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

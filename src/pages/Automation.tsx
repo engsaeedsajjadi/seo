@@ -4,6 +4,7 @@ import {
   RefreshCw, Settings, Plus, Activity
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
+import SchedulePanel from '../components/SchedulePanel';
 import { api } from '../lib/api';
 import type { Job, JobStatus } from '../lib/types';
 import { t } from '../i18n';
@@ -62,10 +63,10 @@ export default function Automation() {
           <h1 className="text-2xl font-bold text-white">اتوماسیون</h1>
           <p className="text-sm text-slate-400 mt-1">کارهای زمان‌بندی‌شده و پس‌زمینه</p>
         </div>
-        <button disabled title="به‌زودی در دسترس خواهد بود" className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2">
-          <Plus className="w-4 h-4" /> زمان‌بندی جدید
-        </button>
+        
       </div>
+
+      <SchedulePanel projectId={state.currentProject.id} />
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

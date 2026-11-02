@@ -1,4 +1,6 @@
 import PasswordRecovery from './components/PasswordRecovery';
+import { VerifyEmailPage } from './components/EmailVerification';
+import Platform from './pages/Platform';
 import { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, Navigate, Outlet, useParams } from 'react-router-dom';
 import Layout from './components/Layout';
@@ -121,6 +123,10 @@ function App() {
     initialize();
   }, [refreshData]);
 
+  if (window.location.hash.startsWith('#/verify-email')) {
+    return <VerifyEmailPage token={new URLSearchParams(window.location.hash.split('?')[1] || '').get('token') || ''} />;
+  }
+
   if (window.location.hash.startsWith('#/reset-password')) {
     const token=new URLSearchParams(window.location.hash.split('?')[1] || '').get('token') || '';
     return <div className="min-h-screen bg-surface flex items-center justify-center p-6"><div className="bg-surface-2 rounded-xl p-6 max-w-md w-full">
@@ -236,6 +242,7 @@ function App() {
               <Route path="/agency" element={<Agency />} />
               <Route path="/api" element={<ApiPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/platform" element={<Platform />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>
