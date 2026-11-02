@@ -424,11 +424,10 @@ export function createApp() {
       // The target is another tenant, so the current tenant role cannot see it.
       const [role,org]=await runAsSystem(()=>Promise.all([organizationRepository.getMemberRole(id,req.userId!),organizationRepository.findById(id)]));
       if (!role || !org) throw new ApiError(403,'FORBIDDEN','Not a member of this organization');
-      const session=await transaction(async()=>{
-        const created=await sessionService.create(req.userId!,id,role,req.user.email);
-        await sessionService.revoke(req.sessionId!);
-        return created;
-      });
+      // Two steps on purpose: the new session is written by the system role, the old one revoked as
+      // the tenant role. If the revoke fails, the old session simply stays valid until it expires.
+      const session=await sessionService.create(req.userId!,id,role,req.user.email);
+      await sessionService.revoke(req.sessionId!);
       res.cookie(refreshCookie,session.refreshToken,cookieOptions);
       res.json({success:true,data:{token:session.token}});
     } catch (error) { next(error); }
