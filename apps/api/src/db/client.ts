@@ -8,6 +8,7 @@ import { Pool, PoolClient } from 'pg';
 import { config } from '../config/index.js';
 
 let pool: Pool | null = null;
+let appPool: Pool | null = null;
 
 type DbContext = { userId: string; organizationId: string };
 const transactionContext = new AsyncLocalStorage<PoolClient>();
@@ -21,13 +22,9 @@ export function getDbContext(): DbContext | undefined {
   return dbContext.getStore();
 }
 
-export function getPool(): Pool {
-  if (pool) return pool;
-  const dbUrl = config.database.url;
-  if (!dbUrl) throw new Error('DATABASE_URL is required for PostgreSQL persistence');
-
-  pool = new Pool({
-    connectionString: dbUrl,
+function createPool(connectionString: string): Pool {
+  const created = new Pool({
+    connectionString,
     // SSL is opt-in via DATABASE_SSL=true: stock PostgreSQL (incl. the
     // postgres:16-alpine compose service) does not serve SSL, so forcing
     // SSL in production made the shipped stack unable to reach its own
@@ -37,8 +34,34 @@ export function getPool(): Pool {
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
   });
-  pool.on('error', (err) => console.error('[DB] Pool error:', err));
+  created.on('error', (err) => console.error('[DB] Pool error:', err.message));
+  return created;
+}
+
+/** Connection for flows with no tenant yet: login, signup, refresh, signed webhooks. */
+export function getPool(): Pool {
+  if (pool) return pool;
+  const dbUrl = config.database.url;
+  if (!dbUrl) throw new Error('DATABASE_URL is required for PostgreSQL persistence');
+  pool = createPool(dbUrl);
   return pool;
+}
+
+/**
+ * Authenticated requests use APP_DATABASE_URL, a role subject to RLS, so a query missing its
+ * organization filter still cannot leave the caller's tenant. Without it (local development and
+ * embedded tests) they share the main pool.
+ */
+function poolForCurrentContext(): Pool {
+  const appUrl = process.env.APP_DATABASE_URL;
+  if (!appUrl || !getDbContext()) return getPool();
+  if (!appPool) appPool = createPool(appUrl);
+  return appPool;
+}
+
+/** Leaves the tenant context for one deliberate cross-tenant step, such as listing a user's organizations. */
+export function runAsSystem<T>(callback: () => T): T {
+  return dbContext.exit(() => transactionContext.exit(callback));
 }
 
 async function applyTenantContext(client: PoolClient): Promise<void> {
@@ -61,7 +84,7 @@ async function clearTenantContext(client: PoolClient): Promise<void> {
 export async function query(text: string, params?: any[]): Promise<any> {
   const active = transactionContext.getStore();
   if (active) return active.query(text, params);
-  const client = await getPool().connect();
+  const client = await poolForCurrentContext().connect();
   const start = Date.now();
   try {
     await applyTenantContext(client);
@@ -78,7 +101,7 @@ export async function query(text: string, params?: any[]): Promise<any> {
 }
 
 export async function getClient(): Promise<PoolClient> {
-  const client = await getPool().connect();
+  const client = await poolForCurrentContext().connect();
   try { await applyTenantContext(client); return client; }
   catch (error) { client.release(); throw error; }
 }
@@ -101,6 +124,10 @@ export async function transaction<T>(fn: (client: PoolClient) => Promise<T>): Pr
 }
 
 export async function closePool(): Promise<void> {
+  if (appPool) {
+    await appPool.end();
+    appPool = null;
+  }
   if (pool) {
     await pool.end();
     pool = null;

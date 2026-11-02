@@ -73,21 +73,28 @@ async function verifyDatabase() {
  * Creates or updates the Worker's login. The password comes from the environment and is
  * never stored in a migration. The login holds only what rankforge_worker grants.
  */
-async function ensureWorkerLogin() {
-  const password = process.env.WORKER_DATABASE_PASSWORD;
-  if (!password) {
+async function ensureLogin(login: string, baseRole: string, password: string, extra = '') {
+  const quoted = (await query('SELECT quote_literal($1) AS q', [password])).rows[0].q;
+  const attributes = `LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE ${extra}`;
+  const exists = await query('SELECT 1 FROM pg_roles WHERE rolname = $1', [login]);
+  await query(`${exists.rows.length ? 'ALTER' : 'CREATE'} ROLE ${login} ${attributes} PASSWORD ${quoted}`);
+  await query(`GRANT ${baseRole} TO ${login}`);
+}
+
+async function ensureServiceLogins() {
+  const workerPassword = process.env.WORKER_DATABASE_PASSWORD;
+  const apiPassword = process.env.API_DATABASE_PASSWORD;
+  if (!workerPassword || !apiPassword) {
     if (process.env.NODE_ENV === 'production') {
-      throw new Error('WORKER_DATABASE_PASSWORD is required in production: the Worker must not use the owner account');
+      throw new Error('WORKER_DATABASE_PASSWORD and API_DATABASE_PASSWORD are required in production: services must not use the owner account');
     }
-    console.log('ℹ️  WORKER_DATABASE_PASSWORD not set — Worker login not managed');
+    console.log('ℹ️  Service passwords not set — service logins not managed');
     return;
   }
-  const quoted = (await query('SELECT quote_literal($1) AS q', [password])).rows[0].q;
-  const attributes = 'LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE';
-  const exists = await query(`SELECT 1 FROM pg_roles WHERE rolname = 'rankforge_worker_login'`);
-  await query(`${exists.rows.length ? 'ALTER' : 'CREATE'} ROLE rankforge_worker_login ${attributes} PASSWORD ${quoted}`);
-  await query('GRANT rankforge_worker TO rankforge_worker_login');
-  console.log('✅ Worker login ready');
+  await ensureLogin('rankforge_worker_login', 'rankforge_worker', workerPassword, 'NOBYPASSRLS');
+  await ensureLogin('rankforge_api_login', 'rankforge_api', apiPassword, 'NOBYPASSRLS');
+  await ensureLogin('rankforge_api_system_login', 'rankforge_api_system', apiPassword, 'BYPASSRLS');
+  console.log('✅ Service logins ready');
 }
 
 async function executeSchema(schemaSql: string) {
@@ -209,7 +216,7 @@ export async function runMigrations() {
       throw new Error(`Drizzle migrations folder not found: ${drizzleFolder}`);
     }
 
-    await ensureWorkerLogin();
+    await ensureServiceLogins();
 
     console.log('🔧 Verifying database — strict...');
     await verifyDatabase();

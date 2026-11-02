@@ -25,6 +25,13 @@ const roleName = `rf_journey_${tag}`;
 const rolePass = randomBytes(12).toString('hex');
 await owner.query(`CREATE ROLE ${roleName} LOGIN PASSWORD '${rolePass}' NOSUPERUSER NOBYPASSRLS IN ROLE rankforge_worker`);
 const workerUrl = new URL(OWNER_URL); workerUrl.username = roleName; workerUrl.password = rolePass;
+// The API runs exactly as in production: never as the owner.
+const apiRole = `rf_journey_api_${tag}`;
+const systemRole = `rf_journey_sys_${tag}`;
+await owner.query(`CREATE ROLE ${apiRole} LOGIN PASSWORD '${rolePass}' NOSUPERUSER NOBYPASSRLS IN ROLE rankforge_api`);
+await owner.query(`CREATE ROLE ${systemRole} LOGIN PASSWORD '${rolePass}' NOSUPERUSER BYPASSRLS IN ROLE rankforge_api_system`);
+const asRole = (name: string) => { const u = new URL(OWNER_URL); u.username = name; u.password = rolePass; return u.toString(); };
+const apiEnv = { DATABASE_URL: asRole(systemRole), APP_DATABASE_URL: asRole(apiRole) };
 
 const procs: ChildProcess[] = [];
 const start = (args: string[], env: object, cwd?: string) => {
@@ -32,8 +39,8 @@ const start = (args: string[], env: object, cwd?: string) => {
   procs.push(p);
   return p;
 };
-start(['--import', 'tsx', 'src/index.ts'], { NODE_ENV: 'test', PORT: String(PORT), ...providers }, 'apps/api');
-start(['--import', 'tsx', 'src/index.ts'], { NODE_ENV: 'production', PORT: String(PROD_PORT), TRUST_PROXY_HOPS: '1' }, 'apps/api');
+start(['--import', 'tsx', 'src/index.ts'], { NODE_ENV: 'test', PORT: String(PORT), ...apiEnv, ...providers }, 'apps/api');
+start(['--import', 'tsx', 'src/index.ts'], { NODE_ENV: 'production', PORT: String(PROD_PORT), TRUST_PROXY_HOPS: '1', ...apiEnv }, 'apps/api');
 start(['--import', 'tsx', '--import', './tests/helpers/worker-external-mock.ts', 'apps/worker/src/index.ts'],
   { NODE_ENV: 'test', DATABASE_URL: workerUrl.toString(), WORKER_POLL_INTERVAL: '100', CRAWLER_DELAY: '0', ...providers });
 
@@ -174,6 +181,28 @@ try {
   const other = await call('POST', '/auth/login', null, { email: 'n@example.test', password: 'wrong-password-1' }, { ...prod, headers: { 'x-forwarded-proto': 'https', 'x-forwarded-for': '198.51.100.2' } });
   check('auth rate limit does not block other customers', other.status === 401, other.status);
 
+  console.log('--- RLS as the safety net');
+  const appPool = new Pool({ connectionString: asRole(apiRole), max: 3 });
+  const rlsClient = await appPool.connect();
+  const unfiltered = await (async () => {
+    await rlsClient.query('BEGIN');
+    await rlsClient.query(`SELECT set_config('app.current_organization_id', $1, true), set_config('app.current_user_id', $2, true)`, [a.data.user.organizationId, a.data.user.id]);
+    const projects = (await rlsClient.query('SELECT organization_id FROM projects')).rows;
+    const users = (await rlsClient.query('SELECT id FROM users')).rows;
+    await rlsClient.query('ROLLBACK');
+    return { projects, users };
+  })();
+  check('a query with no filter stays inside the tenant', unfiltered.projects.length >= 1 && unfiltered.projects.every((r) => r.organization_id === a.data.user.organizationId), unfiltered.projects.length);
+  check('a query with no filter cannot list other tenants\' users', unfiltered.users.length === 1 && unfiltered.users[0].id === a.data.user.id, unfiltered.users.length);
+  const noContext = await appPool.query('SELECT count(*)::int AS n FROM projects');
+  check('no tenant context means no rows', noContext.rows[0].n === 0, noContext.rows[0]);
+  const refused = async (sql: string) => { try { await appPool.query(sql); return false; } catch (e: any) { return e.code === '42501'; } };
+  check('API role cannot read reset tokens', await refused('SELECT 1 FROM password_reset_tokens'));
+  check('API role cannot alter schema', await refused('ALTER TABLE projects DISABLE ROW LEVEL SECURITY'));
+  check('API role cannot truncate', await refused('TRUNCATE alerts'));
+  rlsClient.release();
+  await appPool.end();
+
   console.log('--- Session end and account lifecycle');
   check('project is soft-deleted', (await call('DELETE', `/projects/${pidb}`, TB)).status === 200);
   check('deleted project is gone', (await call('GET', `/projects/${pidb}`, TB)).status === 404);
@@ -185,6 +214,8 @@ try {
   await owner.query(`DELETE FROM organizations WHERE owner_id = ANY($1)`, [users.rows.map((u) => u.id)]);
   await owner.query(`DELETE FROM users WHERE id = ANY($1)`, [users.rows.map((u) => u.id)]);
   await owner.query(`DROP ROLE IF EXISTS ${roleName}`);
+  await owner.query(`DROP ROLE IF EXISTS ${apiRole}`);
+  await owner.query(`DROP ROLE IF EXISTS ${systemRole}`);
   await owner.end();
 }
 console.log(`\nRESULT: ${passed} passed, ${failures.length} failed`);
