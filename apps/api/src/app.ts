@@ -82,7 +82,8 @@ export function createApp() {
 
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: config.isProduction ? 200 : 1000,
+    // Opening one page makes several calls, so a low limit would lock out ordinary customers.
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000', 10),
     message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests, please try again later' } },
     standardHeaders: true,
     legacyHeaders: false,

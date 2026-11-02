@@ -208,3 +208,18 @@ GitHub Actions workflow in `.github/workflows/ci.yml`:
 - Multi-tenant isolation
 - Agency mode + client portal
 - White-label per organization
+
+## Database accounts
+
+The stack uses separate accounts. `migrate` creates the service logins from the environment.
+
+| Account | Used by | Can do |
+|---|---|---|
+| `POSTGRES_USER` (owner) | `migrate` only | Everything |
+| `rankforge_api_login` | API, authenticated requests | Data access, limited by RLS |
+| `rankforge_api_system_login` | API, login, signup, webhooks, platform panel | Data access across tenants, no schema changes |
+| `rankforge_worker_login` | Worker | Only what `docs/WORKER-PERMISSIONS.md` lists |
+
+Required: `WORKER_DATABASE_PASSWORD`, `API_DATABASE_PASSWORD`. Optional: `PLATFORM_ADMIN_EMAILS` (comma separated), `METRICS_TOKEN`, `TRUST_PROXY_HOPS` (default 1 in production), `RATE_LIMIT_MAX_REQUESTS` (per client, per 15 minutes), `REQUIRE_EMAIL_VERIFICATION=false` to turn verification off when SMTP is configured.
+
+See `docs/LAUNCH-CHECKLIST.md` and `docs/BACKUP-RESTORE.md`.

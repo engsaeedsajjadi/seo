@@ -3,7 +3,7 @@
  */
 import assert from 'node:assert/strict';
 import net from 'node:net';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { uuid_ossp } from '@electric-sql/pglite/contrib/uuid_ossp';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
@@ -29,10 +29,7 @@ if(nativeUrl){
   db=new PGlite({extensions:{uuid_ossp,pgcrypto}});
 }
 await db.exec(readFileSync('apps/api/db/schema.sql','utf8'));
-await db.exec(readFileSync('drizzle/001_tenant_rls.sql','utf8'));
-await db.exec(readFileSync('drizzle/002_sessions_and_client_projects.sql','utf8'));
-await db.exec(readFileSync('drizzle/003_password_recovery.sql','utf8'));
-await db.exec(readFileSync('drizzle/004_strict_tenant_policies.sql','utf8'));
+for (const file of readdirSync('drizzle').filter((f) => f.endsWith('.sql')).sort()) await db.exec(readFileSync(`drizzle/${file}`, 'utf8'));
 const {getPool,closePool} = await import('../../apps/api/src/db/client.ts');
 if(!nativeUrl){
   const pool=getPool();

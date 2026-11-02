@@ -1,8 +1,8 @@
-> **Current release gate (2026-10-25):** staging candidate; public sales readiness is not yet verified. See [SaaS release report](docs/SAAS-RELEASE-2026-10-25.md) for delivered fixes, upgrade instructions and outstanding acceptance gates. Older production-ready claims below do not replace this report.
+> **وضعیت عرضه:** آماده برای بتای کنترل‌شده پس از تکمیل [چک‌لیست عرضه](docs/LAUNCH-CHECKLIST.md). هنوز برای فروش عمومی تأیید نشده است.
 
 # رنک‌فورج — پلتفرم جامع سئو و اتوماسیون تجاری
 
-**پلتفرم سئو چندمستاجره، آماده‌ی تولید، کاملاً فارسی و راست‌به‌چپ**
+**پلتفرم سئو چندمستاجره، کاملاً فارسی و راست‌به‌چپ**
 
 رنک‌فورج یک پلتفرم جامع سئو در سطح سمراش (Semrush)، اچرفس (Ahrefs) و اس‌ای رنکینگ (SE Ranking) است؛ با معماری مدرن، امنیت سازمانی، و بومی‌سازی کامل برای بازار ایران — تقویم شمسی، اعداد فارسی، تومان/ریال، فونت وزیرمتن و رابط راست‌به‌چپ.
 

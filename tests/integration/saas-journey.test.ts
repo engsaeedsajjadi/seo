@@ -177,6 +177,7 @@ try {
   check('unavailable backup says so instead of pretending', (await call('POST', '/backups/trigger', T, {})).status === 501);
 
   console.log('--- Production behaviour');
+  // One client over the general limit is covered by the auth limiter below; ordinary browsing must not hit it.
   const prod = { port: PROD_PORT };
   const internal = await call('POST', '/auth/login', null, { email: 'x', password: 'y' }, { ...prod, headers: { 'x-forwarded-proto': 'https', 'x-forwarded-for': '198.51.100.9' } });
   check('production rejects bad input cleanly', internal.status === 400, internal.json);
