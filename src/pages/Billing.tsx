@@ -161,7 +161,7 @@ export default function Billing() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white font-vazirmatn-bold">{t('billing.title')}</h1>
-          <p className="text-sm text-slate-400 mt-1 font-vazirmatn-regular">مدیریت اشتراک و مصرف — صورتحساب واقعی ۵ پلن، دفتر کل اعتبار اتمیک، اندازه‌گیری مصرف واقعی</p>
+          <p className="text-sm text-slate-400 mt-1 font-vazirmatn-regular">مدیریت اشتراک، پرداخت و مصرف</p>
         </div>
       </div>
 
@@ -196,7 +196,7 @@ export default function Billing() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-brand-300 uppercase tracking-wider font-vazirmatn-medium">پلن فعلی</p>
-              <h2 className="text-2xl font-bold text-white mt-1 font-vazirmatn-bold">{getPlanName(currentPlan)} — واقعی</h2>
+              <h2 className="text-2xl font-bold text-white mt-1 font-vazirmatn-bold">{getPlanName(currentPlan)}</h2>
               <p hidden className="text-xs text-slate-400 mt-1 font-vazirmatn-light">محدودیت‌ها: {toPersianDigits(PLAN_LIMITS[currentPlan].projects)} پروژه، {toPersianDigits(PLAN_LIMITS[currentPlan].keywords)} کلمه کلیدی — اجرای واقعی در projectRepository.countByOrganization + keywordRepository.countByOrganization</p>
               {subscription && (
                 <p className="text-xs text-slate-400 mt-1 font-vazirmatn-light">
@@ -237,9 +237,9 @@ export default function Billing() {
               }`}
             >
               {plan.popular && (
-                <span className="text-[10px] font-semibold text-accent-purple uppercase tracking-wider font-vazirmatn-bold">محبوب‌ترین — واقعی</span>
+                <span className="text-[10px] font-semibold text-accent-purple uppercase tracking-wider font-vazirmatn-bold">محبوب‌ترین</span>
               )}
-              <h4 className="text-lg font-bold text-white mt-1 font-vazirmatn-bold">{getPlanName(plan.tier)} — واقعی</h4>
+              <h4 className="text-lg font-bold text-white mt-1 font-vazirmatn-bold">{getPlanName(plan.tier)}</h4>
               <div className="mt-3">
                 <span className="text-xl font-bold text-white persian-numbers font-vazirmatn-bold">{priceLabel(plan.tier)}</span>
                 {plan.tier !== 'FREE' && <span className="text-xs text-slate-400 font-vazirmatn-light">{interval === 'year' ? '/سال' : '/ماه'}</span>}
@@ -262,7 +262,7 @@ export default function Billing() {
                 }`}
                 disabled={(plan.tier === currentPlan && !renewalDate) || plan.tier === 'FREE' || !stripeConfigured || checkoutTier !== null}
               >
-                {plan.tier === currentPlan ? (renewalDate ? 'تمدید' : 'پلن فعلی') : !stripeConfigured ? 'نیاز به Stripe — واقعی ۵۰۳' : checkoutTier === plan.tier ? 'در حال انتقال به صفحهٔ پرداخت…' : 'ارتقای پلن'}
+                {plan.tier === currentPlan ? (renewalDate ? 'تمدید' : 'پلن فعلی') : !stripeConfigured ? 'پرداخت آنلاین فعال نیست' : checkoutTier === plan.tier ? 'در حال انتقال به صفحهٔ پرداخت…' : 'ارتقای پلن'}
                 {plan.tier !== currentPlan && stripeConfigured && <ArrowRight className="w-3 h-3 rotate-180" />}
               </button>
             </div>
@@ -285,16 +285,16 @@ export default function Billing() {
         ) : credits ? (
           <div className="grid grid-cols-3 gap-4">
             <div className="bg-surface/50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-white persian-numbers font-vazirmatn-bold">{toPersianDigits(credits.balance)} — واقعی</p>
+              <p className="text-2xl font-bold text-white persian-numbers font-vazirmatn-bold">{toPersianDigits(credits.balance)}</p>
               <p className="text-xs text-slate-400 mt-1 font-vazirmatn-regular">اعتبار موجود</p>
               <p className="text-[10px] text-slate-500 mt-1 font-vazirmatn-light">هر خزش سایت ۵ اعتبار مصرف می‌کند و اگر ناموفق شود، اعتبار برمی‌گردد.</p>
             </div>
             <div className="bg-surface/50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-accent-green persian-numbers font-vazirmatn-bold">{toPersianDigits(credits.totalGranted)} — واقعی</p>
+              <p className="text-2xl font-bold text-accent-green persian-numbers font-vazirmatn-bold">{toPersianDigits(credits.totalGranted)}</p>
               <p className="text-xs text-slate-400 mt-1 font-vazirmatn-regular">کل اعطا شده — دفتر کل واقعی</p>
             </div>
             <div className="bg-surface/50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-accent-red persian-numbers font-vazirmatn-bold">{toPersianDigits(credits.totalConsumed)} — واقعی</p>
+              <p className="text-2xl font-bold text-accent-red persian-numbers font-vazirmatn-bold">{toPersianDigits(credits.totalConsumed)}</p>
               <p className="text-xs text-slate-400 mt-1 font-vazirmatn-regular">کل مصرف شده — تراکنش‌های اعتبار واقعی</p>
             </div>
           </div>
