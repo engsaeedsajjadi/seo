@@ -343,6 +343,20 @@ BEGIN
   RETURN v_job;
 END $$;
 
+-- ---------------------------------------------------------------- earlier worker paths
+-- Migrations 005-014 gave the Worker a claim function and direct access to the queue, wallet
+-- and ledger, all trusting the tenant setting. REVOKE ALL above removed the table grants; these
+-- close the remaining functions, so a Worker can only work through the bound functions below.
+DO $$
+BEGIN
+  IF to_regprocedure('public.claim_jobs(integer)') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.claim_jobs(integer) FROM rankforge_worker;
+  END IF;
+  IF to_regprocedure('public.discover_due_schedule_tenants(integer)') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.discover_due_schedule_tenants(integer) FROM rankforge_worker;
+  END IF;
+END $$;
+
 -- ---------------------------------------------------------------- function privileges
 DO $$
 DECLARE f RECORD;

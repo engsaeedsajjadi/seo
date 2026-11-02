@@ -103,6 +103,8 @@ check('DELETE on projects is denied', await denied(`DELETE FROM projects`));
 check('TRUNCATE on alerts is denied', await denied(`TRUNCATE alerts`));
 check('ALTER TABLE on projects is denied', await denied(`ALTER TABLE projects DISABLE ROW LEVEL SECURITY`));
 check('CREATE TABLE in public is denied', await denied(`CREATE TABLE rf_probe (id int)`));
+check('old claim function from migration 005 is denied', await denied(`SELECT * FROM claim_jobs(1)`));
+check('old tenant discovery function from migration 006 is denied', await denied(`SELECT * FROM discover_due_schedule_tenants(1)`));
 check('internal dead-letter function is denied', await denied(`SELECT rf__dead_letter($1, 'x', 'TIMEOUT')`, [randomUUID()]));
 check('privilege escalation via SET ROLE is denied', await denied(`SET ROLE postgres`));
 check('ALTER ROLE to SUPERUSER is denied', await denied(`ALTER ROLE ${loginRole} SUPERUSER`));
