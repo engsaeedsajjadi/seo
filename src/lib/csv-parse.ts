@@ -1,6 +1,6 @@
 /** Parses CSV text from any SEO tool export: BOM, quotes, and comma, semicolon or tab separators. */
 export function parseCsv(input: string): string[][] {
-  const text = input.replace(/^﻿/, '');
+  const text = input.replace(/^\ufeff/, '');
   const firstLine = text.split(/\r?\n/, 1)[0] || '';
   const separator = [',', ';', '\t'].reduce((best, s) => (firstLine.split(s).length > firstLine.split(best).length ? s : best), ',');
   const rows: string[][] = [];
