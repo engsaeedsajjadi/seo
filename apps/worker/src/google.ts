@@ -28,7 +28,8 @@ import crypto from 'crypto';
 // ============================================================
 
 function getEncryptionKey(): Buffer {
-  const key = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'default-key-32-chars-min-required!!';
+  const key = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET;
+  if (!key) throw new Error('ENCRYPTION_KEY is required');
   return crypto.createHash('sha256').update(key).digest();
 }
 

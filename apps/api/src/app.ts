@@ -13,7 +13,9 @@ import cookieParser from 'cookie-parser';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { config } from './config/index.js';
-import { query, transaction } from './db/client.js';
+import { query, runAsSystem, transaction } from './db/client.js';
+import { emailVerificationService, verificationRequired } from './services/email-verification.service.js';
+import { isPlatformAdmin, platformService } from './services/platform.service.js';
 import { passwordRecoveryService } from './services/password-recovery.service.js';
 import { teamService } from './services/team.service.js';
 import { sessionService } from './services/session.service.js';
@@ -114,6 +116,8 @@ export function createApp() {
     const start = Date.now();
     res.on('finish', () => {
       const duration = Date.now() - start;
+      const statusClass = `${Math.floor(res.statusCode / 100)}xx`;
+      requestCounts.set(statusClass, (requestCounts.get(statusClass) || 0) + 1);
       const log = {
         level: duration > 1000 ? 'warn' : 'info',
         requestId,
@@ -146,6 +150,8 @@ export function createApp() {
     password: z.string().min(1).max(128),
   });
 
+  const requestCounts = new Map<string, number>();
+
   // The API's alert types are finer than the categories alerts_type_check allows; the
   // specific type is kept in alerts.rule.
   const ALERT_CATEGORY: Record<string, string> = {
@@ -164,6 +170,22 @@ export function createApp() {
     enabled: z.boolean().default(true),
     projectId: z.string().uuid().optional(),
   });
+
+  /** Billable work needs a confirmed address, so free credits cannot be farmed with throwaway signups. */
+  const requireVerifiedEmail = async (req: AuthRequest, _res: Response, next: NextFunction) => {
+    try {
+      if (verificationRequired() && !req.apiKeyId && !(await emailVerificationService.isVerified(req.userId!))) {
+        throw new ApiError(403, 'EMAIL_NOT_VERIFIED', 'Please verify your email address first');
+      }
+      next();
+    } catch (error) { next(error); }
+  };
+
+  const requirePlatformAdmin = (req: AuthRequest, _res: Response, next: NextFunction) => {
+    // 404, not 403: customers should not learn that this surface exists.
+    if (!req.apiKeyId && isPlatformAdmin(req.user?.email)) return next();
+    next(new ApiError(404, 'NOT_FOUND', 'Route not found'));
+  };
 
   /** Rejects with 403 when a monthly plan limit is used up, and returns what remains (-1 = unlimited). */
   async function remainingMonthlyQuota(organizationId: string, limitKey: string, usedSql: string): Promise<number> {
@@ -269,6 +291,24 @@ export function createApp() {
       res.json({success:true,data:null});
     } catch(error){next(error);}
   });
+  app.post('/api/v1/auth/verify-email', authLimiter, requireTrustedOrigin, async (req, res, next) => {
+    try {
+      const { token } = z.object({ token: z.string().regex(/^[0-9a-f]{64}$/) }).parse(req.body);
+      await emailVerificationService.verify(token);
+      res.json({ success: true, data: { verified: true } });
+    } catch (error: any) {
+      if (error.status) return res.status(error.status).json({ success: false, error: { code: error.code, message: error.message } });
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/auth/resend-verification', authLimiter, requireTrustedOrigin, authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      await emailVerificationService.send(req.userId!);
+      res.json({ success: true, data: null });
+    } catch (error) { next(error); }
+  });
+
   app.post('/api/v1/auth/refresh', authLimiter, requireTrustedOrigin, async (req, res, next) => {
     try {
       const refresh = req.cookies?.[refreshCookie];
@@ -288,6 +328,7 @@ export function createApp() {
     try {
       const { email, password, name } = signupSchema.parse(req.body);
       const result = await authService.signup(email, password, name, req.ip, req.headers['user-agent']);
+      await emailVerificationService.send(result.user.id);
       res.cookie(refreshCookie, result.refreshToken, cookieOptions);
       res.setHeader('Cache-Control','no-store');
       res.status(201).json({
@@ -338,7 +379,9 @@ export function createApp() {
       res.json({
         success: true,
         data: {
-          user: { id: data.user.id, email: data.user.email, name: data.user.name, organizationId: req.organizationId, role: req.user.role },
+          user: { id: data.user.id, email: data.user.email, name: data.user.name, organizationId: req.organizationId, role: req.user.role,
+            emailVerified: !verificationRequired() || await emailVerificationService.isVerified(req.userId!),
+            platformAdmin: isPlatformAdmin(data.user.email) },
           organizations: data.organizations.map(organizationSummary),
         },
       });
@@ -377,8 +420,8 @@ export function createApp() {
   app.post('/api/v1/auth/organization', requireTrustedOrigin, authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       const id=z.string().uuid().parse(req.body.organizationId);
-      const role=await organizationRepository.getMemberRole(id,req.userId!);
-      const org=await organizationRepository.findById(id);
+      // The target is another tenant, so the current tenant role cannot see it.
+      const [role,org]=await runAsSystem(()=>Promise.all([organizationRepository.getMemberRole(id,req.userId!),organizationRepository.findById(id)]));
       if (!role || !org) throw new ApiError(403,'FORBIDDEN','Not a member of this organization');
       const session=await transaction(async()=>{
         const created=await sessionService.create(req.userId!,id,role,req.user.email);
@@ -620,12 +663,15 @@ export function createApp() {
         ipAddress: req.ip,
       });
 
-      await jobRepository.create({
-        organizationId: req.organizationId!,
-        projectId: project.id,
-        type: 'SITE_CRAWL',
-        payload: { domain: normalizedDomain, maxPages: 50 },
-      });
+      // Unverified accounts crawl after confirming their email, from the audit page.
+      if (!verificationRequired() || await emailVerificationService.isVerified(req.userId!)) {
+        await jobRepository.create({
+          organizationId: req.organizationId!,
+          projectId: project.id,
+          type: 'SITE_CRAWL',
+          payload: { domain: normalizedDomain, maxPages: 50 },
+        });
+      }
 
       return project;
       });
@@ -696,7 +742,7 @@ export function createApp() {
   // CRAWL & AUDIT
   // ============================================================
 
-  app.post('/api/v1/projects/:projectId/crawl', authMiddleware, async (req: AuthRequest, res, next) => {
+  app.post('/api/v1/projects/:projectId/crawl', authMiddleware, requireVerifiedEmail, async (req: AuthRequest, res, next) => {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) {
@@ -790,6 +836,21 @@ export function createApp() {
         },
       });
     } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch('/api/v1/projects/:projectId/audit/findings/:findingId', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const { status } = z.object({ status: z.enum(['open', 'fixed', 'ignored']) }).parse(req.body);
+      const updated = await query(
+        `UPDATE audit_findings SET status = $1 WHERE id = $2 AND project_id = $3 AND organization_id = $4 RETURNING id, status`,
+        [status, req.params.findingId, req.params.projectId, req.organizationId!],
+      );
+      if (!updated.rows[0]) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Finding not found' } });
+      res.json({ success: true, data: updated.rows[0] });
+    } catch (error: any) {
+      if (error.name === 'ZodError') return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid status' } });
       next(error);
     }
   });
@@ -1354,7 +1415,7 @@ export function createApp() {
     }
   });
 
-  app.post('/api/v1/projects/:projectId/rankings/check', authMiddleware, async (req: AuthRequest, res, next) => {
+  app.post('/api/v1/projects/:projectId/rankings/check', authMiddleware, requireVerifiedEmail, async (req: AuthRequest, res, next) => {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
@@ -1466,7 +1527,7 @@ export function createApp() {
     }
   });
 
-  app.post('/api/v1/projects/:projectId/backlinks/sync', authMiddleware, async (req: AuthRequest, res, next) => {
+  app.post('/api/v1/projects/:projectId/backlinks/sync', authMiddleware, requireVerifiedEmail, async (req: AuthRequest, res, next) => {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
@@ -1645,7 +1706,7 @@ export function createApp() {
     }
   });
 
-  app.post('/api/v1/projects/:projectId/content/briefs', authMiddleware, async (req: AuthRequest, res, next) => {
+  app.post('/api/v1/projects/:projectId/content/briefs', authMiddleware, requireVerifiedEmail, async (req: AuthRequest, res, next) => {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
@@ -1751,7 +1812,7 @@ export function createApp() {
     }
   });
 
-  app.post('/api/v1/projects/:projectId/pagespeed/check', authMiddleware, async (req: AuthRequest, res, next) => {
+  app.post('/api/v1/projects/:projectId/pagespeed/check', authMiddleware, requireVerifiedEmail, async (req: AuthRequest, res, next) => {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
@@ -1802,7 +1863,7 @@ export function createApp() {
 
   app.post('/api/v1/webhooks', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
-      const schema = z.object({ url: z.string().url().max(500), events: z.array(z.string()).min(1), secret: z.string().min(8).max(100).optional() });
+      const schema = z.object({ url: z.string().url().max(500), events: z.array(z.enum(['crawl.completed', 'audit.completed', 'rank.updated', 'report.generated', 'job.failed'])).min(1), secret: z.string().min(8).max(100).optional() });
       const { url, events, secret } = schema.parse(req.body);
 
       const { validateUrlForSSRF } = await import('./lib/ssrf.js');
@@ -1878,8 +1939,18 @@ export function createApp() {
       const webhook = await query(`SELECT id, url, secret_hash as "secretHash" FROM webhooks WHERE id = $1 AND organization_id = $2`, [req.params.id, req.organizationId!]);
       if (webhook.rows.length === 0) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Webhook not found' } });
 
-      // Nothing delivers webhooks yet, so a queued "test" could never arrive.
-      res.status(501).json({ success: false, error: { code: 'NOT_IMPLEMENTED', message: 'Webhook delivery is not available yet' } });
+      const delivery = await transaction(async () => {
+        const created = await query(`INSERT INTO webhook_deliveries (webhook_id, event, status, payload) VALUES ($1, 'test', 'pending', $2) RETURNING id`,
+          [req.params.id, JSON.stringify({ event: 'test', timestamp: new Date().toISOString(), organizationId: req.organizationId! })]);
+        const job = await jobRepository.create({
+          organizationId: req.organizationId!,
+          type: 'WEBHOOK_DELIVERY',
+          payload: { deliveryId: created.rows[0].id },
+          idempotencyKey: `webhook_${created.rows[0].id}`,
+        });
+        return { id: created.rows[0].id, job };
+      });
+      res.status(201).json({ success: true, data: delivery });
     } catch (error) {
       next(error);
     }
@@ -1935,7 +2006,7 @@ export function createApp() {
     try {
       const { query } = await import('./db/client.js');
       const user = await query(`SELECT id, email, name, created_at as "createdAt" FROM users WHERE id = $1`, [req.userId!]);
-      const orgs = await query(`SELECT o.id, o.name, o.slug, o.plan FROM organizations o JOIN organization_members om ON om.organization_id = o.id WHERE om.user_id = $1`, [req.userId!]);
+      const orgs = await runAsSystem(() => query(`SELECT o.id, o.name, o.slug, o.plan FROM organizations o JOIN organization_members om ON om.organization_id = o.id WHERE om.user_id = $1`, [req.userId!]));
       const projects = await query(`SELECT id, name, domain, country, created_at FROM projects WHERE organization_id = $1`, [req.organizationId!]);
       const auditLogs = await query(`SELECT action, resource_type as "resourceType", created_at as "createdAt" FROM audit_logs WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100`, [req.userId!]);
 
@@ -1966,11 +2037,12 @@ export function createApp() {
   app.delete('/api/v1/gdpr/account', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       const { query } = await import('./db/client.js');
-      const ownership=await query('SELECT id FROM organizations WHERE owner_id=$1 AND deleted_at IS NULL',[req.userId!]);
+      const ownership=await runAsSystem(()=>query('SELECT id FROM organizations WHERE owner_id=$1 AND deleted_at IS NULL',[req.userId!]));
       if (ownership.rows.length) throw new ApiError(409,'CONFLICT','Transfer or close owned organizations before deleting your account');
       // Soft delete with PII minimization
       await query(`UPDATE users SET email = $1, name = 'Deleted User', deleted_at = NOW() WHERE id = $2`, [`deleted_${req.userId!}@example.com`, req.userId!]);
-      await query('DELETE FROM organization_members WHERE user_id=$1', [req.userId!]);
+      // Memberships span tenants.
+      await runAsSystem(()=>query('DELETE FROM organization_members WHERE user_id=$1', [req.userId!]));
       await query('UPDATE auth_sessions SET revoked_at=NOW() WHERE user_id=$1',[req.userId!]);
 
       await auditLogRepository.create({
@@ -2111,7 +2183,7 @@ export function createApp() {
     }
   });
 
-  app.post('/api/v1/projects/:projectId/geo/check', authMiddleware, async (req: AuthRequest, res, next) => {
+  app.post('/api/v1/projects/:projectId/geo/check', authMiddleware, requireVerifiedEmail, async (req: AuthRequest, res, next) => {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
@@ -2395,9 +2467,9 @@ export function createApp() {
         sentry: config.providers.sentryDsn ? 'configured' : 'not_configured',
         posthog: config.providers.posthogKey ? 'configured' : 'not_configured',
         logging: { level: 'info', structured: true, requestId: true, userId: true, orgId: true, route: true, durationMs: true, neverSecrets: true },
-        metrics: { enabled: false },
+        metrics: { enabled: !!process.env.METRICS_TOKEN, endpoint: '/api/v1/metrics' },
         tracing: { enabled: !!config.providers.sentryDsn, sampleRate: 0.1 },
-        message: 'Logs are structured. Metrics are not available.',
+        message: 'Logs are structured. Metrics require METRICS_TOKEN.',
       },
     });
   });
@@ -2438,6 +2510,72 @@ export function createApp() {
 
   // ERROR HANDLER
   // ============================================================
+
+  app.patch('/api/v1/scheduler/jobs/:id', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const { enabled } = z.object({ enabled: z.boolean() }).parse(req.body);
+      const updated = await query(`UPDATE scheduled_jobs SET enabled = $1, updated_at = NOW() WHERE id = $2 AND organization_id = $3 RETURNING id, enabled`, [enabled, req.params.id, req.organizationId!]);
+      if (!updated.rows[0]) throw new ApiError(404, 'NOT_FOUND', 'Schedule not found');
+      res.json({ success: true, data: updated.rows[0] });
+    } catch (error) { next(error); }
+  });
+
+  app.delete('/api/v1/scheduler/jobs/:id', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const deleted = await query(`DELETE FROM scheduled_jobs WHERE id = $1 AND organization_id = $2 RETURNING id`, [req.params.id, req.organizationId!]);
+      if (!deleted.rows[0]) throw new ApiError(404, 'NOT_FOUND', 'Schedule not found');
+      res.json({ success: true, data: null });
+    } catch (error) { next(error); }
+  });
+
+  // ============================================================
+  // PLATFORM ADMINISTRATION — operators listed in PLATFORM_ADMIN_EMAILS
+  // ============================================================
+  app.get('/api/v1/platform/overview', authMiddleware, requirePlatformAdmin, async (_req: AuthRequest, res, next) => {
+    try { res.json({ success: true, data: await platformService.overview() }); } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/platform/organizations', authMiddleware, requirePlatformAdmin, async (req: AuthRequest, res, next) => {
+    try {
+      const { search, page } = z.object({ search: z.string().max(200).default(''), page: z.coerce.number().int().min(1).default(1) }).parse(req.query);
+      res.json({ success: true, data: await platformService.listOrganizations(search, 50, (page - 1) * 50) });
+    } catch (error) { next(error); }
+  });
+
+  app.patch('/api/v1/platform/organizations/:id', authMiddleware, requirePlatformAdmin, async (req: AuthRequest, res, next) => {
+    try {
+      const changes = z.object({ plan: z.enum(['FREE', 'STARTER', 'PRO', 'AGENCY', 'ENTERPRISE']).optional(), suspended: z.boolean().optional() }).parse(req.body);
+      res.json({ success: true, data: await platformService.update(req.params.id, req.userId!, changes) });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/v1/platform/organizations/:id/credits', authMiddleware, requirePlatformAdmin, async (req: AuthRequest, res, next) => {
+    try {
+      const body = z.object({ amount: z.number().int().min(1).max(1000000), reason: z.string().min(3).max(200), requestId: z.string().uuid() }).parse(req.body);
+      res.json({ success: true, data: await platformService.grantCredits(req.params.id, req.userId!, body.amount, body.reason, body.requestId) });
+    } catch (error) { next(error); }
+  });
+
+  // ============================================================
+  // METRICS — Prometheus text format. Off unless METRICS_TOKEN is set.
+  // ============================================================
+  app.get('/api/v1/metrics', async (req, res, next) => {
+    try {
+      const token = process.env.METRICS_TOKEN;
+      if (!token || req.headers.authorization !== `Bearer ${token}`) throw new ApiError(404, 'NOT_FOUND', 'Route not found');
+      const jobs = await query(`SELECT status, COUNT(*)::int AS count FROM jobs GROUP BY status`);
+      const oldest = await query(`SELECT COALESCE(EXTRACT(EPOCH FROM NOW() - MIN(created_at)), 0)::int AS age FROM jobs WHERE status IN ('pending', 'retrying') AND (scheduled_at IS NULL OR scheduled_at <= NOW())`);
+      const lines = [
+        '# TYPE rankforge_http_requests_total counter',
+        ...[...requestCounts].map(([status, count]) => `rankforge_http_requests_total{status="${status}"} ${count}`),
+        '# TYPE rankforge_jobs gauge',
+        ...jobs.rows.map((r: any) => `rankforge_jobs{status="${r.status}"} ${r.count}`),
+        '# TYPE rankforge_queue_oldest_job_age_seconds gauge',
+        `rankforge_queue_oldest_job_age_seconds ${oldest.rows[0].age}`,
+      ];
+      res.type('text/plain; version=0.0.4').send(`${lines.join('\n')}\n`);
+    } catch (error) { next(error); }
+  });
 
   app.use((error: any, req: Request, res: Response, _next: NextFunction) => {
     console.error(JSON.stringify({

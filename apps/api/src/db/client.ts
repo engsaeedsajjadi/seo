@@ -61,6 +61,8 @@ function poolForCurrentContext(): Pool {
 
 /** Leaves the tenant context for one deliberate cross-tenant step, such as listing a user's organizations. */
 export function runAsSystem<T>(callback: () => T): T {
+  // With no tenant context we are already on the system connection, possibly mid-transaction.
+  if (!getDbContext()) return callback();
   return dbContext.exit(() => transactionContext.exit(callback));
 }
 

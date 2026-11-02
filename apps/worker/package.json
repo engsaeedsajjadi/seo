@@ -11,11 +11,13 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cheerio": "^1.0.0-rc.12",
+    "nodemailer": "^10.3.1",
     "pg": "^8.11.3",
     "uuid": "^11.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.11.0",
+    "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.10.9",
     "@types/uuid": "^9.0.7",
     "tsx": "^4.7.0",

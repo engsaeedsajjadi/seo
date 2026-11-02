@@ -8,6 +8,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
 import { query, runWithDbContext } from '../db/client.js';
 import { createHash } from 'node:crypto';
+import { isPlatformAdmin } from '../services/platform.service.js';
 import { routeAllowed } from './access-policy.js';
 import { organizationRepository } from '../repositories/organization.repository.js';
 
@@ -73,13 +74,14 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
     await runWithDbContext(
       { userId: decoded.userId, organizationId: decoded.organizationId },
       async () => {
-        const session = await query(`SELECT m.role FROM auth_sessions s
+        const session = await query(`SELECT m.role, o.suspended_at FROM auth_sessions s
           JOIN users u ON u.id=s.user_id AND u.deleted_at IS NULL
           JOIN organizations o ON o.id=s.organization_id AND o.deleted_at IS NULL
           JOIN organization_members m ON m.organization_id=s.organization_id AND m.user_id=s.user_id
           WHERE s.id=$1 AND s.user_id=$2 AND s.organization_id=$3
           AND s.revoked_at IS NULL AND s.expires_at>NOW()`, [decoded.sid,decoded.userId,decoded.organizationId]);
         if (!session.rows[0]) throw new ApiError(401, 'SESSION_EXPIRED', 'Session revoked or membership removed');
+        if (session.rows[0].suspended_at && !isPlatformAdmin(decoded.email)) throw new ApiError(403, 'ACCOUNT_SUSPENDED', 'This organization is suspended. Contact support.');
         req.sessionId = decoded.sid;
         req.user.role = session.rows[0].role;
         if (!routeAllowed(req.user.role, req.method, req.path)) throw new ApiError(403, 'FORBIDDEN', 'Your role cannot perform this action');

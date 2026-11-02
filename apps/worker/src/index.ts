@@ -7,6 +7,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Pool } from 'pg';
 import * as cheerio from 'cheerio';
+import { createHmac } from 'node:crypto';
+import nodemailer from 'nodemailer';
 import {
   DataForSeoClient,
   DataForSeoError,
@@ -959,7 +961,7 @@ function providerErrorToJobError(error: unknown, context: string): JobError {
   return new JobError(`${context} failed — ${error instanceof Error ? error.message : String(error)}`, 'RETRYABLE', true);
 }
 
-type JobErrorCode = 'RETRYABLE' | 'NON_RETRYABLE' | 'PROVIDER_NOT_CONFIGURED' | 'VALIDATION_ERROR' | 'SECURITY_ERROR' | 'TIMEOUT' | 'INTERNAL_ERROR' | 'INSUFFICIENT_CREDITS';
+type JobErrorCode = 'RETRYABLE' | 'NON_RETRYABLE' | 'PROVIDER_NOT_CONFIGURED' | 'VALIDATION_ERROR' | 'SECURITY_ERROR' | 'TIMEOUT' | 'INTERNAL_ERROR' | 'INSUFFICIENT_CREDITS' | 'QUOTA_EXCEEDED';
 
 class JobError extends Error {
   code: JobErrorCode;
@@ -980,6 +982,20 @@ const HEARTBEAT_FILE = process.env.WORKER_HEARTBEAT_FILE || '/tmp/rankforge-work
 /** Lets the container healthcheck detect a stuck loop, not only a dead process. */
 function writeHeartbeat() {
   try { _writeFileSync(HEARTBEAT_FILE, String(Date.now())); } catch { /* read-only disk must not stop jobs */ }
+}
+
+const COMPLETION_EVENTS: Record<string, string> = {
+  SITE_CRAWL: 'crawl.completed',
+  SEO_AUDIT: 'audit.completed',
+  AUDIT: 'audit.completed',
+  RANK_CHECK: 'rank.updated',
+  REPORT_GENERATION: 'report.generated',
+};
+
+/** Only summary fields leave the system: reports and crawl data stay behind the API. */
+function eventSummary(result: any): Record<string, unknown> {
+  const { crawlRunId, reportId, seoScore, findingsCount, pagesCrawled, ranked, notRanked } = result || {};
+  return Object.fromEntries(Object.entries({ crawlRunId, reportId, seoScore, findingsCount, pagesCrawled, ranked, notRanked }).filter(([, v]) => v !== undefined));
 }
 
 const MAX_PAGES_PER_CRAWL = 1000;
@@ -1112,6 +1128,8 @@ class Worker {
 
       if (owned) {
         console.log(JSON.stringify({ level: 'info', msg: 'Job completed', ...logFields, duration_ms: duration, status: 'completed' }));
+        const event = COMPLETION_EVENTS[job.type];
+        if (event) await this.emitEvent(job, event, { jobId: job.id, jobType: job.type, ...eventSummary(result) });
       } else {
         // The lease expired and the job was reclaimed; the newer execution owns the outcome.
         console.warn(JSON.stringify({ level: 'warn', msg: 'Job result discarded — execution no longer owns the job', ...logFields }));
@@ -1138,10 +1156,49 @@ class Worker {
           return failed.rows[0].outcome as string;
         });
         console.log(JSON.stringify({ level: outcome === 'retrying' ? 'info' : 'warn', msg: `Job outcome: ${outcome}`, ...logFields, error_code: errorCode }));
+        if (outcome === 'dead_letter' && job.type !== 'WEBHOOK_DELIVERY') {
+          await this.emitEvent(job, 'job.failed', { jobId: job.id, jobType: job.type, errorCode });
+          if (job.projectId) await this.notifyOwner(job, `کار ${job.type} ناموفق شد`, `اجرای کار ${job.type} پس از ${job.attempts} تلاش ناموفق شد. جزئیات در بخش اتوماسیون پروژه ثبت شده است.`);
+        }
       } catch (e) {
         // The lease expiry recovers this job in rf_worker_claim_jobs.
         console.error(JSON.stringify({ level: 'error', msg: 'Failed to record job failure', ...logFields, error: e instanceof Error ? e.message : String(e) }));
       }
+    }
+  }
+
+  /** A failed announcement must not change the outcome of the job it describes. */
+  private async emitEvent(job: Job, event: string, data: Record<string, unknown>) {
+    try {
+      await withTransaction((client) => client.query('SELECT rf_worker_emit_event($1, $2, $3, $4)', [job.id, job.executionId, event, JSON.stringify(data)]));
+    } catch (e) {
+      console.error(JSON.stringify({ level: 'error', msg: 'Failed to emit webhook event', job_id: job.id, event, error: e instanceof Error ? e.message : String(e) }));
+    }
+  }
+
+  /** Emails the organization owner. Without SMTP this is skipped: the in-app alert remains. */
+  private async notifyOwner(job: Job, subject: string, text: string) {
+    if (!process.env.SMTP_URL || !process.env.MAIL_FROM) return;
+    try {
+      const contact = await withTransaction((client) => client.query('SELECT email FROM rf_worker_owner_contact($1, $2)', [job.id, job.executionId]));
+      const to = (contact as any).rows[0]?.email;
+      if (!to) return;
+      const smtp = new URL(process.env.SMTP_URL);
+      const transport = nodemailer.createTransport({
+        host: smtp.hostname,
+        port: Number(smtp.port || (smtp.protocol === 'smtps:' ? 465 : 587)),
+        secure: smtp.protocol === 'smtps:',
+        ...(smtp.username ? { auth: { user: decodeURIComponent(smtp.username), pass: decodeURIComponent(smtp.password) } } : {}),
+        connectionTimeout: 10000,
+      });
+      try {
+        await transport.sendMail({ from: process.env.MAIL_FROM, to, subject: `رنک‌فورج: ${subject}`, text: `${text}\n\n${process.env.APP_URL || ''}` });
+      } finally {
+        transport.close();
+      }
+    } catch {
+      // The address and SMTP credentials stay out of the log.
+      console.error(JSON.stringify({ level: 'error', msg: 'Owner notification failed', job_id: job.id }));
     }
   }
 
@@ -1153,6 +1210,9 @@ class Worker {
     });
     if (outcome === 'insufficient' || outcome === 'no_wallet') {
       throw new JobError(`Insufficient credits to run ${job.type}`, 'INSUFFICIENT_CREDITS', false);
+    }
+    if (outcome === 'quota_exceeded') {
+      throw new JobError(`Monthly plan quota reached for ${job.type}`, 'QUOTA_EXCEEDED', false);
     }
     if (outcome === 'lost') {
       throw new JobError('Execution no longer owns the job', 'RETRYABLE', true);
@@ -1190,6 +1250,8 @@ class Worker {
       case 'ALERT_EVALUATION':
       case 'ALERT_PROCESSING':
         return this.handleAlertProcessing(job, signal);
+      case 'WEBHOOK_DELIVERY':
+        return this.handleWebhookDelivery(job);
       default:
         throw new JobError(`Unknown job type: ${job.type}`, 'VALIDATION_ERROR', false);
     }
@@ -2166,6 +2228,42 @@ class Worker {
     return reportData;
   }
 
+  /** Signed with HMAC-SHA256. The key is the SHA-256 hex of the webhook secret; only that hash is stored. */
+  private async handleWebhookDelivery(job: Job): Promise<any> {
+    const found: any = await withTransaction((client) => client.query('SELECT id, url, secret_hash, event, payload FROM rf_worker_delivery_get($1, $2)', [job.id, job.executionId]));
+    const delivery = found.rows[0];
+    if (!delivery) throw new JobError('Webhook delivery not found', 'NON_RETRYABLE', false);
+
+    const record = (code: number | null, delivered: boolean) =>
+      withTransaction((client) => client.query('SELECT rf_worker_delivery_result($1, $2, $3, $4)', [job.id, job.executionId, code, delivered]));
+    const body = JSON.stringify(delivery.payload);
+    const signature = createHmac('sha256', delivery.secret_hash).update(body).digest('hex');
+    let status: number;
+    try {
+      // Validated on every attempt, and redirects are not followed, so a receiver cannot redirect us inside the network.
+      await validateUrlForSSRF(delivery.url);
+      const response = await fetch(delivery.url, {
+        method: 'POST',
+        redirect: 'manual',
+        signal: AbortSignal.timeout(10000),
+        headers: { 'content-type': 'application/json', 'x-rankforge-event': delivery.event, 'x-rankforge-signature': `sha256=${signature}`, 'x-rankforge-delivery': delivery.id },
+        body,
+      });
+      status = response.status;
+    } catch (error) {
+      await record(null, false);
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('SECURITY_ERROR')) throw new JobError('Webhook address is not allowed', 'SECURITY_ERROR', false);
+      throw new JobError('Webhook receiver could not be reached', 'RETRYABLE', true);
+    }
+    if (status >= 200 && status < 300) {
+      await record(status, true);
+      return { deliveryId: delivery.id, status };
+    }
+    await record(status, false);
+    throw new JobError(`Webhook receiver responded ${status}`, 'RETRYABLE', true);
+  }
+
   private async handleAlertProcessing(job: Job, signal: AbortSignal): Promise<any> {
     console.log(JSON.stringify({ level: 'info', msg: 'Alert processing', job_id: job.id, organization_id: job.organizationId }));
 
@@ -2187,7 +2285,10 @@ class Worker {
         `Critical SEO issues: ${criticalCount}`,
         `${criticalCount} critical SEO issues detected in project ${project.id}`,
         { criticalCount, projectId: project.id });
-      if (created) alertsCreated++;
+      if (created) {
+        alertsCreated++;
+        await this.notifyOwner(job, 'مشکل بحرانی سئو', `${criticalCount} مشکل بحرانی سئو در یکی از پروژه‌های شما پیدا شد. جزئیات در بخش هشدارها ثبت شده است.`);
+      }
     }
 
     return { alertsCreated, projectsChecked: projectsResult.rows.length };

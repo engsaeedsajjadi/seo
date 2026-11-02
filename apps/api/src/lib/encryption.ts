@@ -10,7 +10,8 @@ const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
 
 function getEncryptionKey(): Buffer {
-  const key = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'default-key-32-chars-min-required!!';
+  const key = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET;
+  if (!key) throw new Error('ENCRYPTION_KEY is required');
   // Derive 32-byte key from provided secret
   return crypto.createHash('sha256').update(key).digest();
 }

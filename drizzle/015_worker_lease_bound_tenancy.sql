@@ -34,7 +34,16 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ;
 ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_error_code_check;
 ALTER TABLE jobs ADD CONSTRAINT jobs_error_code_check CHECK (error_code IS NULL OR error_code IN (
   'RETRYABLE','NON_RETRYABLE','PROVIDER_NOT_CONFIGURED','VALIDATION_ERROR','SECURITY_ERROR',
-  'TIMEOUT','INTERNAL_ERROR','INSUFFICIENT_CREDITS'));
+  'TIMEOUT','INTERNAL_ERROR','INSUFFICIENT_CREDITS','QUOTA_EXCEEDED'));
+
+ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_type_check;
+ALTER TABLE jobs ADD CONSTRAINT jobs_type_check CHECK (type IN (
+  'SITE_CRAWL','SEO_AUDIT','AUDIT','RANK_CHECK','KEYWORD_REFRESH','BACKLINK_REFRESH','BACKLINK_SYNC','GSC_SYNC','GA4_SYNC',
+  'PAGESPEED_CHECK','COMPETITOR_CHECK','AI_VISIBILITY_CHECK','CONTENT_BRIEF','REPORT_GENERATION','ALERT_EVALUATION',
+  'ALERT_PROCESSING','WEBHOOK_DELIVERY'));
+
+-- A suspended customer keeps their data, but none of their jobs run.
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_jobs_claimable ON jobs (created_at)
   WHERE status IN ('pending','retrying');
@@ -184,6 +193,7 @@ BEGIN
   WITH claimed AS (
     SELECT j.id FROM jobs j
     WHERE j.status IN ('pending','retrying') AND (j.scheduled_at IS NULL OR j.scheduled_at <= NOW())
+      AND NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id = j.organization_id AND o.suspended_at IS NOT NULL)
     ORDER BY j.created_at ASC
     FOR UPDATE SKIP LOCKED
     LIMIT p_limit
@@ -252,9 +262,27 @@ DECLARE
   j jobs%ROWTYPE;
   v_price INT;
   v_balance INT;
+  v_limit_key TEXT;
+  v_limit BIGINT;
+  v_used BIGINT;
 BEGIN
   SELECT * INTO j FROM jobs WHERE id = p_job_id AND execution_id = p_execution_id AND status = 'running';
   IF NOT FOUND THEN RETURN 'lost'; END IF;
+
+  -- Customer requests are checked by the API; schedules reach the queue without passing it.
+  IF j.idempotency_key LIKE 'sched\_%' THEN
+    v_limit_key := CASE j.type WHEN 'SITE_CRAWL' THEN 'crawledPages' WHEN 'RANK_CHECK' THEN 'rankChecks'
+                               WHEN 'CONTENT_BRIEF' THEN 'aiOperations' WHEN 'AI_VISIBILITY_CHECK' THEN 'aiOperations' END;
+    IF v_limit_key IS NOT NULL THEN
+      SELECT (p.limits->>v_limit_key)::int INTO v_limit FROM organizations o JOIN plans p ON p.id = o.plan WHERE o.id = j.organization_id;
+      SELECT CASE v_limit_key
+        WHEN 'crawledPages' THEN (SELECT COALESCE(SUM(crawled_pages), 0) FROM crawl_runs WHERE organization_id = j.organization_id AND created_at >= date_trunc('month', NOW()))
+        WHEN 'rankChecks' THEN (SELECT COUNT(*) FROM keyword_rankings WHERE organization_id = j.organization_id AND created_at >= date_trunc('month', NOW()))
+        ELSE (SELECT COUNT(*) FROM ai_usage WHERE organization_id = j.organization_id AND created_at >= date_trunc('month', NOW())) END INTO v_used;
+      IF v_limit IS NOT NULL AND v_limit >= 0 AND v_used >= v_limit THEN RETURN 'quota_exceeded'; END IF;
+    END IF;
+  END IF;
+
   v_price := CASE j.type WHEN 'SITE_CRAWL' THEN 5 ELSE 0 END;
   IF v_price = 0 THEN RETURN 'not_billable'; END IF;
 

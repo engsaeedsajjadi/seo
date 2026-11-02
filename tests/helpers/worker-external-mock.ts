@@ -4,6 +4,7 @@
  * real against PostgreSQL while websites, DataForSEO, Google and OpenAI are simulated.
  * A pass here proves our handling and persistence, not a live provider integration.
  */
+import { createHmac } from 'node:crypto';
 import dns from 'node:dns/promises';
 import { readFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
@@ -18,6 +19,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const dfs = (items: unknown[]) => json({ tasks: [{ status_code: 20000, id: 'mock', result: [{ items, item_types: ['organic'], se_results_count: 1 }] }] });
 
 let flakyCalls = 0;
+let hookCalls = 0;
 
 (globalThis as any).fetch = async (input: string | URL, init?: any): Promise<Response> => {
   const url = new URL(String(input));
@@ -35,6 +37,13 @@ let flakyCalls = 0;
     return html('<html><head><title>Recovered</title></head><body><h1>Recovered</h1></body></html>');
   }
   if (url.hostname === 'down.rankforge.test') throw new TypeError('fetch failed: simulated outage');
+
+  // First call fails to prove retry. Later calls verify the signature like a real receiver would.
+  if (url.hostname === 'hooks.rankforge.test') {
+    if (++hookCalls === 1) return new Response('busy', { status: 503 });
+    const expected = `sha256=${createHmac('sha256', 'journey-secret-hash').update(body).digest('hex')}`;
+    return new Response('ok', { status: init?.headers?.['x-rankforge-signature'] === expected ? 200 : 401 });
+  }
 
   if (url.hostname === 'api.dataforseo.com') {
     if (url.pathname.includes('/serp/')) return dfs([{ type: 'organic', rank_group: 7, url: 'https://rank.rankforge.test/p', title: 't', domain: 'rank.rankforge.test' }]);

@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
-import { query, transaction } from '../db/client.js';
+import { query, runAsSystem, transaction } from '../db/client.js';
 import { config } from '../config/index.js';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -10,14 +10,15 @@ export const sessionService = {
       { expiresIn: '15m', issuer: 'rankforge', audience: 'rankforge-app', algorithm: 'HS256' });
   },
   async create(userId: string, organizationId: string, role: string, email: string) {
-    return transaction(async () => {
+    // Refresh tokens are unreachable from the tenant role, including when switching organization.
+    return runAsSystem(() => transaction(async () => {
       const id = randomUUID();
       const refreshToken = randomBytes(32).toString('hex');
       await query(`INSERT INTO auth_sessions (id,user_id,organization_id,expires_at)
         VALUES ($1,$2,$3,NOW() + INTERVAL '30 days')`, [id, userId, organizationId]);
       await query('INSERT INTO auth_refresh_tokens (token_hash,session_id) VALUES ($1,$2)', [hash(refreshToken), id]);
       return { token: this.accessToken(id, userId, organizationId, role, email), refreshToken };
-    });
+    }));
   },
   async refresh(refreshToken: string) {
     const result = await transaction(async () => {

@@ -30,8 +30,7 @@ console.log('  ✅ Credits idempotency + FOR UPDATE present');
 console.log('\nTest 3: Webhooks idempotency');
 
 assert.ok(schema.includes('webhook_deliveries'), 'Schema must have webhook_deliveries');
-// Webhook delivery does not exist yet; the test endpoint reports that honestly (501).
-assert.ok(appCode.includes("'Webhook delivery is not available yet'"), 'Webhook test must not pretend to deliver');
+assert.ok(fs.readFileSync('apps/worker/src/index.ts','utf-8').includes("case 'WEBHOOK_DELIVERY'"), 'Worker must handle WEBHOOK_DELIVERY jobs');
 console.log('  ✅ Webhooks idempotency present');
 
 console.log('\nTest 4: Reports idempotency');

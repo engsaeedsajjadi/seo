@@ -3,6 +3,7 @@ export function routeAllowed(role: string, method: string, path: string): boolea
   const read = method === 'GET' || method === 'HEAD';
   if (!['Owner','Admin','Manager','SEO_Manager','Analyst','Editor','Client','Viewer'].includes(role)) return false;
   if (path.startsWith('/api/v1/auth/')) return true;
+  if (path.startsWith('/api/v1/platform/')) return true; // guarded by requirePlatformAdmin, independent of tenant role
   if (role === 'Client') {
     return read && (path === '/api/v1/organizations/current' || path === '/api/v1/projects' ||
       /^\/api\/v1\/projects\/[^/]+(?:\/|$)/.test(path) || path.startsWith('/api/v1/client-portal/') ||

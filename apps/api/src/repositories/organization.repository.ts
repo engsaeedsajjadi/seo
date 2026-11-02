@@ -3,7 +3,7 @@
  * Real PostgreSQL with tenant isolation
  */
 
-import { query } from '../db/client.js';
+import { query, runAsSystem } from '../db/client.js';
 
 export interface Organization {
   id: string;
@@ -57,6 +57,8 @@ export const organizationRepository = {
   },
 
   async findByUserId(userId: string): Promise<Organization[]> {
+    // A user's organizations span tenants by definition.
+    return runAsSystem(async () => {
     const result = await query(
       `SELECT o.id, o.name, o.slug, o.plan, o.stripe_customer_id as "stripeCustomerId",
               o.stripe_subscription_id as "stripeSubscriptionId", o.subscription_status as "subscriptionStatus", o.subscription_current_period_end as "subscriptionCurrentPeriodEnd",
@@ -69,6 +71,7 @@ export const organizationRepository = {
       [userId]
     );
     return result.rows;
+    });
   },
 
   async create(data: { name: string; slug: string; ownerId: string; plan?: string }): Promise<Organization> {
