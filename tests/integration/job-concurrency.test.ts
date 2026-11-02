@@ -16,7 +16,7 @@ if (!DATABASE_URL) {
   
   // Check SQL pattern exists in worker code
   const fs = await import('fs');
-  const workerCode = fs.readFileSync('apps/worker/src/index.ts', 'utf-8');
+  const workerCode = fs.readFileSync('drizzle/015_worker_lease_bound_tenancy.sql', 'utf-8');
   
   assert.ok(workerCode.includes('FOR UPDATE SKIP LOCKED'), 'Worker must use FOR UPDATE SKIP LOCKED');
   assert.ok(workerCode.includes('execution_id'), 'Worker must set execution_id');
@@ -40,7 +40,7 @@ try {
 } catch (e) {
   console.log('⚠️  pg not available, checking SQL pattern only');
   const fs = await import('fs');
-  const workerCode = fs.readFileSync('apps/worker/src/index.ts', 'utf-8');
+  const workerCode = fs.readFileSync('drizzle/015_worker_lease_bound_tenancy.sql', 'utf-8');
   const { default: assert } = await import('assert');
   assert.ok(workerCode.includes('FOR UPDATE SKIP LOCKED'), 'Worker must use FOR UPDATE SKIP LOCKED');
   console.log('✅ SQL pattern verified in worker code');
@@ -50,7 +50,7 @@ try {
 if (!Pool) {
   console.log('⚠️  Pool not available, checking SQL pattern only');
   const fs = await import('fs');
-  const workerCode = fs.readFileSync('apps/worker/src/index.ts', 'utf-8');
+  const workerCode = fs.readFileSync('drizzle/015_worker_lease_bound_tenancy.sql', 'utf-8');
   const { default: assert } = await import('assert');
   assert.ok(workerCode.includes('FOR UPDATE SKIP LOCKED'), 'Worker must use FOR UPDATE SKIP LOCKED');
   console.log('✅ SQL pattern verified in worker code');
@@ -66,7 +66,7 @@ try {
 } catch (e: any) {
   console.log(`⚠️  PostgreSQL not available (${e.code || e.message}) - checking SQL pattern only`);
   const fs = await import('fs');
-  const workerCode = fs.readFileSync('apps/worker/src/index.ts', 'utf-8');
+  const workerCode = fs.readFileSync('drizzle/015_worker_lease_bound_tenancy.sql', 'utf-8');
   assert.ok(workerCode.includes('FOR UPDATE SKIP LOCKED'), 'Worker must use FOR UPDATE SKIP LOCKED');
   assert.ok(workerCode.includes('execution_id'), 'Worker must set execution_id');
   assert.ok(workerCode.includes('RETURNING'), 'Worker must RETURNING claimed jobs');

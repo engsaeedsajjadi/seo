@@ -352,14 +352,10 @@ export async function runSchedulerTick(withTransaction: TxFn, now: Date = new Da
   const summary: SchedulerTickSummary = { fired: 0, initialized: 0, skipped: 0, parked: 0, jobIds: [] };
 
   await withTransaction(async (client) => {
-    const due = await client.query(
-      `SELECT id, organization_id, project_id, type, cron_expression, timezone, config, next_run_at
-       FROM scheduled_jobs
-       WHERE enabled = true AND (next_run_at IS NULL OR next_run_at <= NOW())
-       ORDER BY next_run_at ASC NULLS FIRST
-       LIMIT 50
-       FOR UPDATE SKIP LOCKED`,
-    );
+    // Definer functions: the Worker role has no direct access to schedules. Rows stay
+    // locked (FOR UPDATE SKIP LOCKED) until this transaction ends, so concurrent ticks
+    // never see the same schedule, and the job idempotency key covers everything else.
+    const due = await client.query(`SELECT * FROM rf_scheduler_due($1)`, [50]);
 
     for (const row of due.rows) {
       const tz = row.timezone || 'UTC';
@@ -374,33 +370,21 @@ export async function runSchedulerTick(withTransaction: TxFn, now: Date = new Da
           schedule_id: row.id, cron_expression: row.cron_expression, timezone: tz,
           error: e instanceof Error ? e.message : String(e),
         }));
-        await client.query(
-          `UPDATE scheduled_jobs SET next_run_at = 'infinity', updated_at = NOW() WHERE id = $1`,
-          [row.id],
-        );
+        await client.query(`SELECT rf_scheduler_advance($1, NULL, false)`, [row.id]);
         summary.parked++;
         continue;
       }
 
       // Never armed → arm only, no retroactive fire.
       if (row.next_run_at === null) {
-        await client.query(
-          `UPDATE scheduled_jobs SET next_run_at = $2, updated_at = NOW() WHERE id = $1`,
-          [row.id, nextRun],
-        );
+        await client.query(`SELECT rf_scheduler_advance($1, $2, false)`, [row.id, nextRun]);
         summary.initialized++;
         continue;
       }
 
-      // Due → build the job.
-      let project: ScheduleProject | null = null;
-      if (row.project_id) {
-        const p = await client.query(
-          `SELECT id, domain, normalized_domain FROM projects WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
-          [row.project_id, row.organization_id],
-        );
-        project = p.rows[0] || null;
-      }
+      const project: ScheduleProject | null = row.project_domain
+        ? { id: row.project_id, domain: row.project_domain, normalized_domain: row.project_normalized_domain }
+        : null;
 
       const decision = buildScheduledJobPayload(row.type, project, row.config);
       if (decision.kind === 'skip') {
@@ -410,33 +394,17 @@ export async function runSchedulerTick(withTransaction: TxFn, now: Date = new Da
         }));
         summary.skipped++;
       } else {
-        const dueSlot = row.next_run_at instanceof Date ? row.next_run_at : new Date(row.next_run_at);
-        const inserted = await client.query(
-          `INSERT INTO jobs (organization_id, project_id, type, status, payload, attempts, max_attempts, scheduled_at, idempotency_key, execution_id)
-           VALUES ($1, $2, $3, 'pending', $4, 0, 3, NULL, $5, gen_random_uuid())
-           ON CONFLICT (idempotency_key) DO NOTHING
-           RETURNING id`,
-          [
-            row.organization_id,
-            row.project_id || null,
-            row.type,
-            JSON.stringify(decision.payload),
-            `sched_${row.id}_${dueSlot.toISOString()}`,
-          ],
-        );
-        if (inserted.rows.length > 0) {
+        const inserted = await client.query(`SELECT rf_scheduler_enqueue($1, $2) AS job_id`, [row.id, JSON.stringify(decision.payload)]);
+        if (inserted.rows[0]?.job_id) {
           summary.fired++;
-          summary.jobIds.push(inserted.rows[0].id);
+          summary.jobIds.push(inserted.rows[0].job_id);
         } else {
           // Same slot already enqueued by another tick/worker — count as skip.
           summary.skipped++;
         }
       }
 
-      await client.query(
-        `UPDATE scheduled_jobs SET last_run_at = NOW(), next_run_at = $2, updated_at = NOW() WHERE id = $1`,
-        [row.id, nextRun],
-      );
+      await client.query(`SELECT rf_scheduler_advance($1, $2, true)`, [row.id, nextRun]);
     }
   });
 

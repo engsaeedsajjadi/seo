@@ -69,6 +69,27 @@ async function verifyDatabase() {
   console.log(`📊 Required tables all present: ${requiredTables.length}`);
 }
 
+/**
+ * Creates or updates the Worker's login. The password comes from the environment and is
+ * never stored in a migration. The login holds only what rankforge_worker grants.
+ */
+async function ensureWorkerLogin() {
+  const password = process.env.WORKER_DATABASE_PASSWORD;
+  if (!password) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('WORKER_DATABASE_PASSWORD is required in production: the Worker must not use the owner account');
+    }
+    console.log('ℹ️  WORKER_DATABASE_PASSWORD not set — Worker login not managed');
+    return;
+  }
+  const quoted = (await query('SELECT quote_literal($1) AS q', [password])).rows[0].q;
+  const attributes = 'LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE';
+  const exists = await query(`SELECT 1 FROM pg_roles WHERE rolname = 'rankforge_worker_login'`);
+  await query(`${exists.rows.length ? 'ALTER' : 'CREATE'} ROLE rankforge_worker_login ${attributes} PASSWORD ${quoted}`);
+  await query('GRANT rankforge_worker TO rankforge_worker_login');
+  console.log('✅ Worker login ready');
+}
+
 async function executeSchema(schemaSql: string) {
   console.log(`📏 Schema size: ${schemaSql.length} chars`);
   try {
@@ -187,6 +208,8 @@ export async function runMigrations() {
     } else {
       throw new Error(`Drizzle migrations folder not found: ${drizzleFolder}`);
     }
+
+    await ensureWorkerLogin();
 
     console.log('🔧 Verifying database — strict...');
     await verifyDatabase();

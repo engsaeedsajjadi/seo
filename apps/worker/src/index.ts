@@ -4,6 +4,7 @@
  * No fake sleep() success
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { Pool } from 'pg';
 import * as cheerio from 'cheerio';
 import {
@@ -18,6 +19,7 @@ import {
   persistCompetitorDiscovery,
 } from './dataforseo.js';
 import { runSchedulerTick } from './scheduler.js';
+import { validateUrlForSSRF } from './ssrf.js';
 import {
   GoogleWorkerClient,
   GoogleApiError,
@@ -137,14 +139,17 @@ function getPool(): Pool {
   return pool;
 }
 
-async function query(text: string, params?: any[]) {
-  const p = getPool();
-  return p.query(text, params);
-}
+// Tenant access is bound to the job being executed. Handlers run inside
+// jobContext, and every statement runs in a transaction that first calls
+// rf_worker_bind_job: PostgreSQL then enforces both the tenant and that this
+// execution still owns the job. A statement outside a job context is an error,
+// never an unscoped query.
+type JobContext = { jobId: string; executionId: string };
+const jobContext = new AsyncLocalStorage<JobContext>();
 
+/** Runs a queue or scheduler call. Tenant data is unreachable from here. */
 async function withTransaction<T>(fn: (client: any) => Promise<T>): Promise<T> {
-  const p = getPool();
-  const client = await p.connect();
+  const client = await getPool().connect();
   try {
     await client.query('BEGIN');
     const result = await fn(client);
@@ -158,65 +163,23 @@ async function withTransaction<T>(fn: (client: any) => Promise<T>): Promise<T> {
   }
 }
 
+/** Runs fn atomically under the current job's tenant binding. */
+async function withJobTransaction<T>(fn: (client: any) => Promise<T>): Promise<T> {
+  const context = jobContext.getStore();
+  if (!context) throw new Error('Tenant query attempted outside a job context');
+  return withTransaction(async (client) => {
+    await client.query('SELECT rf_worker_bind_job($1, $2)', [context.jobId, context.executionId]);
+    return fn(client);
+  });
+}
+
+async function query(text: string, params?: any[]): Promise<any> {
+  return withJobTransaction<any>((client) => client.query(text, params));
+}
+
 // ============================================================
-// SSRF PROTECTION — copied from api lib/ssrf.ts (real)
+// OUTBOUND FETCH — SSRF validated per hop (see ./ssrf.ts)
 // ============================================================
-
-const BLOCKED_IP_RANGES = [
-  /^127\./,
-  /^10\./,
-  /^192\.168\./,
-  /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
-  /^0\.0\.0\.0/,
-  /^169\.254\./,
-  /^::1$/,
-  /^fc00:/,
-  /^fe80:/,
-];
-
-const BLOCKED_HOSTNAMES = new Set([
-  'localhost',
-  'metadata.google.internal',
-  'metadata.google.com',
-  'instance-data',
-  '169.254.169.254',
-]);
-
-function isBlockedIp(ip: string): boolean {
-  return BLOCKED_IP_RANGES.some(r => r.test(ip));
-}
-
-function isBlockedHostname(hostname: string): boolean {
-  const lower = hostname.toLowerCase();
-  if (BLOCKED_HOSTNAMES.has(lower)) return true;
-  if (lower === 'localhost') return true;
-  if (lower.endsWith('.internal') || lower.endsWith('.local')) return true;
-  return false;
-}
-
-async function validateUrlForSSRF(url: string): Promise<void> {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new Error(`Invalid URL: ${url} — VALIDATION_ERROR`);
-  }
-
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error(`Blocked protocol: ${parsed.protocol} — SECURITY_ERROR`);
-  }
-
-  if (isBlockedHostname(parsed.hostname)) {
-    throw new Error(`Blocked hostname: ${parsed.hostname} — SECURITY_ERROR`);
-  }
-
-  // Basic IP check for literal IPs
-  if (/^\d+\.\d+\.\d+\.\d+$/.test(parsed.hostname) || parsed.hostname.includes(':')) {
-    if (isBlockedIp(parsed.hostname)) {
-      throw new Error(`Blocked IP: ${parsed.hostname} — SECURITY_ERROR`);
-    }
-  }
-}
 
 async function safeFetch(url: string, options: { userAgent?: string; timeout?: number; signal?: AbortSignal } = {}): Promise<Response> {
   await validateUrlForSSRF(url);
@@ -385,6 +348,28 @@ function isUrlAllowedByRobots(url: string, rules: { disallow: string[]; allow: s
   }
 }
 
+const MAX_HTML_BYTES = 5 * 1024 * 1024;
+
+/** Reads at most maxBytes so a hostile site cannot exhaust the worker's memory. */
+async function readBodyCapped(response: Response, maxBytes: number): Promise<string> {
+  if (!response.body) return response.text();
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let total = 0;
+  let html = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      break;
+    }
+    html += decoder.decode(value, { stream: true });
+  }
+  return html + decoder.decode();
+}
+
 class Crawler {
   private options: CrawlOptions;
   private visited = new Set<string>();
@@ -488,7 +473,7 @@ class Crawler {
         return;
       }
 
-      const html = await response.text();
+      const html = await readBodyCapped(response, MAX_HTML_BYTES);
       const $ = cheerio.load(html);
 
       const title = $('title').first().text().trim() || undefined;
@@ -889,7 +874,7 @@ interface Job {
   maxAttempts: number;
   createdAt: Date;
   idempotencyKey?: string;
-  executionId?: string;
+  executionId: string;
 }
 
 // ============================================================
@@ -974,7 +959,7 @@ function providerErrorToJobError(error: unknown, context: string): JobError {
   return new JobError(`${context} failed — ${error instanceof Error ? error.message : String(error)}`, 'RETRYABLE', true);
 }
 
-type JobErrorCode = 'RETRYABLE' | 'NON_RETRYABLE' | 'PROVIDER_NOT_CONFIGURED' | 'VALIDATION_ERROR' | 'SECURITY_ERROR' | 'TIMEOUT' | 'INTERNAL_ERROR';
+type JobErrorCode = 'RETRYABLE' | 'NON_RETRYABLE' | 'PROVIDER_NOT_CONFIGURED' | 'VALIDATION_ERROR' | 'SECURITY_ERROR' | 'TIMEOUT' | 'INTERNAL_ERROR' | 'INSUFFICIENT_CREDITS';
 
 class JobError extends Error {
   code: JobErrorCode;
@@ -987,59 +972,11 @@ class JobError extends Error {
 }
 
 // ============================================================
-// CREDIT SYSTEM — Atomic with idempotency
-// ============================================================
-
-async function deductCreditsAtomic(client: any, organizationId: string, amount: number, description: string, idempotencyKey: string, referenceType: string, referenceId: string): Promise<{ success: boolean; wallet?: any; error?: string }> {
-  // Check idempotency first
-  const existing = await client.query(
-    'SELECT id FROM credit_transactions WHERE idempotency_key = $1',
-    [idempotencyKey]
-  );
-  if (existing.rows.length > 0) {
-    console.log(JSON.stringify({ level: 'info', msg: 'Credit deduction idempotent — already processed', idempotencyKey, organizationId }));
-    const wallet = await client.query('SELECT * FROM credit_wallets WHERE organization_id = $1', [organizationId]);
-    return { success: true, wallet: wallet.rows[0] };
-  }
-
-  const walletResult = await client.query(
-    'SELECT id, balance FROM credit_wallets WHERE organization_id = $1 FOR UPDATE',
-    [organizationId]
-  );
-
-  if (walletResult.rows.length === 0) {
-    return { success: false, error: 'Wallet not found' };
-  }
-
-  const wallet = walletResult.rows[0];
-  if (wallet.balance < amount) {
-    return { success: false, error: 'Insufficient credits' };
-  }
-
-  const newBalance = wallet.balance - amount;
-
-  await client.query(
-    'UPDATE credit_wallets SET balance = $1, total_consumed = total_consumed + $2, updated_at = NOW() WHERE organization_id = $3',
-    [newBalance, amount, organizationId]
-  );
-
-  await client.query(
-    `INSERT INTO credit_transactions (organization_id, type, amount, balance_after, description, reference_type, reference_id, idempotency_key)
-     VALUES ($1, 'consumption', $2, $3, $4, $5, $6, $7)`,
-    [organizationId, -amount, newBalance, description, referenceType, referenceId, idempotencyKey]
-  );
-
-  const updatedWallet = await client.query(
-    'SELECT id, organization_id, balance, total_granted, total_consumed FROM credit_wallets WHERE organization_id = $1',
-    [organizationId]
-  );
-
-  return { success: true, wallet: updatedWallet.rows[0] };
-}
-
-// ============================================================
 // WORKER — Atomic claiming, real work, AbortController timeout
 // ============================================================
+
+const MAX_PAGES_PER_CRAWL = 1000;
+const MAX_CRAWL_DEPTH = 10;
 
 class Worker {
   private running = false;
@@ -1094,30 +1031,17 @@ class Worker {
     const availableSlots = this.concurrency - this.activeJobs;
     
     try {
-      // ATOMIC CLAIMING with FOR UPDATE SKIP LOCKED
+      // Atomic claim (FOR UPDATE SKIP LOCKED) lives in rf_worker_claim_jobs, which
+      // also records the attempt and recovers jobs whose worker died.
+      const leaseSeconds = Math.ceil(this.timeout / 1000) + 60;
       const claimedJobs = await withTransaction(async (client) => {
-        // Select pending jobs with SKIP LOCKED to prevent duplicate claiming
-        const selectResult = await client.query(`
-          WITH claimed AS (
-            SELECT id FROM jobs 
-            WHERE status = 'pending' 
-            AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-            ORDER BY created_at ASC 
-            FOR UPDATE SKIP LOCKED 
-            LIMIT $1
-          )
-          UPDATE jobs 
-          SET status = 'running', 
-              started_at = NOW(), 
-              attempts = attempts + 1,
-              execution_id = gen_random_uuid(),
-              error = NULL,
-              error_code = NULL
-          WHERE id IN (SELECT id FROM claimed)
-          RETURNING id, organization_id as "organizationId", project_id as "projectId", type, status, payload, attempts, max_attempts as "maxAttempts", created_at as "createdAt", idempotency_key as "idempotencyKey", execution_id as "executionId"
-        `, [availableSlots]);
-        
-        return selectResult.rows as Job[];
+        const claimed = await client.query(
+          `SELECT id, organization_id AS "organizationId", project_id AS "projectId", type, status, payload, attempts,
+                  max_attempts AS "maxAttempts", created_at AS "createdAt", idempotency_key AS "idempotencyKey", execution_id AS "executionId"
+           FROM rf_worker_claim_jobs($1, $2)`,
+          [availableSlots, leaseSeconds],
+        );
+        return claimed.rows as Job[];
       });
 
       if (claimedJobs.length === 0) return;
@@ -1137,33 +1061,19 @@ class Worker {
 
   private async processJob(job: Job) {
     const startTime = Date.now();
-    const executionId = job.executionId || `exec_${Date.now()}_${Math.random().toString(36).substring(2,8)}`;
-    
-    console.log(JSON.stringify({
-      level: 'info',
-      msg: 'Processing job',
+    const executionId = job.executionId;
+    const logFields = {
       job_id: job.id,
       execution_id: executionId,
       organization_id: job.organizationId,
       project_id: job.projectId,
       job_type: job.type,
-      attempt: job.attempts,
-      maxAttempts: job.maxAttempts,
-    }));
+    };
 
-    // Create attempt record
-    try {
-      await query(
-        `INSERT INTO job_attempts (job_id, attempt_number, status, started_at) VALUES ($1, $2, 'running', NOW())`,
-        [job.id, job.attempts]
-      );
-    } catch (e) {
-      console.warn(JSON.stringify({ level: 'warn', msg: 'Failed to create attempt record', job_id: job.id, error: e instanceof Error ? e.message : String(e) }));
-    }
+    console.log(JSON.stringify({ level: 'info', msg: 'Processing job', ...logFields, attempt: job.attempts, maxAttempts: job.maxAttempts }));
 
     const abortController = new AbortController();
     let timeoutId: NodeJS.Timeout | null = null;
-
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
         abortController.abort();
@@ -1172,124 +1082,72 @@ class Worker {
     });
 
     try {
-      const workPromise = this.executeJob(job, abortController.signal);
-      const result = await Promise.race([workPromise, timeoutPromise]);
-      
+      const result = await jobContext.run({ jobId: job.id, executionId }, async () => {
+        const work = (async () => {
+          await this.chargeForJob(job, executionId);
+          const output = await this.executeJob(job, abortController.signal);
+          await this.createAlertIfNeeded(job, 'completed', output);
+          return output;
+        })();
+        return Promise.race([work, timeoutPromise]);
+      });
       if (timeoutId) clearTimeout(timeoutId);
 
-      // Mark completed
-      await query(
-        `UPDATE jobs SET status = 'completed', completed_at = NOW(), result = $2, failed_at = NULL, error = NULL, error_code = NULL WHERE id = $1`,
-        [job.id, JSON.stringify(result || { completedAt: new Date().toISOString(), durationMs: Date.now() - startTime, executionId })]
-      );
+      const duration = Date.now() - startTime;
+      const owned = await withTransaction(async (client) => {
+        const done = await client.query(
+          'SELECT rf_worker_complete_job($1, $2, $3, $4) AS owned',
+          [job.id, executionId, JSON.stringify(result ?? { completedAt: new Date().toISOString(), durationMs: duration, executionId }), duration],
+        );
+        return done.rows[0].owned as boolean;
+      });
 
-      // Update attempt
-      await query(
-        `UPDATE job_attempts SET status = 'completed', completed_at = NOW(), duration_ms = $2 WHERE job_id = $1 AND attempt_number = $3`,
-        [job.id, Date.now() - startTime, job.attempts]
-      );
-
-      console.log(JSON.stringify({
-        level: 'info',
-        msg: 'Job completed',
-        job_id: job.id,
-        execution_id: executionId,
-        organization_id: job.organizationId,
-        project_id: job.projectId,
-        job_type: job.type,
-        duration_ms: Date.now() - startTime,
-        status: 'completed',
-      }));
-
-      // Handle credit deduction for crawl jobs — atomic with idempotency
-      if (job.type === 'SITE_CRAWL') {
-        try {
-          await withTransaction(async (client) => {
-            const idempotencyKey = `credit_${job.id}_${job.attempts}`;
-            const creditResult = await deductCreditsAtomic(
-              client,
-              job.organizationId,
-              5,
-              `Crawl job ${job.id} — ${job.payload?.domain || 'unknown'}`,
-              idempotencyKey,
-              'job',
-              job.id
-            );
-            if (!creditResult.success) {
-              console.warn(JSON.stringify({ level: 'warn', msg: 'Credit deduction failed', job_id: job.id, error: creditResult.error }));
-            } else {
-              console.log(JSON.stringify({ level: 'info', msg: 'Credits deducted', job_id: job.id, balance: creditResult.wallet?.balance }));
-            }
-          });
-        } catch (e) {
-          console.warn(JSON.stringify({ level: 'warn', msg: 'Credit deduction transaction failed', job_id: job.id, error: e instanceof Error ? e.message : String(e) }));
-        }
+      if (owned) {
+        console.log(JSON.stringify({ level: 'info', msg: 'Job completed', ...logFields, duration_ms: duration, status: 'completed' }));
+      } else {
+        // The lease expired and the job was reclaimed; the newer execution owns the outcome.
+        console.warn(JSON.stringify({ level: 'warn', msg: 'Job result discarded — execution no longer owns the job', ...logFields }));
       }
-
-      // Create success alert if needed
-      await this.createAlertIfNeeded(job, 'completed', result);
-
     } catch (error) {
       if (timeoutId) clearTimeout(timeoutId);
-      
+
+      const duration = Date.now() - startTime;
       const message = error instanceof Error ? error.message : String(error);
       const errorCode = error instanceof JobError ? error.code : 'INTERNAL_ERROR';
-      const retryable = error instanceof JobError ? error.retryable : (errorCode === 'RETRYABLE' || errorCode === 'TIMEOUT');
+      const retryable = error instanceof JobError ? error.retryable : false;
 
       console.error(JSON.stringify({
-        level: 'error',
-        msg: 'Job failed',
-        job_id: job.id,
-        execution_id: executionId,
-        organization_id: job.organizationId,
-        project_id: job.projectId,
-        job_type: job.type,
-        attempt: job.attempts,
-        maxAttempts: job.maxAttempts,
-        error_code: errorCode,
-        error: message,
-        retryable,
-        duration_ms: Date.now() - startTime,
+        level: 'error', msg: 'Job failed', ...logFields, attempt: job.attempts, maxAttempts: job.maxAttempts,
+        error_code: errorCode, error: message, retryable, duration_ms: duration,
       }));
 
-      // Update attempt
       try {
-        await query(
-          `UPDATE job_attempts SET status = 'failed', completed_at = NOW(), duration_ms = $2, error = $3, error_code = $4 WHERE job_id = $1 AND attempt_number = $5`,
-          [job.id, Date.now() - startTime, message, errorCode, job.attempts]
-        );
-      } catch {}
-
-      try {
-        const attemptsResult = await query('SELECT attempts, max_attempts FROM jobs WHERE id = $1', [job.id]);
-        const currentAttempts = attemptsResult.rows[0]?.attempts || job.attempts;
-        const maxAttempts = attemptsResult.rows[0]?.max_attempts || job.maxAttempts;
-
-        if (!retryable || currentAttempts >= maxAttempts) {
-          // Dead-letter
-          await query(
-            `UPDATE jobs SET status = 'dead_letter', error = $2, error_code = $3, completed_at = NOW(), failed_at = NOW() WHERE id = $1`,
-            [job.id, message, errorCode]
+        const outcome = await withTransaction(async (client) => {
+          const failed = await client.query(
+            'SELECT rf_worker_fail_job($1, $2, $3, $4, $5, $6) AS outcome',
+            [job.id, executionId, message, errorCode, retryable, duration],
           );
-          console.log(JSON.stringify({ level: 'warn', msg: 'Job dead-letter', job_id: job.id, attempts: currentAttempts, error_code: errorCode }));
-          await this.handleDeadLetter(job, message, errorCode);
-        } else {
-          const backoff = Math.min(Math.pow(2, currentAttempts) * 1000, 60000); // cap 60s
-          console.log(JSON.stringify({ level: 'info', msg: 'Job will retry', job_id: job.id, backoff_ms: backoff, attempt: currentAttempts, maxAttempts }));
-          await query(
-            `UPDATE jobs SET status = 'retrying', error = $2, error_code = $3, scheduled_at = NOW() + INTERVAL '${backoff} milliseconds' WHERE id = $1`,
-            [job.id, message, errorCode]
-          );
-          // After backoff, set back to pending via scheduled_at check
-          setTimeout(async () => {
-            try {
-              await query(`UPDATE jobs SET status = 'pending' WHERE id = $1 AND status = 'retrying'`, [job.id]);
-            } catch {}
-          }, backoff);
-        }
+          return failed.rows[0].outcome as string;
+        });
+        console.log(JSON.stringify({ level: outcome === 'retrying' ? 'info' : 'warn', msg: `Job outcome: ${outcome}`, ...logFields, error_code: errorCode }));
       } catch (e) {
-        console.error(JSON.stringify({ level: 'error', msg: 'Failed to update job after failure', job_id: job.id, error: e instanceof Error ? e.message : String(e) }));
+        // The lease expiry recovers this job in rf_worker_claim_jobs.
+        console.error(JSON.stringify({ level: 'error', msg: 'Failed to record job failure', ...logFields, error: e instanceof Error ? e.message : String(e) }));
       }
+    }
+  }
+
+  /** Charges before doing billable work. Idempotent per job; refunded if the job dead-letters. */
+  private async chargeForJob(job: Job, executionId: string) {
+    const outcome = await withTransaction(async (client) => {
+      const charged = await client.query('SELECT rf_worker_charge_job($1, $2) AS outcome', [job.id, executionId]);
+      return charged.rows[0].outcome as string;
+    });
+    if (outcome === 'insufficient' || outcome === 'no_wallet') {
+      throw new JobError(`Insufficient credits to run ${job.type}`, 'INSUFFICIENT_CREDITS', false);
+    }
+    if (outcome === 'lost') {
+      throw new JobError('Execution no longer owns the job', 'RETRYABLE', true);
     }
   }
 
@@ -1336,9 +1194,8 @@ class Worker {
 
   private async handleSiteCrawl(job: Job, signal: AbortSignal): Promise<any> {
     const domain = job.payload?.domain;
-    const crawlRunId = job.payload?.crawlRunId;
-    const maxPages = job.payload?.maxPages || 20;
-    const maxDepth = job.payload?.maxDepth || 2;
+    const maxPages = Math.min(job.payload?.maxPages || 20, MAX_PAGES_PER_CRAWL);
+    const maxDepth = Math.min(job.payload?.maxDepth || 2, MAX_CRAWL_DEPTH);
     const concurrency = Math.min(job.payload?.concurrency || 3, config.crawler.maxConcurrency);
 
     if (!domain) {
@@ -1350,7 +1207,6 @@ class Worker {
       msg: 'Starting real crawl',
       job_id: job.id,
       domain,
-      crawlRunId,
       maxPages,
       maxDepth,
       organization_id: job.organizationId,
@@ -1360,9 +1216,12 @@ class Worker {
     // Validate domain not private
     await validateUrlForSSRF(`https://${domain}`);
 
-    if (crawlRunId) {
-      await query(`UPDATE crawl_runs SET status = 'running', started_at = NOW(), config = $2 WHERE id = $1`, [crawlRunId, JSON.stringify({ maxPages, maxDepth, concurrency })]);
+    if (!job.projectId) {
+      throw new JobError('Project missing for crawl — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
     }
+    // Project creation and schedules enqueue crawls without a run. Without one the
+    // pages, findings and score had nowhere to go while the customer was still billed.
+    const crawlRunId = await this.ensureCrawlRun(job, { maxPages, maxDepth, concurrency });
 
     const crawler = new Crawler({
       maxPages,
@@ -1393,144 +1252,106 @@ class Worker {
       duration_ms: crawlResult.stats.duration,
     }));
 
-    // Persist crawl run stats
-    if (crawlRunId) {
-      await query(
-        `UPDATE crawl_runs SET status = 'completed', total_pages = $2, crawled_pages = $3, failed_pages = $4, completed_at = NOW() WHERE id = $1`,
-        [crawlRunId, crawlResult.stats.totalDiscovered, crawlResult.stats.crawled, crawlResult.stats.failed]
-      );
-
-      // Persist pages — with idempotency via UNIQUE(crawl_run_id, normalized_url)
-      let savedPages = 0;
-      for (const page of crawlResult.pages) {
-        try {
-          await query(
-            `INSERT INTO crawl_pages (crawl_run_id, organization_id, project_id, url, normalized_url, status_code, content_type, title, meta_description, h1, word_count, response_time_ms, canonical_url, robots_directive, is_noindex, headers, links, images, structured_data)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-             ON CONFLICT (crawl_run_id, normalized_url) DO UPDATE SET
-               status_code = EXCLUDED.status_code,
-               title = EXCLUDED.title,
-               meta_description = EXCLUDED.meta_description,
-               h1 = EXCLUDED.h1,
-               word_count = EXCLUDED.word_count,
-               response_time_ms = EXCLUDED.response_time_ms
-            `,
-            [
-              crawlRunId,
-              job.organizationId,
-              job.projectId,
-              page.url,
-              page.normalizedUrl,
-              page.statusCode,
-              page.contentType,
-              page.title,
-              page.metaDescription,
-              page.h1,
-              page.wordCount,
-              page.responseTime,
-              page.canonical,
-              page.robotsMeta,
-              !page.isIndexable,
-              JSON.stringify(page.headers || {}),
-              JSON.stringify(page.links || []),
-              JSON.stringify(page.images || []),
-              JSON.stringify(page.structuredData || []),
-            ]
-          );
-          savedPages++;
-        } catch (e) {
-          console.warn(JSON.stringify({ level: 'warn', msg: 'Failed to save page', job_id: job.id, url: page.url, error: e instanceof Error ? e.message : String(e) }));
-        }
-      }
-
-      console.log(JSON.stringify({ level: 'info', msg: 'Pages persisted', job_id: job.id, savedPages }));
-
-      // Run real SEO audit
-      if (crawlResult.pages.length > 0) {
-        const findings = runAudit({
-          pages: crawlResult.pages,
-          domain,
-          sitemapUrls: crawlResult.sitemapUrls || [],
-          robotsTxt: crawlResult.robotsTxt,
-        });
-
-        console.log(JSON.stringify({ level: 'info', msg: 'Audit completed', job_id: job.id, findings: findings.length }));
-
-        // Persist findings — idempotent via no unique constraint, but we delete old findings for same crawl_run_id first for idempotency
-        await query(`DELETE FROM audit_findings WHERE crawl_run_id = $1`, [crawlRunId]);
-        await query(`DELETE FROM crawl_issues WHERE crawl_run_id = $1`, [crawlRunId]);
-
-        let savedFindings = 0;
-        for (const finding of findings) {
-          try {
-            await query(
-              `INSERT INTO audit_findings (organization_id, project_id, crawl_run_id, rule_id, severity, category, title, description, evidence, affected_urls, recommendation, status)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'open')`,
-              [
-                job.organizationId,
-                job.projectId,
-                crawlRunId,
-                finding.ruleId,
-                finding.severity,
-                finding.category,
-                finding.title,
-                finding.description,
-                JSON.stringify(finding.evidence || {}),
-                finding.affectedUrls || [],
-                finding.recommendation,
-              ]
-            );
-            // Also insert into crawl_issues for compatibility
-            await query(
-              `INSERT INTO crawl_issues (crawl_run_id, organization_id, project_id, rule_id, severity, category, url, title, description, recommendation, evidence, status)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'open')`,
-              [
-                crawlRunId,
-                job.organizationId,
-                job.projectId,
-                finding.ruleId,
-                finding.severity,
-                finding.category,
-                finding.affectedUrls[0] || `https://${domain}`,
-                finding.title,
-                finding.description,
-                finding.recommendation,
-                JSON.stringify(finding.evidence || {}),
-              ]
-            );
-            savedFindings++;
-          } catch (e) {
-            console.warn(JSON.stringify({ level: 'warn', msg: 'Failed to save finding', job_id: job.id, ruleId: finding.ruleId, error: e instanceof Error ? e.message : String(e) }));
-          }
-        }
-
-        console.log(JSON.stringify({ level: 'info', msg: 'Findings persisted', job_id: job.id, savedFindings }));
-
-        // Calculate and update SEO score — deterministic
-        const score = calculateSeoScore(findings);
-        await query(
-          `UPDATE projects SET seo_score = $2, last_crawl_at = NOW(), updated_at = NOW() WHERE id = $1`,
-          [job.projectId, score.overall]
-        );
-
-        console.log(JSON.stringify({ level: 'info', msg: 'SEO score updated', job_id: job.id, project_id: job.projectId, score: score.overall }));
-
-        return {
-          crawlRunId,
-          stats: crawlResult.stats,
-          pagesCrawled: crawlResult.pages.length,
-          findingsCount: findings.length,
-          seoScore: score.overall,
-          categories: score.categories,
-        };
-      }
+    if (crawlResult.pages.length === 0) {
+      const reason = crawlResult.errors[0]?.error || 'no page could be fetched';
+      if (reason.includes('SECURITY_ERROR')) throw new JobError(`Crawl blocked: ${reason}`, 'SECURITY_ERROR', false);
+      throw new JobError(`Crawl produced no pages: ${reason}`, 'RETRYABLE', true);
     }
+
+    const findings = runAudit({
+      pages: crawlResult.pages,
+      domain,
+      sitemapUrls: crawlResult.sitemapUrls || [],
+      robotsTxt: crawlResult.robotsTxt,
+    });
+    const score = calculateSeoScore(findings);
+
+    // All-or-nothing: a database error fails the job and leaves the previous results.
+    await withJobTransaction(async (client) => {
+      for (const page of crawlResult.pages) {
+        await client.query(
+          `INSERT INTO crawl_pages (crawl_run_id, organization_id, project_id, url, normalized_url, status_code, content_type, title, meta_description, h1, word_count, response_time_ms, canonical_url, robots_directive, is_noindex, headers, links, images, structured_data)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+           ON CONFLICT (crawl_run_id, normalized_url) DO UPDATE SET
+             status_code = EXCLUDED.status_code,
+             title = EXCLUDED.title,
+             meta_description = EXCLUDED.meta_description,
+             h1 = EXCLUDED.h1,
+             word_count = EXCLUDED.word_count,
+             response_time_ms = EXCLUDED.response_time_ms`,
+          [
+            crawlRunId, job.organizationId, job.projectId, page.url, page.normalizedUrl, page.statusCode, page.contentType,
+            page.title, page.metaDescription, page.h1, page.wordCount, page.responseTime, page.canonical, page.robotsMeta,
+            !page.isIndexable, JSON.stringify(page.headers || {}), JSON.stringify(page.links || []),
+            JSON.stringify(page.images || []), JSON.stringify(page.structuredData || []),
+          ],
+        );
+      }
+
+      // Rebuild this run's findings so a retry cannot duplicate them.
+      await client.query(`DELETE FROM audit_findings WHERE crawl_run_id = $1 AND organization_id = $2`, [crawlRunId, job.organizationId]);
+      await client.query(`DELETE FROM crawl_issues WHERE crawl_run_id = $1 AND organization_id = $2`, [crawlRunId, job.organizationId]);
+      for (const finding of findings) {
+        await client.query(
+          `INSERT INTO audit_findings (organization_id, project_id, crawl_run_id, rule_id, severity, category, title, description, evidence, affected_urls, recommendation, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'open')`,
+          [job.organizationId, job.projectId, crawlRunId, finding.ruleId, finding.severity, finding.category, finding.title,
+            finding.description, JSON.stringify(finding.evidence || {}), finding.affectedUrls || [], finding.recommendation],
+        );
+        await client.query(
+          `INSERT INTO crawl_issues (crawl_run_id, organization_id, project_id, rule_id, severity, category, url, title, description, recommendation, evidence, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'open')`,
+          [crawlRunId, job.organizationId, job.projectId, finding.ruleId, finding.severity, finding.category,
+            finding.affectedUrls[0] || `https://${domain}`, finding.title, finding.description, finding.recommendation,
+            JSON.stringify(finding.evidence || {})],
+        );
+      }
+
+      await client.query(
+        `UPDATE projects SET seo_score = $2, last_crawl_at = NOW(), updated_at = NOW() WHERE id = $1 AND organization_id = $3`,
+        [job.projectId, score.overall, job.organizationId],
+      );
+      await client.query(
+        `UPDATE crawl_runs SET status = 'completed', total_pages = $2, crawled_pages = $3, failed_pages = $4, completed_at = NOW() WHERE id = $1 AND organization_id = $5`,
+        [crawlRunId, crawlResult.stats.totalDiscovered, crawlResult.stats.crawled, crawlResult.stats.failed, job.organizationId],
+      );
+    });
+
+    console.log(JSON.stringify({ level: 'info', msg: 'Crawl persisted', job_id: job.id, pages: crawlResult.pages.length, findings: findings.length, score: score.overall }));
 
     return {
       crawlRunId,
       stats: crawlResult.stats,
       pagesCrawled: crawlResult.pages.length,
+      findingsCount: findings.length,
+      seoScore: score.overall,
+      categories: score.categories,
     };
+  }
+
+  /** Reuses the run named in the payload, or the one an earlier attempt of this job made. */
+  private async ensureCrawlRun(job: Job, options: { maxPages: number; maxDepth: number; concurrency: number }): Promise<string> {
+    const runConfig = JSON.stringify({ ...options, jobId: job.id });
+    return withJobTransaction(async (client) => {
+      let runId: string | undefined = job.payload?.crawlRunId;
+      if (!runId) {
+        const existing = await client.query(`SELECT id FROM crawl_runs WHERE organization_id = $1 AND config->>'jobId' = $2`, [job.organizationId, job.id]);
+        runId = existing.rows[0]?.id;
+      }
+      if (runId) {
+        const updated = await client.query(
+          `UPDATE crawl_runs SET status = 'running', started_at = NOW(), config = $2 WHERE id = $1 AND organization_id = $3 AND project_id = $4`,
+          [runId, runConfig, job.organizationId, job.projectId],
+        );
+        if (updated.rowCount === 0) throw new JobError('Crawl run not found for this project', 'VALIDATION_ERROR', false);
+        return runId;
+      }
+      const created = await client.query(
+        `INSERT INTO crawl_runs (organization_id, project_id, status, started_at, config) VALUES ($1, $2, 'running', NOW(), $3) RETURNING id`,
+        [job.organizationId, job.projectId, runConfig],
+      );
+      return created.rows[0].id as string;
+    });
   }
 
   private async handleAudit(job: Job, signal: AbortSignal): Promise<any> {
@@ -1553,8 +1374,8 @@ class Worker {
     // Fetch pages
     const pagesResult = await query(
       `SELECT url, normalized_url as "normalizedUrl", status_code as "statusCode", title, meta_description as "metaDescription", h1, word_count as "wordCount", response_time_ms as "responseTime", content_type as "contentType", canonical_url as "canonical", robots_directive as "robotsMeta", is_noindex as "isNoindex", headers, links, images, structured_data as "structuredData"
-       FROM crawl_pages WHERE crawl_run_id = $1`,
-      [crawlRunId]
+       FROM crawl_pages WHERE crawl_run_id = $1 AND organization_id = $2`,
+      [crawlRunId, job.organizationId]
     );
 
     if (pagesResult.rows.length === 0) {
@@ -1584,7 +1405,7 @@ class Worker {
       depth: 0,
     }));
 
-    const projectResult = await query(`SELECT normalized_domain FROM projects WHERE id = $1`, [job.projectId]);
+    const projectResult = await query(`SELECT normalized_domain FROM projects WHERE id = $1 AND organization_id = $2`, [job.projectId, job.organizationId]);
     const domain = projectResult.rows[0]?.normalized_domain || 'unknown';
 
     const findings = runAudit({
@@ -1594,18 +1415,20 @@ class Worker {
       robotsTxt: undefined,
     });
 
-    // Persist findings idempotently
-    await query(`DELETE FROM audit_findings WHERE crawl_run_id = $1`, [crawlRunId]);
-    for (const finding of findings) {
-      await query(
-        `INSERT INTO audit_findings (organization_id, project_id, crawl_run_id, rule_id, severity, category, title, description, evidence, affected_urls, recommendation, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'open')`,
-        [job.organizationId, job.projectId, crawlRunId, finding.ruleId, finding.severity, finding.category, finding.title, finding.description, JSON.stringify(finding.evidence), finding.affectedUrls, finding.recommendation]
-      );
-    }
-
     const score = calculateSeoScore(findings);
-    await query(`UPDATE projects SET seo_score = $2, updated_at = NOW() WHERE id = $1`, [job.projectId, score.overall]);
+
+    // Atomic rebuild, so a failed insert cannot leave the run with no findings.
+    await withJobTransaction(async (client) => {
+      await client.query(`DELETE FROM audit_findings WHERE crawl_run_id = $1 AND organization_id = $2`, [crawlRunId, job.organizationId]);
+      for (const finding of findings) {
+        await client.query(
+          `INSERT INTO audit_findings (organization_id, project_id, crawl_run_id, rule_id, severity, category, title, description, evidence, affected_urls, recommendation, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'open')`,
+          [job.organizationId, job.projectId, crawlRunId, finding.ruleId, finding.severity, finding.category, finding.title, finding.description, JSON.stringify(finding.evidence), finding.affectedUrls, finding.recommendation],
+        );
+      }
+      await client.query(`UPDATE projects SET seo_score = $2, updated_at = NOW() WHERE id = $1 AND organization_id = $3`, [job.projectId, score.overall, job.organizationId]);
+    });
 
     return { findingsCount: findings.length, seoScore: score.overall, crawlRunId };
   }
@@ -2065,7 +1888,7 @@ class Worker {
   }
 
   private async handleAiVisibilityCheck(job: Job, signal: AbortSignal): Promise<any> {
-    console.log(JSON.stringify({ level: 'info', msg: 'AI visibility check', job_id: job.id, prompt: job.payload?.prompt }));
+    console.log(JSON.stringify({ level: 'info', msg: 'AI visibility check', job_id: job.id, project_id: job.projectId }));
 
     // No AI provider → graceful PROVIDER_NOT_CONFIGURED, no fabricated visibility.
     const provider = pickAiProvider(createWorkerAiProviders(), job.payload?.provider);
@@ -2340,92 +2163,48 @@ class Worker {
 
     if (signal.aborted) throw new JobError('Alert processing aborted', 'TIMEOUT', true);
 
-    // Real alert logic: check for conditions
     const projectsResult = await query(`SELECT id, seo_score FROM projects WHERE organization_id = $1 AND deleted_at IS NULL`, [job.organizationId]);
-    
+
     let alertsCreated = 0;
     for (const project of projectsResult.rows) {
-      // Check for critical findings
       const criticalResult = await query(
-        `SELECT COUNT(*) as count FROM audit_findings WHERE project_id = $1 AND severity = 'critical' AND status = 'open'`,
-        [project.id]
+        `SELECT COUNT(*) AS count FROM audit_findings WHERE project_id = $1 AND organization_id = $2 AND severity = 'critical' AND status = 'open'`,
+        [project.id, job.organizationId],
       );
       const criticalCount = parseInt(criticalResult.rows[0].count, 10);
-      
-      if (criticalCount > 0) {
-        // Idempotent alert — UNIQUE(organization_id, project_id, rule, type, triggered_at) prevents duplicates
-        try {
-          await query(
-            `INSERT INTO alerts (organization_id, project_id, rule, type, message, title, severity, data, triggered_at)
-             VALUES ($1, $2, 'critical_issues', 'seo', $3, $4, 'high', $5, NOW())
-             ON CONFLICT (organization_id, project_id, rule, type, triggered_at) DO NOTHING`,
-            [
-              job.organizationId,
-              project.id,
-              `${criticalCount} critical SEO issues detected in project ${project.id}`,
-              `Critical SEO issues: ${criticalCount}`,
-              JSON.stringify({ criticalCount, projectId: project.id }),
-            ]
-          );
-          alertsCreated++;
-        } catch (e) {
-          // Ignore duplicate
-        }
-      }
+      if (criticalCount === 0) continue;
+
+      // Database errors propagate and fail the job; only a real insert is counted.
+      const created = await this.insertSystemAlert(job.organizationId, project.id, 'critical_issues', 'seo', 'high',
+        `Critical SEO issues: ${criticalCount}`,
+        `${criticalCount} critical SEO issues detected in project ${project.id}`,
+        { criticalCount, projectId: project.id });
+      if (created) alertsCreated++;
     }
 
     return { alertsCreated, projectsChecked: projectsResult.rows.length };
   }
 
-  private async handleDeadLetter(job: Job, error: string, errorCode: string) {
-    // alerts.project_id is a NOT NULL FK to projects — a project-less
-    // job (e.g. org-level ALERT_EVALUATION) has nowhere truthful to
-    // attach an alert, so it is logged and skipped instead of being
-    // pointed at a fabricated project id.
-    if (!job.projectId) {
-      console.log(JSON.stringify({ level: 'info', msg: 'Dead-letter alert skipped — job has no project', job_id: job.id, job_type: job.type }));
-      return;
-    }
-    try {
-      // alerts.rule is NOT NULL — the system rule for dead-lettered
-      // jobs is 'job_dead_letter' (type 'job_failed' is the alert
-      // category the schema's CHECK intends for these).
-      await query(
-        `INSERT INTO alerts (organization_id, project_id, rule, type, severity, title, message, data, triggered_at)
-         VALUES ($1, $2, 'job_dead_letter', 'job_failed', 'high', $3, $4, $5, NOW())
-         ON CONFLICT (organization_id, project_id, rule, type, triggered_at) DO NOTHING`,
-        [
-          job.organizationId,
-          job.projectId,
-          `Job failed: ${job.type}`,
-          `Job ${job.id} failed after ${job.attempts} attempts: ${error} (code: ${errorCode})`,
-          JSON.stringify({ jobId: job.id, jobType: job.type, error, errorCode, executionId: job.executionId }),
-        ]
-      );
-    } catch (e) {
-      console.error(JSON.stringify({ level: 'error', msg: 'Failed to create dead-letter alert', job_id: job.id, error: e instanceof Error ? e.message : String(e) }));
-    }
+  /** Returns true only when a row was inserted. An unread alert for the same rule suppresses it. */
+  private async insertSystemAlert(organizationId: string, projectId: string, rule: string, type: string, severity: string, title: string, message: string, data: Record<string, unknown>): Promise<boolean> {
+    const inserted = await query(
+      `INSERT INTO alerts (organization_id, project_id, rule, type, severity, title, message, data)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (organization_id, project_id, rule, type)
+         WHERE read = false AND rule IN ('critical_issues','low_seo_score','job_dead_letter')
+         DO NOTHING
+       RETURNING id`,
+      [organizationId, projectId, rule, type, severity, title, message, JSON.stringify(data)],
+    );
+    return inserted.rowCount === 1;
   }
 
   private async createAlertIfNeeded(job: Job, status: string, result: any) {
-    // For critical jobs, create completion alert
-    if (job.type === 'SITE_CRAWL' && status === 'completed' && result?.seoScore !== undefined) {
-      if (result.seoScore < 50) {
-        try {
-          await query(
-            `INSERT INTO alerts (organization_id, project_id, rule, type, message, title, severity, data, triggered_at)
-             VALUES ($1, $2, 'low_seo_score', 'seo', $3, $4, 'medium', $5, NOW())
-             ON CONFLICT (organization_id, project_id, rule, type, triggered_at) DO NOTHING`,
-            [
-              job.organizationId,
-              job.projectId,
-              `Low SEO score ${result.seoScore} for project ${job.projectId}`,
-              `Low SEO score: ${result.seoScore}`,
-              JSON.stringify({ seoScore: result.seoScore, jobId: job.id }),
-            ]
-          );
-        } catch {}
-      }
+    if (job.type === 'SITE_CRAWL' && status === 'completed' && job.projectId && result?.seoScore !== undefined && result.seoScore < 50) {
+      await this.insertSystemAlert(job.organizationId, job.projectId, 'low_seo_score', 'seo', 'medium',
+        `Low SEO score: ${result.seoScore}`,
+        `Low SEO score ${result.seoScore} for project ${job.projectId}`,
+        { seoScore: result.seoScore, jobId: job.id });
     }
   }
 

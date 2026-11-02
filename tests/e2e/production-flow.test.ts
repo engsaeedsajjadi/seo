@@ -90,9 +90,9 @@ async function e2eFlow() {
 
   const checks = [
     { name: 'Worker real crawl', file: 'apps/worker/src/index.ts', contains: 'class Crawler', notContains: 'sleep(2000)' },
-    { name: 'Atomic claiming', file: 'apps/worker/src/index.ts', contains: 'FOR UPDATE SKIP LOCKED' },
+    { name: 'Atomic claiming', file: 'drizzle/015_worker_lease_bound_tenancy.sql', contains: 'FOR UPDATE SKIP LOCKED' },
     { name: 'AbortController timeout', file: 'apps/worker/src/index.ts', contains: 'AbortController' },
-    { name: 'Credit idempotency', file: 'apps/worker/src/index.ts', contains: 'idempotency_key' },
+    { name: 'Credit idempotency', file: 'drizzle/015_worker_lease_bound_tenancy.sql', contains: 'idempotency_key' },
     { name: 'Credit FOR UPDATE', file: 'apps/api/src/repositories/credit.repository.ts', contains: 'FOR UPDATE' },
     { name: 'Job idempotency', file: 'apps/api/db/schema.sql', contains: 'idempotency_key' },
     { name: 'Migration strict', file: 'apps/api/src/db/migrate.ts', contains: 'STRICT', notContains: 'process.exit(0)' },
