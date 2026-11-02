@@ -4,7 +4,7 @@ import { api, type PlatformOrganization, type PlatformOverview } from '../lib/ap
 import { formatPersianNumber, toPersianDigits } from '../lib/persian';
 
 const PLANS = ['FREE', 'STARTER', 'PRO', 'AGENCY', 'ENTERPRISE'];
-const usd = (cents: number | string) => `$${formatPersianNumber(Math.round(Number(cents) / 100))}`;
+const toman = (value: number | string) => `${formatPersianNumber(Number(value))} تومان`;
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -48,7 +48,14 @@ export default function Platform() {
 
   if (denied) return <p className="text-slate-400">این بخش در دسترس نیست.</p>;
   if (!overview) return <p role="status" className="text-slate-400">در حال بارگذاری…</p>;
-  const mrr = overview.plans.reduce((sum, p) => sum + p.organizations * p.price_monthly_cents, 0);
+  const mrr = overview.plans.reduce((sum, p) => sum + p.organizations * Number(p.price_monthly_toman), 0);
+  function editPrice(plan: PlatformOverview['plans'][number]) {
+    const monthly = Number(window.prompt(`قیمت ماهانهٔ ${plan.plan} به تومان`, String(plan.price_monthly_toman)));
+    if (!Number.isInteger(monthly) || monthly < 0) return;
+    const annual = Number(window.prompt(`قیمت سالانهٔ ${plan.plan} به تومان`, String(plan.price_annual_toman)));
+    if (!Number.isInteger(annual) || annual < 0) return;
+    apply('قیمت پلن تغییر کرد.', api.setPlanPrice(plan.plan, monthly, annual));
+  }
 
   return (
     <div className="space-y-6">
@@ -60,12 +67,24 @@ export default function Platform() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat label="سازمان‌ها" value={formatPersianNumber(overview.organizations)} hint={`${formatPersianNumber(overview.suspended)} معلق`} />
         <Stat label="کاربران" value={formatPersianNumber(overview.users)} hint={`${formatPersianNumber(overview.new_users_30d)} جدید در ۳۰ روز`} />
-        <Stat label="درآمد این ماه" value={usd(overview.revenue_cents_month)} hint={`کل: ${usd(overview.revenue_cents_total)}`} />
-        <Stat label="درآمد ماهانهٔ برآوردی" value={usd(mrr)} hint="بر اساس پلن فعلی سازمان‌ها" />
+        <Stat label="درآمد این ماه" value={toman(overview.revenue_toman_month)} hint={`کل: ${toman(overview.revenue_toman_total)}`} />
+        <Stat label="درآمد ماهانهٔ برآوردی" value={toman(mrr)} hint="بر اساس پلن فعلی سازمان‌ها" />
         <Stat label="اعتبار مصرف‌شدهٔ این ماه" value={formatPersianNumber(Number(overview.credits_consumed_month))} />
         <Stat label="هزینهٔ AI این ماه" value={`$${toPersianDigits(Number(overview.ai_cost_usd_month).toFixed(2))}`} />
         <Stat label="پروژه‌ها" value={formatPersianNumber(overview.projects)} />
         <Stat label="کارهای ناموفق ۲۴ ساعت" value={formatPersianNumber(overview.jobsLast24h.dead_letter || 0)} hint={`${formatPersianNumber(overview.jobsLast24h.completed || 0)} موفق`} />
+      </div>
+
+      <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
+        <h2 className="text-sm font-semibold text-white mb-3">قیمت پلن‌ها</h2>
+        <ul className="divide-y divide-surface-3/40 text-sm text-slate-200">
+          {overview.plans.filter((p) => p.plan !== 'FREE').map((p) => (
+            <li key={p.plan} className="py-2 flex flex-wrap items-center justify-between gap-2">
+              <span>{p.plan}: {toman(p.price_monthly_toman)} ماهانه، {toman(p.price_annual_toman)} سالانه ({formatPersianNumber(p.organizations)} سازمان)</span>
+              <button onClick={() => editPrice(p)} className="px-3 py-1 rounded bg-surface-3/40 text-xs hover:bg-surface-3">ویرایش</button>
+            </li>
+          ))}
+        </ul>
       </div>
 
       <form onSubmit={submitSearch} className="flex gap-2">
@@ -90,7 +109,7 @@ export default function Platform() {
                   <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {formatPersianNumber(org.members)} عضو</span>
                   <span>{formatPersianNumber(org.projects)} پروژه</span>
                   <span className="flex items-center gap-1"><Coins className="w-3 h-3" /> {formatPersianNumber(org.balance)} اعتبار</span>
-                  <span>درآمد: {usd(org.revenueCents)}</span>
+                  <span>درآمد: {toman(org.revenueToman)}</span>
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">

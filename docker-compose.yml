@@ -79,6 +79,8 @@ services:
       NODE_ENV: production
       PORT: 3001
       DATABASE_URL: postgresql://rankforge_api_system_login:${API_DATABASE_PASSWORD:?Set API_DATABASE_PASSWORD in .env before starting the stack}@postgres:5432/${POSTGRES_DB:-rankforge}
+      ZARINPAL_MERCHANT_ID: ${ZARINPAL_MERCHANT_ID:-}
+      ZARINPAL_SANDBOX: ${ZARINPAL_SANDBOX:-false}
       PLATFORM_ADMIN_EMAILS: ${PLATFORM_ADMIN_EMAILS:-}
       METRICS_TOKEN: ${METRICS_TOKEN:-}
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}

@@ -16,6 +16,7 @@ import { config } from './config/index.js';
 import { query, runAsSystem, transaction } from './db/client.js';
 import { emailVerificationService, verificationRequired } from './services/email-verification.service.js';
 import { isPlatformAdmin, platformService } from './services/platform.service.js';
+import { paymentService } from './services/payment.service.js';
 import { passwordRecoveryService } from './services/password-recovery.service.js';
 import { teamService } from './services/team.service.js';
 import { sessionService } from './services/session.service.js';
@@ -1081,6 +1082,8 @@ export function createApp() {
           description: plan.description,
           priceMonthly: plan.priceMonthlyCents / 100,
           priceAnnual: plan.priceAnnualCents / 100,
+          priceMonthlyToman: Number(plan.priceMonthlyToman),
+          priceAnnualToman: Number(plan.priceAnnualToman),
           limits: plan.limits,
           features: plan.features,
           monthlyCredits: plan.monthlyCredits,
@@ -1102,6 +1105,7 @@ export function createApp() {
           renewalDate: org?.subscriptionCurrentPeriodEnd || null,
           hasStripeCustomer: !!org?.stripeCustomerId,
           stripeConfigured: isStripeConfigured(),
+          paymentsConfigured: paymentService.isConfigured(),
         },
       });
     } catch (error) {
@@ -1116,6 +1120,10 @@ export function createApp() {
         interval: z.enum(['month', 'year']).default('month'),
       });
       const { planId, interval } = schema.parse(req.body);
+      if (paymentService.isConfigured()) {
+        const started = await paymentService.start({ organizationId: req.organizationId!, userId: req.userId!, email: req.user?.email, planId, interval });
+        return res.json({ success: true, data: started });
+      }
       const result = await billingService.createCheckoutSession({
         organizationId: req.organizationId!,
         planId,
@@ -1124,6 +1132,41 @@ export function createApp() {
       res.json({ success: true, data: result });
     } catch (error) {
       next(error);
+    }
+  });
+
+  app.get('/api/v1/billing/quote', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const { planId, interval } = z.object({ planId: z.enum(['STARTER', 'PRO', 'AGENCY', 'ENTERPRISE']), interval: z.enum(['month', 'year']) }).parse(req.query);
+      res.json({ success: true, data: await paymentService.quote(req.organizationId!, planId, interval) });
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/billing/payments', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const payments = await query(
+        `SELECT id, plan_id AS "planId", billing_interval AS interval, amount_toman AS "amountToman", status, ref_id AS "refId",
+                period_end AS "periodEnd", created_at AS "createdAt", verified_at AS "verifiedAt"
+         FROM payments WHERE organization_id = $1 AND status <> 'creating' ORDER BY created_at DESC LIMIT 50`,
+        [req.organizationId!],
+      );
+      res.json({ success: true, data: payments.rows });
+    } catch (error) { next(error); }
+  });
+
+  // Public: the gateway sends the customer's browser here. Nothing is trusted but its authority.
+  app.get('/api/v1/billing/zarinpal/callback', async (req, res) => {
+    const app_url = config.appUrl.replace(/\/$/, '');
+    try {
+      const authority = String(req.query.Authority || '');
+      const outcome = /^[A-Za-z0-9_-]{1,64}$/.test(authority)
+        ? await paymentService.handleCallback(authority, String(req.query.Status || ''))
+        : { result: 'failed' as const };
+      const ref = 'refId' in outcome && outcome.refId ? `&ref=${encodeURIComponent(outcome.refId)}` : '';
+      res.redirect(303, `${app_url}/#/billing?payment=${outcome.result}${ref}`);
+    } catch (error) {
+      console.error(JSON.stringify({ level: 'error', msg: 'Payment callback failed', error: error instanceof Error ? error.message : String(error) }));
+      res.redirect(303, `${app_url}/#/billing?payment=pending`);
     }
   });
 
@@ -2546,6 +2589,13 @@ export function createApp() {
     try {
       const changes = z.object({ plan: z.enum(['FREE', 'STARTER', 'PRO', 'AGENCY', 'ENTERPRISE']).optional(), suspended: z.boolean().optional() }).parse(req.body);
       res.json({ success: true, data: await platformService.update(req.params.id, req.userId!, changes) });
+    } catch (error) { next(error); }
+  });
+
+  app.patch('/api/v1/platform/plans/:plan', authMiddleware, requirePlatformAdmin, async (req: AuthRequest, res, next) => {
+    try {
+      const body = z.object({ priceMonthlyToman: z.number().int().min(0).max(100000000000), priceAnnualToman: z.number().int().min(0).max(1000000000000) }).parse(req.body);
+      res.json({ success: true, data: await platformService.setPlanPrice(req.params.plan, req.userId!, body.priceMonthlyToman, body.priceAnnualToman) });
     } catch (error) { next(error); }
   });
 

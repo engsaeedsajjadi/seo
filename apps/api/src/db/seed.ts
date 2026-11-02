@@ -44,6 +44,12 @@ async function seed() {
         is_active = EXCLUDED.is_active,
         monthly_credits = EXCLUDED.monthly_credits
     `);
+
+    // Starting prices only: an operator's later change in the platform panel is never overwritten.
+    for (const [id, monthly, annual] of [['STARTER', 490000, 4900000], ['PRO', 1290000, 12900000], ['AGENCY', 3290000, 32900000], ['ENTERPRISE', 7900000, 79000000]] as const) {
+      await query('UPDATE plans SET price_monthly_toman = $2, price_annual_toman = $3 WHERE id = $1 AND price_monthly_toman = 0', [id, monthly, annual]);
+    }
+
     console.log('✅ Plans seeded');
 
     // Seed audit rules

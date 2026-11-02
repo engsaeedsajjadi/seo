@@ -61,6 +61,16 @@ for (const [label, viewport] of [['desktop', { width: 1366, height: 850 }], ['ph
     await page.getByRole('button', { name: 'حذف' }).first().click();
     await expect(page.getByText('هنوز زمان‌بندی‌ای ندارید.')).toBeVisible();
 
+    // Prices are in toman, and the page explains each result of returning from the gateway.
+    await page.goto(`${WEB}/#/billing`);
+    await expect(page.locator('main').getByText('۱٬۲۹۰٬۰۰۰', { exact: false }).first()).toBeVisible();
+    await page.getByRole('button', { name: 'سالانه (۲ ماه رایگان)' }).click();
+    await expect(page.locator('main').getByText('۱۲٬۹۰۰٬۰۰۰', { exact: false }).first()).toBeVisible();
+    expect(await page.locator('main').innerText()).not.toMatch(/Stripe|\$\d/);
+    await page.goto(`${WEB}/#/billing?payment=paid&ref=123456`);
+    await page.reload();
+    await expect(page.getByText('پرداخت موفق بود', { exact: false })).toBeVisible();
+
     await page.goto(`${WEB}/#/projects`);
     await page.waitForTimeout(500);
     expect(errors).toEqual([]);

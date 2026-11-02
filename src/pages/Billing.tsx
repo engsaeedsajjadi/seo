@@ -21,6 +21,19 @@ interface SubscriptionState {
   renewalDate: string | null;
   hasStripeCustomer: boolean;
   stripeConfigured: boolean;
+  paymentsConfigured: boolean;
+}
+
+interface PlanPrice { id: string; priceMonthlyToman: number; priceAnnualToman: number; monthlyCredits?: number; limits?: Record<string, number> }
+interface PaymentRow { id: string; planId: string; interval: string; amountToman: string | number; status: string; refId: string | null; createdAt: string; periodEnd: string | null }
+
+const PAYMENT_STATUS: Record<string, string> = { paid: 'موفق', pending: 'در انتظار تأیید', failed: 'ناموفق' };
+const SUBSCRIPTION_STATUS: Record<string, string> = { active: 'فعال', past_due: 'پایان‌یافته، در مهلت تمدید', expired: 'منقضی', canceled: 'لغوشده' };
+
+function readPaymentResult(): { result: string; ref: string | null } | null {
+  const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+  const result = params.get('payment');
+  return result ? { result, ref: params.get('ref') } : null;
 }
 
 export default function Billing() {
@@ -32,7 +45,11 @@ export default function Billing() {
   const [subscription, setSubscription] = useState<SubscriptionState | null>(null);
   const [checkoutTier, setCheckoutTier] = useState<string | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
-  const stripeConfigured = providerStatus.stripe === 'connected';
+  const [prices, setPrices] = useState<PlanPrice[]>([]);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [interval, setBillingInterval] = useState<'month' | 'year'>('month');
+  const [paymentResult] = useState(readPaymentResult);
+  const stripeConfigured = !!subscription?.paymentsConfigured || providerStatus.stripe === 'connected';
 
   useEffect(() => {
     async function load() {
@@ -48,6 +65,14 @@ export default function Billing() {
         const resSub = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/billing/subscription`, { credentials: 'include' });
         const jsonSub = await resSub.json();
         if (jsonSub.success) setSubscription(jsonSub.data);
+
+        const resPlans = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/billing/plans`);
+        const jsonPlans = await resPlans.json();
+        if (jsonPlans.success) setPrices(jsonPlans.data);
+
+        const resPayments = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/billing/payments`);
+        const jsonPayments = await resPayments.json();
+        if (jsonPayments.success) setPayments(jsonPayments.data);
       } catch (e) {
         console.error(e);
       } finally {
@@ -67,14 +92,14 @@ export default function Billing() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId: tier, interval: 'month' }),
+        body: JSON.stringify({ planId: tier, interval }),
       });
       const json = await res.json();
       if (json.success && json.data?.url) {
         window.location.href = json.data.url;
         return;
       }
-      setBillingError(json.error?.message || 'خطا در شروع پرداخت');
+      setBillingError(res.status === 409 ? 'پلن پایین‌تر را بعد از پایان دورهٔ فعلی می‌توانید بخرید.' : 'پرداخت شروع نشد. لطفاً دوباره تلاش کنید.');
     } catch (e) {
       setBillingError('خطا در اتصال به سرور پرداخت');
     } finally {
@@ -102,13 +127,34 @@ export default function Billing() {
     }
   }
 
-  const plans: { tier: PlanTier; price: string; priceToman: string; features: string[]; popular?: boolean }[] = [
-    { tier: 'FREE', price: '$0', priceToman: '۰ تومان', features: [`${toPersianDigits(1)} پروژه — محدودیت واقعی`, `${toPersianDigits(50)} کلمه کلیدی — محدودیت واقعی`, `${toPersianDigits(100)} صفحه خزش شده — واقعی`, `${toPersianDigits(30)} بررسی رتبه — واقعی`, `${toPersianDigits(5)} عملیات هوش مصنوعی — هزینه واقعی`, `${toPersianDigits(2)} گزارش — واقعی`, `${toPersianDigits(1)} کاربر — واقعی`] },
-    { tier: 'STARTER', price: '$49', priceToman: '۲٬۴۵۰٬۰۰۰ تومان', features: [`${toPersianDigits(3)} پروژه — واقعی`, `${toPersianDigits(500)} کلمه کلیدی — واقعی`, `${toPersianDigits(1000)} صفحه خزش — واقعی`, `${toPersianDigits(300)} بررسی رتبه — واقعی`, `${toPersianDigits(50)} عملیات هوش مصنوعی — واقعی`, `${toPersianDigits(10)} گزارش — واقعی`, `${toPersianDigits(3)} کاربر — واقعی`] },
-    { tier: 'PRO', price: '$149', priceToman: '۷٬۴۵۰٬۰۰۰ تومان', features: [`${toPersianDigits(10)} پروژه — واقعی`, `${toPersianDigits(5000)} کلمه کلیدی — واقعی`, `${toPersianDigits(10000)} صفحه خزش — واقعی`, `${toPersianDigits(3000)} بررسی رتبه — واقعی`, `${toPersianDigits(500)} عملیات هوش مصنوعی — واقعی`, `${toPersianDigits(50)} گزارش — واقعی`, `${toPersianDigits(10)} کاربر — واقعی`, 'دسترسی API — واقعی'], popular: true },
-    { tier: 'AGENCY', price: '$399', priceToman: '۱۹٬۹۵۰٬۰۰۰ تومان', features: [`${toPersianDigits(50)} پروژه — واقعی`, `${toPersianDigits(25000)} کلمه کلیدی — واقعی`, `${toPersianDigits(50000)} صفحه خزش — واقعی`, `${toPersianDigits(15000)} بررسی رتبه — واقعی`, `${toPersianDigits(2500)} عملیات هوش مصنوعی — واقعی`, `${toPersianDigits(200)} گزارش — واقعی`, `${toPersianDigits(50)} کاربر — واقعی`, 'پورتال مشتری — واقعی ایزوله', 'وایت‌لیبل — واقعی'] },
-    { tier: 'ENTERPRISE', price: 'سفارشی', priceToman: 'قیمت سفارشی', features: ['همه چیز نامحدود — واقعی', 'یکپارچه‌سازی سفارشی — واقعی', 'زیرساخت اختصاصی — واقعی', 'تضمین SLA — واقعی'] },
-  ];
+  function priceLabel(tier: string): string {
+    if (tier === 'FREE') return 'رایگان';
+    const price = prices.find((p) => p.id === tier);
+    const amount = price ? Number(interval === 'year' ? price.priceAnnualToman : price.priceMonthlyToman) : 0;
+    return amount > 0 ? formatMoney(amount, { currency: 'toman' }) : '—';
+  }
+  const renewalDate = subscription?.renewalDate ? new Date(subscription.renewalDate) : null;
+
+  // Limits come from the same plan rows the server enforces, so the page cannot promise more.
+  const TIERS: PlanTier[] = ['FREE', 'STARTER', 'PRO', 'AGENCY', 'ENTERPRISE'];
+  const plans = TIERS.map((tier) => {
+    const limits = prices.find((p) => p.id === tier)?.limits || {};
+    const line = (value: number | undefined, label: string) => (value == null ? null : `${value < 0 ? 'نامحدود' : formatPersianNumber(value)} ${label}`);
+    const credits = prices.find((p) => p.id === tier)?.monthlyCredits;
+    return {
+      tier,
+      popular: tier === 'PRO',
+      features: [
+        line(limits.projects, 'پروژه'),
+        line(limits.keywords, 'کلمهٔ کلیدی'),
+        line(limits.crawledPages, 'صفحهٔ خزش در ماه'),
+        line(limits.rankChecks, 'بررسی رتبه در ماه'),
+        line(limits.aiOperations, 'عملیات هوش مصنوعی در ماه'),
+        line(limits.users, 'کاربر'),
+        credits ? `${formatPersianNumber(credits)} اعتبار در ماه` : null,
+      ].filter((v): v is string => !!v),
+    };
+  });
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -119,13 +165,27 @@ export default function Billing() {
         </div>
       </div>
 
+      {paymentResult && (
+        <div role="status" className={`rounded-xl p-4 border text-sm text-white ${paymentResult.result === 'paid' ? 'bg-accent-green/10 border-accent-green/40' : paymentResult.result === 'pending' ? 'bg-accent-yellow/10 border-accent-yellow/40' : 'bg-accent-red/10 border-accent-red/40'}`}>
+          {paymentResult.result === 'paid' && <>پرداخت موفق بود و پلن شما فعال شد.{paymentResult.ref && <> کد پیگیری: <span dir="ltr">{paymentResult.ref}</span></>}</>}
+          {paymentResult.result === 'pending' && 'نتیجهٔ پرداخت هنوز مشخص نیست. اگر مبلغ کسر شده باشد، تا چند دقیقهٔ دیگر پلن شما خودکار فعال می‌شود.'}
+          {paymentResult.result === 'failed' && 'پرداخت انجام نشد. اگر مبلغی کسر شده باشد، طبق قوانین بانکی به حساب شما برمی‌گردد.'}
+        </div>
+      )}
+
+      {renewalDate && subscription?.status === 'past_due' && (
+        <div role="alert" className="rounded-xl p-4 border bg-accent-red/10 border-accent-red/40 text-sm text-white">
+          دورهٔ اشتراک شما تمام شده است. برای از دست ندادن امکانات پلن، در ۳ روز آینده آن را تمدید کنید.
+        </div>
+      )}
+
       {/* Stripe Status — Persian */}
       {!stripeConfigured && (
         <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-4 flex items-center gap-3">
           <AlertCircle className="w-5 h-5 text-accent-yellow flex-shrink-0" />
           <div className="flex-1">
             <p className="text-sm text-white font-medium font-vazirmatn-bold">پرداخت آنلاین هنوز فعال نشده است</p>
-            <p className="text-xs text-slate-400 font-vazirmatn-light">فعلاً امکان خرید اشتراک وجود ندارد. برای ارتقای پلن با پشتیبانی تماس بگیرید.</p>
+            <p className="text-xs text-slate-400 font-vazirmatn-light">فعلاً امکان خرید آنلاین وجود ندارد. برای ارتقای پلن با پشتیبانی تماس بگیرید.</p>
           </div>
         </div>
       )}
@@ -137,11 +197,11 @@ export default function Billing() {
             <div>
               <p className="text-xs font-medium text-brand-300 uppercase tracking-wider font-vazirmatn-medium">پلن فعلی</p>
               <h2 className="text-2xl font-bold text-white mt-1 font-vazirmatn-bold">{getPlanName(currentPlan)} — واقعی</h2>
-              <p className="text-xs text-slate-400 mt-1 font-vazirmatn-light">محدودیت‌ها: {toPersianDigits(PLAN_LIMITS[currentPlan].projects)} پروژه، {toPersianDigits(PLAN_LIMITS[currentPlan].keywords)} کلمه کلیدی — اجرای واقعی در projectRepository.countByOrganization + keywordRepository.countByOrganization</p>
+              <p hidden className="text-xs text-slate-400 mt-1 font-vazirmatn-light">محدودیت‌ها: {toPersianDigits(PLAN_LIMITS[currentPlan].projects)} پروژه، {toPersianDigits(PLAN_LIMITS[currentPlan].keywords)} کلمه کلیدی — اجرای واقعی در projectRepository.countByOrganization + keywordRepository.countByOrganization</p>
               {subscription && (
                 <p className="text-xs text-slate-400 mt-1 font-vazirmatn-light">
-                  وضعیت اشتراک: {subscription.status}
-                  {subscription.renewalDate && <> — تمدید بعدی: {formatPersianDate(new Date(subscription.renewalDate), { format: 'medium' })}</>}
+                  وضعیت اشتراک: {SUBSCRIPTION_STATUS[subscription.status] || subscription.status}
+                  {subscription.renewalDate && <> — پایان دوره: {formatPersianDate(new Date(subscription.renewalDate), { format: 'medium' })}</>}
                 </p>
               )}
               {subscription?.hasStripeCustomer && (
@@ -160,7 +220,13 @@ export default function Billing() {
 
       {/* Plans — Persian 5 */}
       <div>
-        <h3 className="text-sm font-semibold text-white mb-4 font-vazirmatn-bold">پلن‌های موجود</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h3 className="text-sm font-semibold text-white font-vazirmatn-bold">پلن‌های موجود</h3>
+          <div role="group" aria-label="دورهٔ پرداخت" className="flex rounded-lg bg-surface-2 border border-surface-3/50 p-0.5 text-xs">
+            <button onClick={() => setBillingInterval('month')} aria-pressed={interval === 'month'} className={`px-3 py-1 rounded ${interval === 'month' ? 'bg-brand-600 text-white' : 'text-slate-300'}`}>ماهانه</button>
+            <button onClick={() => setBillingInterval('year')} aria-pressed={interval === 'year'} className={`px-3 py-1 rounded ${interval === 'year' ? 'bg-brand-600 text-white' : 'text-slate-300'}`}>سالانه (۲ ماه رایگان)</button>
+          </div>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           {plans.map(plan => (
             <div
@@ -175,9 +241,8 @@ export default function Billing() {
               )}
               <h4 className="text-lg font-bold text-white mt-1 font-vazirmatn-bold">{getPlanName(plan.tier)} — واقعی</h4>
               <div className="mt-3">
-                <span className="text-2xl font-bold text-white persian-numbers font-vazirmatn-bold">{plan.priceToman}</span>
-                <span className="text-xs text-slate-400 font-vazirmatn-light">/ماه</span>
-                <div className="text-[10px] text-slate-500 ltr-content">{plan.price}/month</div>
+                <span className="text-xl font-bold text-white persian-numbers font-vazirmatn-bold">{priceLabel(plan.tier)}</span>
+                {plan.tier !== 'FREE' && <span className="text-xs text-slate-400 font-vazirmatn-light">{interval === 'year' ? '/سال' : '/ماه'}</span>}
               </div>
               <ul className="mt-4 space-y-2">
                 {plan.features.map((feature, i) => (
@@ -189,15 +254,15 @@ export default function Billing() {
               </ul>
               <button
                 aria-label={plan.tier === currentPlan ? 'پلن فعلی' : 'ارتقا'}
-                onClick={() => { if (plan.tier !== currentPlan && stripeConfigured) startCheckout(plan.tier); }}
+                onClick={() => { if ((plan.tier !== currentPlan || renewalDate) && plan.tier !== 'FREE' && stripeConfigured) startCheckout(plan.tier); }}
                 className={`mt-4 w-full px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1 font-vazirmatn-medium ${
                   plan.tier === currentPlan
                     ? 'bg-brand-600/20 text-brand-400 cursor-default'
                     : stripeConfigured ? 'bg-brand-600 hover:bg-brand-700 text-white' : 'bg-surface-3/50 text-slate-500 cursor-not-allowed'
                 }`}
-                disabled={plan.tier === currentPlan || !stripeConfigured || checkoutTier !== null}
+                disabled={(plan.tier === currentPlan && !renewalDate) || plan.tier === 'FREE' || !stripeConfigured || checkoutTier !== null}
               >
-                {plan.tier === currentPlan ? 'پلن فعلی — واقعی' : !stripeConfigured ? 'نیاز به Stripe — واقعی ۵۰۳' : checkoutTier === plan.tier ? 'در حال انتقال به صفحهٔ پرداخت…' : 'ارتقای پلن'}
+                {plan.tier === currentPlan ? (renewalDate ? 'تمدید' : 'پلن فعلی') : !stripeConfigured ? 'نیاز به Stripe — واقعی ۵۰۳' : checkoutTier === plan.tier ? 'در حال انتقال به صفحهٔ پرداخت…' : 'ارتقای پلن'}
                 {plan.tier !== currentPlan && stripeConfigured && <ArrowRight className="w-3 h-3 rotate-180" />}
               </button>
             </div>
@@ -238,6 +303,28 @@ export default function Billing() {
         )}
         <p className="text-[11px] text-slate-500 mt-3 font-vazirmatn-light"></p>
       </div>
+
+      {payments.length > 0 && (
+        <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-white mb-3 font-vazirmatn-bold">تاریخچهٔ پرداخت</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-slate-300">
+              <thead><tr className="text-slate-500 text-right"><th className="py-2 font-medium">تاریخ</th><th className="font-medium">پلن</th><th className="font-medium">مبلغ</th><th className="font-medium">وضعیت</th><th className="font-medium">کد پیگیری</th></tr></thead>
+              <tbody>
+                {payments.map((p) => (
+                  <tr key={p.id} className="border-t border-surface-3/40">
+                    <td className="py-2">{formatPersianDate(new Date(p.createdAt))}</td>
+                    <td>{getPlanName(p.planId as PlanTier)} ({p.interval === 'year' ? 'سالانه' : 'ماهانه'})</td>
+                    <td>{formatMoney(Number(p.amountToman), { currency: 'toman' })}</td>
+                    <td>{PAYMENT_STATUS[p.status] || p.status}</td>
+                    <td dir="ltr" className="text-right">{p.refId || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Persian currency info */}
       <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">

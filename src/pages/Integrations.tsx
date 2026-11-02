@@ -45,7 +45,7 @@ export default function Integrations() {
     { key: 'anthropic', name: 'Anthropic', description: 'تولید و تحلیل پیشرفتهٔ محتوا', category: 'ai', status: state.providerStatus.anthropic, envVars: ['ANTHROPIC_API_KEY'], icon: Bot },
     { key: 'googleSearchConsole', name: 'Google Search Console', description: 'دادهٔ عملکرد جست‌وجوی ارگانیک', category: 'analytics', status: state.providerStatus.googleSearchConsole, envVars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], icon: Search },
     { key: 'googleAnalytics', name: 'Google Analytics 4', description: 'دادهٔ ترافیک، نشست و تبدیل', category: 'analytics', status: state.providerStatus.googleAnalytics, envVars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], icon: Database },
-    { key: 'stripe', name: 'Stripe', description: 'پرداخت و مدیریت اشتراک', category: 'payments', status: state.providerStatus.stripe, envVars: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'], icon: CreditCard },
+    { key: 'stripe', name: 'درگاه پرداخت', description: 'پرداخت و مدیریت اشتراک', category: 'payments', status: state.providerStatus.stripe, envVars: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'], icon: CreditCard },
     { key: 's3', name: 'S3 Storage', description: 'ذخیره‌سازی گزارش‌ها و خروجی‌ها', category: 'storage', status: state.providerStatus.s3, envVars: ['S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET'], icon: HardDrive },
   ];
 

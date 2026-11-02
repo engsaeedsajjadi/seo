@@ -61,12 +61,14 @@ export interface PlanRow {
   stripePriceIdMonthly: string | null;
   stripePriceIdAnnual: string | null;
   monthlyCredits: number;
+  priceMonthlyToman: string | number;
+  priceAnnualToman: string | number;
 }
 
 const PLAN_SELECT = `id, name, description, price_monthly_cents AS "priceMonthlyCents",
   price_annual_cents AS "priceAnnualCents", limits, features, is_active AS "isActive",
   stripe_price_id_monthly AS "stripePriceIdMonthly", stripe_price_id_annual AS "stripePriceIdAnnual",
-  monthly_credits AS "monthlyCredits" FROM plans`;
+  monthly_credits AS "monthlyCredits", price_monthly_toman AS "priceMonthlyToman", price_annual_toman AS "priceAnnualToman" FROM plans`;
 
 export const billingService = {
   async listPlans(): Promise<PlanRow[]> {

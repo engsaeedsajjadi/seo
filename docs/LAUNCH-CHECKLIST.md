@@ -8,12 +8,13 @@ What must be true before taking payment. "Verified" means a test in this reposit
 - [ ] A TLS reverse proxy serves the public domain. Set `TRUST_PROXY_HOPS` to the number of proxies in front of the API.
 - [ ] Network rules stop the Worker reaching private ranges and cloud metadata (closes the DNS rebinding gap).
 - [ ] Real keys tested in staging: DataForSEO, Google OAuth, an AI provider, PageSpeed, SMTP.
-- [ ] Payment gateway decided and tested with a real card. Stripe does not serve Iran.
+- [ ] Zarinpal merchant approved for the production domain, and a real payment and refund tested with `ZARINPAL_MERCHANT_ID`. Sandbox first with `ZARINPAL_SANDBOX=true`.
+- [ ] Toman prices reviewed in the platform panel. The seeded prices are placeholders.
+- [ ] Provider access from the production network checked: OpenAI, Google and DataForSEO may refuse Iranian addresses and cards.
 - [ ] `PLATFORM_ADMIN_EMAILS`, `METRICS_TOKEN`, `WORKER_DATABASE_PASSWORD` and `API_DATABASE_PASSWORD` set to real values.
 - [ ] Daily `scripts/ops/backup.sh` scheduled, copied off the host, and one restore rehearsed.
 - [ ] Alerts on `rankforge_queue_oldest_job_age_seconds` and on `rankforge_jobs{status="dead_letter"}`.
 - [ ] Terms of service, privacy policy and a support channel published.
-- [ ] Any unpublished migrations 005-014 merged with this branch.
 
 ## Verified by tests
 

@@ -16,12 +16,12 @@ export const platformService = {
         (SELECT COUNT(*)::int FROM users WHERE deleted_at IS NULL) AS users,
         (SELECT COUNT(*)::int FROM users WHERE deleted_at IS NULL AND created_at >= NOW() - INTERVAL '30 days') AS new_users_30d,
         (SELECT COUNT(*)::int FROM projects WHERE deleted_at IS NULL) AS projects,
-        (SELECT COALESCE(SUM(amount_cents), 0)::bigint FROM invoices WHERE status = 'paid') AS revenue_cents_total,
-        (SELECT COALESCE(SUM(amount_cents), 0)::bigint FROM invoices WHERE status = 'paid' AND paid_at >= date_trunc('month', NOW())) AS revenue_cents_month,
+        (SELECT COALESCE(SUM(amount_toman), 0)::bigint FROM payments WHERE status = 'paid') AS revenue_toman_total,
+        (SELECT COALESCE(SUM(amount_toman), 0)::bigint FROM payments WHERE status = 'paid' AND verified_at >= date_trunc('month', NOW())) AS revenue_toman_month,
         (SELECT COALESCE(SUM(-amount), 0)::bigint FROM credit_transactions WHERE type = 'consumption' AND created_at >= date_trunc('month', NOW())) AS credits_consumed_month,
         (SELECT COALESCE(SUM(estimated_cost_usd), 0)::float FROM ai_usage WHERE created_at >= date_trunc('month', NOW())) AS ai_cost_usd_month`);
-      const plans = await query(`SELECT o.plan, COUNT(*)::int AS organizations, COALESCE(p.price_monthly_cents, 0)::int AS price_monthly_cents
-        FROM organizations o LEFT JOIN plans p ON p.id = o.plan WHERE o.deleted_at IS NULL GROUP BY o.plan, p.price_monthly_cents ORDER BY price_monthly_cents`);
+      const plans = await query(`SELECT p.id AS plan, COUNT(o.id)::int AS organizations, p.price_monthly_toman::bigint AS price_monthly_toman, p.price_annual_toman::bigint AS price_annual_toman
+        FROM plans p LEFT JOIN organizations o ON o.plan = p.id AND o.deleted_at IS NULL GROUP BY p.id, p.price_monthly_toman, p.price_annual_toman ORDER BY p.price_monthly_toman`);
       const jobs = await query(`SELECT status, COUNT(*)::int AS count FROM jobs WHERE created_at >= NOW() - INTERVAL '24 hours' GROUP BY status`);
       return {
         ...totals.rows[0],
@@ -37,7 +37,7 @@ export const platformService = {
           u.email AS "ownerEmail", COALESCE(w.balance, 0) AS balance,
           (SELECT COUNT(*)::int FROM organization_members m WHERE m.organization_id = o.id) AS members,
           (SELECT COUNT(*)::int FROM projects p WHERE p.organization_id = o.id AND p.deleted_at IS NULL) AS projects,
-          (SELECT COALESCE(SUM(amount_cents), 0)::bigint FROM invoices i WHERE i.organization_id = o.id AND i.status = 'paid') AS "revenueCents"
+          o.subscription_current_period_end AS "periodEnd", (SELECT COALESCE(SUM(amount_toman), 0)::bigint FROM payments i WHERE i.organization_id = o.id AND i.status = 'paid') AS "revenueToman"
         FROM organizations o
         JOIN users u ON u.id = o.owner_id
         LEFT JOIN credit_wallets w ON w.organization_id = o.id
@@ -58,6 +58,15 @@ export const platformService = {
       await query(`INSERT INTO audit_logs (organization_id, user_id, action, resource_type, resource_id, details) VALUES ($1, $2, 'platform.organization_update', 'organization', $1, $3)`,
         [organizationId, actorId, JSON.stringify(changes)]);
       return updated.rows[0];
+    }));
+  },
+
+  setPlanPrice(planId: string, actorId: string, monthly: number, annual: number) {
+    return runAsSystem(() => transaction(async () => {
+      const updated = await query(`UPDATE plans SET price_monthly_toman = $2, price_annual_toman = $3 WHERE id = $1 RETURNING id`, [planId, monthly, annual]);
+      if (!updated.rows[0]) throw { status: 404, code: 'NOT_FOUND', message: 'Plan not found' };
+      console.log(JSON.stringify({ level: 'info', msg: 'Plan price changed', planId, monthly, annual, actorId }));
+      return { id: planId, priceMonthlyToman: monthly, priceAnnualToman: annual };
     }));
   },
 

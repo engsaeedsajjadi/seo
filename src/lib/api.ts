@@ -189,13 +189,13 @@ const API_TIMEOUT = 30000;
 export interface Schedule { id: string; type: string; cronExpression: string; timezone: string; enabled: boolean; projectId?: string; nextRunAt?: string; lastRunAt?: string }
 export interface PlatformOverview {
   organizations: number; suspended: number; users: number; new_users_30d: number; projects: number;
-  revenue_cents_total: number; revenue_cents_month: number; credits_consumed_month: number; ai_cost_usd_month: number;
-  plans: Array<{ plan: string; organizations: number; price_monthly_cents: number }>;
+  revenue_toman_total: number; revenue_toman_month: number; credits_consumed_month: number; ai_cost_usd_month: number;
+  plans: Array<{ plan: string; organizations: number; price_monthly_toman: number; price_annual_toman: number }>;
   jobsLast24h: Record<string, number>;
 }
 export interface PlatformOrganization {
   id: string; name: string; plan: string; ownerEmail: string; suspendedAt: string | null; balance: number;
-  members: number; projects: number; revenueCents: number;
+  members: number; projects: number; revenueToman: number; periodEnd: string | null;
 }
 
 /** Customers see Persian text chosen from the error code. The API's English text stays for API clients. */
@@ -455,6 +455,9 @@ export class ApiClient {
   }
   async deleteSchedule(id: string): Promise<ApiResult<unknown>> {
     return this.request(`/api/v1/scheduler/jobs/${id}`, { method: 'DELETE' });
+  }
+  async setPlanPrice(id: string, priceMonthlyToman: number, priceAnnualToman: number): Promise<ApiResult<unknown>> {
+    return this.request(`/api/v1/platform/plans/${id}`, { method: 'PATCH', body: JSON.stringify({ priceMonthlyToman, priceAnnualToman }) });
   }
   async getPlatformOverview(): Promise<ApiResult<PlatformOverview>> {
     return this.request('/api/v1/platform/overview');

@@ -9,6 +9,7 @@
 import { createApp } from './app.js';
 import { config } from './config/index.js';
 import { closePool } from './db/client.js';
+import { paymentService } from './services/payment.service.js';
 
 const app = createApp();
 
@@ -19,6 +20,8 @@ const server = app.listen(config.port, () => {
   console.log(`💾 Database: ${config.database.url ? 'PostgreSQL configured' : 'NOT CONFIGURED (will fail fast in production)'}`);
   console.log(`🔑 Providers: DataForSEO=${!!config.providers.dataforseo.login}, OpenAI=${!!config.providers.openai}, Stripe=${!!config.providers.stripe.secretKey}`);
 });
+
+paymentService.startMaintenance();
 
 function gracefulShutdown(signal: string) {
   console.log(`${signal} received, shutting down gracefully...`);

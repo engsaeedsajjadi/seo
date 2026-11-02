@@ -5,6 +5,7 @@
  * Requires WORKER_TEST_DATABASE_URL pointing at a migrated, seeded test database.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
+import { createServer as createHttpServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
 import { findToken, startSmtpStub } from '../helpers/smtp-stub.js';
@@ -23,6 +24,35 @@ const MAIL_PORT = PORT + 100;
 const SMTP_PORT = PORT + 150;
 const METRICS_TOKEN = randomBytes(16).toString('hex');
 const smtp = startSmtpStub(SMTP_PORT);
+const PAY_API_PORT = PORT + 200;
+const GATEWAY_PORT = PORT + 250;
+// A local stand-in for the Zarinpal REST API: proves our flow, not Zarinpal itself.
+const gateway = { paid: new Set<string>(), verified: new Set<string>(), amounts: new Map<string, number>(), requests: [] as any[], verifyCalls: 0, down: false, seq: 0 };
+const gatewayServer = createHttpServer((req, res) => {
+  let raw = '';
+  req.on('data', (c) => { raw += c; });
+  req.on('end', () => {
+    const body = raw ? JSON.parse(raw) : {};
+    res.setHeader('content-type', 'application/json');
+    if (gateway.down) { res.statusCode = 502; return res.end('{}'); }
+    if (req.url === '/pg/v4/payment/request.json') {
+      gateway.requests.push(body);
+      const authority = `A${String(++gateway.seq).padStart(35, '0')}`;
+      gateway.amounts.set(authority, body.amount);
+      return res.end(JSON.stringify({ data: { code: 100, authority, message: 'Success' }, errors: [] }));
+    }
+    if (req.url === '/pg/v4/payment/verify.json') {
+      gateway.verifyCalls++;
+      const ok = gateway.paid.has(body.authority) && gateway.amounts.get(body.authority) === body.amount;
+      if (!ok) return res.end(JSON.stringify({ data: [], errors: { code: -51, message: 'not paid' } }));
+      const code = gateway.verified.has(body.authority) ? 101 : 100;
+      gateway.verified.add(body.authority);
+      return res.end(JSON.stringify({ data: { code, ref_id: 900000 + gateway.seq, card_pan: '502229******5995' }, errors: [] }));
+    }
+    res.statusCode = 404; res.end('{}');
+  });
+});
+gatewayServer.listen(GATEWAY_PORT, '127.0.0.1');
 const mailEnv = { SMTP_URL: `smtp://127.0.0.1:${SMTP_PORT}`, MAIL_FROM: 'noreply@rankforge.test' };
 const baseEnv = { PATH: process.env.PATH, JWT_SECRET: secret, ENCRYPTION_KEY: secret, DATABASE_URL: OWNER_URL, APP_URL: ORIGIN, CORS_ORIGINS: ORIGIN };
 const providers = { DATAFORSEO_LOGIN: 'mock', DATAFORSEO_PASSWORD: 'mock', OPENAI_API_KEY: 'mock', PAGESPEED_API_KEY: 'mock' };
@@ -48,6 +78,7 @@ const start = (args: string[], env: object, cwd?: string) => {
 start(['--import', 'tsx', 'src/index.ts'], { NODE_ENV: 'test', PORT: String(PORT), PLATFORM_ADMIN_EMAILS: `root-${tag}@example.test`, METRICS_TOKEN, ...apiEnv, ...providers }, 'apps/api');
 start(['--import', 'tsx', 'src/index.ts'], { NODE_ENV: 'test', PORT: String(MAIL_PORT), ...mailEnv, ...apiEnv, ...providers }, 'apps/api');
 start(['--import', 'tsx', 'src/index.ts'], { NODE_ENV: 'production', PORT: String(PROD_PORT), TRUST_PROXY_HOPS: '1', ...apiEnv }, 'apps/api');
+start(['--import', 'tsx', 'src/index.ts'], { NODE_ENV: 'test', PORT: String(PAY_API_PORT), APP_URL: `http://127.0.0.1:${PAY_API_PORT}`, CORS_ORIGINS: ORIGIN, ZARINPAL_MERCHANT_ID: 'test-merchant', ZARINPAL_API_BASE: `http://127.0.0.1:${GATEWAY_PORT}`, BILLING_MAINTENANCE_MS: '500', PAYMENT_RECONCILE_AFTER_SECONDS: '1', ...mailEnv, ...apiEnv, ...providers }, 'apps/api');
 start(['--import', 'tsx', '--import', './tests/helpers/worker-external-mock.ts', 'apps/worker/src/index.ts'],
   { NODE_ENV: 'test', DATABASE_URL: workerUrl.toString(), WORKER_POLL_INTERVAL: '100', CRAWLER_DELAY: '0', ...mailEnv, ...providers });
 
@@ -77,7 +108,7 @@ async function waitFor(fn: () => Promise<boolean>, ms = 20000) {
 }
 const created: string[] = [];
 try {
-  for (const port of [PORT, PROD_PORT, MAIL_PORT]) {
+  for (const port of [PORT, PROD_PORT, MAIL_PORT, PAY_API_PORT]) {
     await waitFor(async () => { try { return (await fetch(`http://127.0.0.1:${port}/api/v1/health`)).ok; } catch { return false; } }, 30000);
   }
 
@@ -311,6 +342,97 @@ try {
   check('a suspended customer\'s jobs do not run', (await owner.query(`SELECT status FROM jobs WHERE id = $1`, [suspendedJob.rows[0].id])).rows[0].status === 'pending');
   check('operator can lift a suspension', (await call('PATCH', `/platform/organizations/${orgId}`, TR, { suspended: false })).data?.suspendedAt === null && (await call('GET', '/projects', T)).status === 200);
 
+  console.log('--- Zarinpal payments in toman (local gateway stand-in)');
+  const pay = (m: string, p: string, t?: string | null, body?: unknown) => call(m, p, t, body, { port: PAY_API_PORT });
+  const callback = async (authority: string, status: string) => {
+    const res = await fetch(`http://127.0.0.1:${PAY_API_PORT}/api/v1/billing/zarinpal/callback?Authority=${authority}&Status=${status}`, { redirect: 'manual' });
+    return res.headers.get('location') || '';
+  };
+  const erin = await pay('POST', '/auth/signup', null, { email: `erin-${tag}@example.test`, password, name: 'erin' });
+  created.push(`erin-${tag}@example.test`);
+  const tokenE = erin.data.token as string;
+  await owner.query(`UPDATE users SET email_verified = true WHERE id = $1`, [erin.data.user.id]);
+  const orgE = erin.data.user.organizationId as string;
+  const orgState = async () => (await owner.query(`SELECT plan, subscription_status, subscription_current_period_end AS end FROM organizations WHERE id = $1`, [orgE])).rows[0];
+  const balance = async () => (await pay('GET', '/billing/credits', tokenE)).data.balance as number;
+  const plans = (await pay('GET', '/billing/plans')).data;
+  const pro = plans.find((p: any) => p.id === 'PRO');
+  const starter = plans.find((p: any) => p.id === 'STARTER');
+  check('plans are priced in toman', pro.priceMonthlyToman > 0 && pro.priceAnnualToman > pro.priceMonthlyToman, pro);
+  check('online payment is reported as available', (await pay('GET', '/billing/subscription', tokenE)).data?.paymentsConfigured === true);
+  check('a free plan cannot be bought', (await pay('POST', '/billing/checkout', tokenE, { planId: 'FREE', interval: 'month' })).status === 400);
+
+  const first = await pay('POST', '/billing/checkout', tokenE, { planId: 'STARTER', interval: 'month' });
+  check('checkout returns a gateway link', first.status === 200 && /\/pg\/StartPay\/A\d+$/.test(first.data?.url), first.json);
+  const authority1 = first.data.url.split('/').pop();
+  const sentRequest = gateway.requests.at(-1);
+  check('the gateway is asked for the server price in toman', sentRequest.amount === starter.priceMonthlyToman && sentRequest.currency === 'IRT' && sentRequest.merchant_id === 'test-merchant', sentRequest);
+  check('the gateway returns customers to the callback', sentRequest.callback_url.endsWith('/api/v1/billing/zarinpal/callback'), sentRequest.callback_url);
+
+  const before = await balance();
+  const forged = await callback(authority1, 'OK');
+  await sleep(100);
+  check('a forged success callback changes nothing', forged.includes('payment=pending') && (await orgState()).plan === 'FREE' && (await balance()) === before, { forged, org: await orgState() });
+  check('an unknown authority fails safely', (await callback('NOPE123', 'OK')).includes('payment=failed'));
+  check('a malformed authority fails safely', (await callback('%27%3B--', 'OK')).includes('payment=failed'));
+
+  gateway.paid.add(authority1);
+  const results = await Promise.all([1, 2, 3, 4, 5].map(() => callback(authority1, 'OK')));
+  check('a verified payment reports success', results.every((r) => r.includes('payment=paid') && r.includes('ref=')), results);
+  const after1 = await orgState();
+  check('the plan activates after verification', after1.plan === 'STARTER' && after1.subscription_status === 'active' && new Date(after1.end).getTime() > Date.now() + 27 * 86400000, after1);
+  const grants = await owner.query(`SELECT count(*)::int AS n, COALESCE(sum(amount), 0)::int AS total FROM credit_transactions WHERE organization_id = $1 AND reference_type = 'payment'`, [orgE]);
+  check('concurrent callbacks grant credits once', grants.rows[0].n === 1 && (await balance()) === before + grants.rows[0].total, grants.rows[0]);
+  check('a replayed callback changes nothing', (await callback(authority1, 'OK')).includes('payment=paid') && (await owner.query(`SELECT count(*)::int AS n FROM credit_transactions WHERE organization_id = $1 AND reference_type = 'payment'`, [orgE])).rows[0].n === 1);
+  const ledger = await owner.query(`SELECT w.balance, w.total_granted, w.total_consumed, (SELECT COALESCE(SUM(amount), 0)::int FROM credit_transactions t WHERE t.organization_id = w.organization_id) AS sum FROM credit_wallets w WHERE organization_id = $1`, [orgE]);
+  check('wallet matches its ledger after payment', ledger.rows[0].balance === ledger.rows[0].total_granted - ledger.rows[0].total_consumed, ledger.rows[0]);
+  const history = await pay('GET', '/billing/payments', tokenE);
+  check('payment history shows the receipt', history.data?.[0]?.status === 'paid' && !!history.data[0].refId, history.data?.[0]);
+  check('another tenant sees no payments of this one', (await pay('GET', '/billing/payments', TB)).data?.every((x: any) => x.id !== history.data[0].id));
+
+  const canceled = await pay('POST', '/billing/checkout', tokenE, { planId: 'STARTER', interval: 'month' });
+  check('a cancelled payment fails and changes nothing', (await callback(canceled.data.url.split('/').pop(), 'NOK')).includes('payment=failed') && (await orgState()).plan === 'STARTER');
+
+  const endBeforeRenew = new Date((await orgState()).end).getTime();
+  const renew = await pay('POST', '/billing/checkout', tokenE, { planId: 'STARTER', interval: 'month' });
+  gateway.paid.add(renew.data.url.split('/').pop());
+  await callback(renew.data.url.split('/').pop(), 'OK');
+  check('early renewal adds to the time already paid', new Date((await orgState()).end).getTime() > endBeforeRenew + 27 * 86400000);
+  check('a downgrade waits for the period to end', (await pay('POST', '/billing/checkout', tokenE, { planId: 'STARTER', interval: 'month' })).status === 200 && (await owner.query(`UPDATE organizations SET plan = 'PRO' WHERE id = $1`, [orgE]), (await pay('POST', '/billing/checkout', tokenE, { planId: 'STARTER', interval: 'month' })).status === 409));
+  await owner.query(`UPDATE organizations SET plan = 'STARTER' WHERE id = $1`, [orgE]);
+
+  const upgradeQuote = await pay('GET', '/billing/quote?planId=PRO&interval=month', tokenE);
+  check('an upgrade is discounted by unused time', upgradeQuote.data?.credit > 0 && upgradeQuote.data?.amount === pro.priceMonthlyToman - upgradeQuote.data.credit, upgradeQuote.data);
+  const upgrade = await pay('POST', '/billing/checkout', tokenE, { planId: 'PRO', interval: 'month' });
+  check('the upgrade charges the discounted amount', gateway.requests.at(-1).amount === upgrade.data?.amount && upgrade.data.amount < pro.priceMonthlyToman, upgrade.json);
+  const closedBrowser = upgrade.data.url.split('/').pop();
+  gateway.paid.add(closedBrowser);
+  check('a customer who closed the browser is still activated', await waitFor(async () => (await orgState()).plan === 'PRO', 15000), await orgState());
+
+  gateway.down = true;
+  check('a gateway outage is reported, not hidden', (await pay('POST', '/billing/checkout', tokenE, { planId: 'AGENCY', interval: 'month' })).code === 'SERVICE_UNAVAILABLE');
+  gateway.down = false;
+
+  smtp.mails.length = 0;
+  await owner.query(`UPDATE organizations SET subscription_current_period_end = NOW() + INTERVAL '2 days', renewal_reminder_sent_at = NULL WHERE id = $1`, [orgE]);
+  check('a renewal reminder is emailed before the period ends', await waitFor(async () => smtp.mails.some((m) => m.to === `erin-${tag}@example.test`), 8000));
+  await sleep(1500);
+  check('the reminder is sent only once', smtp.mails.filter((m) => m.to === `erin-${tag}@example.test`).length === 1, smtp.mails.length);
+  await owner.query(`UPDATE organizations SET subscription_current_period_end = NOW() - INTERVAL '1 day' WHERE id = $1`, [orgE]);
+  check('an ended period enters the grace time and keeps the plan', await waitFor(async () => (await orgState()).subscription_status === 'past_due', 5000) && (await orgState()).plan === 'PRO', await orgState());
+  await owner.query(`UPDATE organizations SET subscription_current_period_end = NOW() - INTERVAL '4 days' WHERE id = $1`, [orgE]);
+  check('after the grace time the plan returns to FREE', await waitFor(async () => (await orgState()).plan === 'FREE', 5000), await orgState());
+  check('expired customers keep their credits and data', (await pay('GET', '/projects', tokenE)).status === 200 && (await balance()) > 0);
+  const stripeLike = await owner.query(`UPDATE organizations SET plan = 'PRO', stripe_subscription_id = 'sub_x', subscription_status = 'active', subscription_current_period_end = NOW() - INTERVAL '10 days' WHERE id = $1 RETURNING id`, [orgE]);
+  await sleep(1200);
+  check('self-renewing subscriptions are not expired by this job', stripeLike.rows.length === 1 && (await orgState()).plan === 'PRO');
+
+  check('a customer cannot set plan prices', (await call('PATCH', '/platform/plans/PRO', T, { priceMonthlyToman: 1, priceAnnualToman: 1 })).status === 404);
+  const priced = await call('PATCH', '/platform/plans/STARTER', TR, { priceMonthlyToman: starter.priceMonthlyToman + 1000, priceAnnualToman: starter.priceAnnualToman });
+  check('operator can change a plan price', priced.status === 200 && (await pay('GET', '/billing/plans')).data.find((p: any) => p.id === 'STARTER').priceMonthlyToman === starter.priceMonthlyToman + 1000, priced.json);
+  await call('PATCH', '/platform/plans/STARTER', TR, { priceMonthlyToman: starter.priceMonthlyToman, priceAnnualToman: starter.priceAnnualToman });
+  check('operator sees toman revenue', (await call('GET', '/platform/overview', TR)).data?.revenue_toman_month > 0);
+
   console.log('--- Metrics');
   const metrics = await fetch(`http://127.0.0.1:${PORT}/api/v1/metrics`, { headers: { authorization: `Bearer ${METRICS_TOKEN}` } });
   const metricsText = await metrics.text();
@@ -346,6 +468,7 @@ try {
   check('token stops working after logout', (await call('GET', '/auth/me', T)).status === 401);
 } finally {
   smtp.server.close();
+  gatewayServer.close();
   for (const p of procs) p.kill('SIGKILL');
   const users = await owner.query(`SELECT id FROM users WHERE email = ANY($1)`, [created]);
   await owner.query(`DELETE FROM organizations WHERE owner_id = ANY($1)`, [users.rows.map((u) => u.id)]);
