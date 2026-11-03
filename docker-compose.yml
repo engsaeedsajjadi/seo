@@ -47,7 +47,6 @@ services:
   # (node dist/db/migrate.js && node dist/db/seed.js), then exits.
   # A fresh deploy is fully initialized by `docker compose up` alone.
   migrate:
-    image: rankforge-api
     build:
       context: ./apps/api
       dockerfile: Dockerfile
@@ -71,7 +70,6 @@ services:
 
   # API Server
   api:
-    image: rankforge-api
     build:
       context: ./apps/api
       dockerfile: Dockerfile
