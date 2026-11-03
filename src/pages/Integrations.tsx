@@ -34,7 +34,7 @@ async function disconnectGoogle(onError: (message: string) => void) {
 function GoogleProperties() {
   const { state } = useAppState();
   const project = state.currentProject;
-  const [sites, setSites] = useState<{ siteUrl: string }[]>([]);
+  const [sites, setSites] = useState<{ siteUrl: string; permissionLevel: string }[]>([]);
   const [properties, setProperties] = useState<{ propertyId: string; displayName?: string; propertyName?: string }[]>([]);
   const [site, setSite] = useState('');
   const [property, setProperty] = useState('');
@@ -46,11 +46,12 @@ function GoogleProperties() {
       if (!r.success) return;
       setSites(r.data.sites);
       const domain = project?.domain ?? '';
-      const match = r.data.sites.find((s) => s.siteUrl.includes(domain));
-      setSite(match?.siteUrl ?? r.data.sites[0]?.siteUrl ?? '');
+      const match = r.data.sites.find((s) => s.siteUrl.replace(/^https?:\/\/|^sc-domain:|\/$/g, '').replace(/^www\./, '') === domain);
+      // Only an exact domain match is preselected, so another site's data is not attached by accident.
+      setSite(match && match.permissionLevel !== 'siteUnverifiedUser' ? match.siteUrl : '');
     });
     void api.getGa4Properties().then((r) => {
-      if (r.success) { setProperties(r.data.properties); setProperty(r.data.properties[0]?.propertyId ?? ''); }
+      if (r.success) setProperties(r.data.properties);
     });
   }, [project?.domain]);
 
@@ -74,18 +75,19 @@ function GoogleProperties() {
   return (
     <section className="bg-surface-2 border border-surface-3/50 rounded-xl p-5 space-y-4">
       <h3 className="text-sm font-semibold text-white">داده‌ی گوگل برای {project.domain}</h3>
+      {sites.some((s) => s.permissionLevel === 'siteUnverifiedUser') && <p className="text-xs text-accent-yellow">سایت‌های «تأییدنشده» را نمی‌توان وصل کرد. ابتدا مالکیت آن‌ها را با همین حساب در سرچ کنسول تأیید کنید.</p>}
       {message && <p role="status" className={`text-sm ${message.ok ? 'text-accent-green' : 'text-accent-red'}`}>{message.text}</p>}
       <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
         <label className="text-sm text-slate-300">سایت در سرچ کنسول
           <select dir="ltr" value={site} onChange={(e) => setSite(e.target.value)} className={field}>
-            {sites.length === 0 && <option value="">سایتی در این حساب گوگل پیدا نشد</option>}
-            {sites.map((s) => <option key={s.siteUrl} value={s.siteUrl}>{s.siteUrl}</option>)}
+            <option value="">{sites.length === 0 ? 'سایتی در این حساب گوگل پیدا نشد' : 'انتخاب کنید'}</option>
+            {sites.map((s) => <option key={s.siteUrl} value={s.siteUrl} disabled={s.permissionLevel === 'siteUnverifiedUser'}>{s.siteUrl}{s.permissionLevel === 'siteUnverifiedUser' ? ' (تأییدنشده)' : ''}</option>)}
           </select>
         </label>
         <button disabled={busy || !site} onClick={() => void connect('gsc')} className={button}>وصل و همگام‌سازی</button>
         <label className="text-sm text-slate-300">پراپرتی آنالیتیکس
           <select dir="ltr" value={property} onChange={(e) => setProperty(e.target.value)} className={field}>
-            {properties.length === 0 && <option value="">پراپرتی‌ای در این حساب گوگل پیدا نشد</option>}
+            <option value="">{properties.length === 0 ? 'پراپرتی‌ای در این حساب گوگل پیدا نشد' : 'انتخاب کنید'}</option>
             {properties.map((p) => <option key={p.propertyId} value={p.propertyId}>{p.displayName ?? p.propertyName ?? p.propertyId}</option>)}
           </select>
         </label>
