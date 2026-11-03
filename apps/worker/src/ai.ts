@@ -44,6 +44,8 @@ export interface AIResponse {
   requestId?: string;
 }
 
+const AI_REQUEST_TIMEOUT_MS = 90_000;
+
 export class AiProviderError extends Error {
   httpStatus?: number;
   constructor(message: string, opts: { httpStatus?: number } = {}) {
@@ -110,6 +112,8 @@ abstract class BaseAiProvider implements AIProvider {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(body),
+      // A stalled provider must not hold a worker slot until the job limit.
+      signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
     });
     if (!response.ok) {
       const text = await response.text();
