@@ -22,6 +22,7 @@ import {
   buildBriefPrompt,
   parseBriefOutline,
   AiProviderError,
+  completeWithFallback,
   isAiQuotaError,
 } from '../../apps/worker/src/ai.js';
 
@@ -123,4 +124,13 @@ console.log('Testing AI worker module (GEO analysis, brief parsing, providers)..
 
 assert.strictEqual(isAiQuotaError(new AiProviderError('OpenAI error 429: {"type":"insufficient_quota"}', { httpStatus: 429 })), true, 'no credit is not retried');
 assert.strictEqual(isAiQuotaError(new AiProviderError('OpenAI error 429: rate limit reached', { httpStatus: 429 })), false, 'a rate limit is retried');
+{
+  const fake = (name: string, fail?: Error) => ({ name, isConfigured: () => true, complete: async () => { if (fail) throw fail; return { content: name } as any; } }) as any;
+  const noCredit = new AiProviderError('error 429: insufficient_quota', { httpStatus: 429 });
+  const used = await completeWithFallback([fake('openai', noCredit), fake('google')], undefined, 'x', {});
+  assert.strictEqual(used.provider.name, 'google', 'an account without credit falls back');
+  await assert.rejects(completeWithFallback([fake('openai', new AiProviderError('error 500', { httpStatus: 500 })), fake('google')], undefined, 'x', {}), /500/, 'a provider outage surfaces');
+  await assert.rejects(completeWithFallback([fake('openai', noCredit)], undefined, 'x', {}), /insufficient_quota/, 'no working provider reports the last error');
+}
+
 console.log('✅ ai-geo.test.ts — all assertions passed');

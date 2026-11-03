@@ -39,6 +39,7 @@ export default function Integrations() {
     { key: 'dataForSeo', name: 'DataForSEO', description: 'خارج از ایران. برای ایران از ورود فایل و سرچ کنسول استفاده کنید. دادهٔ نتایج جست‌وجو، کلمات کلیدی، رتبه، بک‌لینک و رقبا', category: 'data', status: state.providerStatus.dataForSeo, envVars: ['DATAFORSEO_LOGIN', 'DATAFORSEO_PASSWORD'], icon: Search },
     { key: 'openai', name: 'OpenAI', description: 'تولید و تحلیل محتوا', category: 'ai', status: state.providerStatus.openai, envVars: ['OPENAI_API_KEY'], icon: Bot },
     { key: 'anthropic', name: 'Anthropic', description: 'تولید و تحلیل پیشرفتهٔ محتوا', category: 'ai', status: state.providerStatus.anthropic, envVars: ['ANTHROPIC_API_KEY'], icon: Bot },
+    { key: 'google', name: 'Google AI (Gemini)', description: 'تولید و تحلیل محتوا', category: 'ai', status: (state.providerStatus as unknown as Record<string, ProviderStatus>).google ?? 'not_configured', envVars: ['ANTHROPIC_API_KEY'], icon: Bot },
     { key: 'googleSearchConsole', name: 'Google Search Console', description: 'دادهٔ عملکرد جست‌وجوی ارگانیک', category: 'analytics', status: state.providerStatus.googleSearchConsole, envVars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], icon: Search },
     { key: 'googleAnalytics', name: 'Google Analytics 4', description: 'دادهٔ ترافیک، نشست و تبدیل', category: 'analytics', status: state.providerStatus.googleAnalytics, envVars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], icon: Database },
   ];

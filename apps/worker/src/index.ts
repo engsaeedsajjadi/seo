@@ -39,7 +39,7 @@ import {
   defaultGa4Window,
 } from './google.js';
 import {
-  AiProviderError, isAiQuotaError,
+  AiProviderError, isAiQuotaError, completeWithFallback,
   createAiProviders,
   pickAiProvider,
   aiEngineForProvider,
@@ -1981,7 +1981,8 @@ class Worker {
     console.log(JSON.stringify({ level: 'info', msg: 'AI visibility check', job_id: job.id, project_id: job.projectId }));
 
     // No AI provider → graceful PROVIDER_NOT_CONFIGURED, no fabricated visibility.
-    const provider = pickAiProvider(createWorkerAiProviders(), job.payload?.provider);
+    const aiProviders = createWorkerAiProviders();
+    let provider = pickAiProvider(aiProviders, job.payload?.provider);
     if (!provider) {
       throw new JobError(AI_NOT_CONFIGURED_MESSAGE, 'PROVIDER_NOT_CONFIGURED', false);
     }
@@ -2014,7 +2015,7 @@ class Worker {
 
     let ai;
     try {
-      ai = await provider.complete(prompt, { maxTokens: 800, temperature: 0.2 });
+      ({ ai, provider } = await completeWithFallback(aiProviders, job.payload?.provider, prompt, { maxTokens: 800, temperature: 0.2 }));
     } catch (error) {
       throw aiErrorToJobError(error, `${provider.name} visibility request`);
     }
@@ -2107,7 +2108,8 @@ class Worker {
 
     // No AI provider → graceful PROVIDER_NOT_CONFIGURED; the brief is
     // left in 'draft', exactly as the API created it — no fake outline.
-    const provider = pickAiProvider(createWorkerAiProviders(), job.payload?.provider);
+    const aiProviders = createWorkerAiProviders();
+    let provider = pickAiProvider(aiProviders, job.payload?.provider);
     if (!provider) {
       throw new JobError(AI_NOT_CONFIGURED_MESSAGE, 'PROVIDER_NOT_CONFIGURED', false);
     }
@@ -2133,7 +2135,7 @@ class Worker {
 
     let ai;
     try {
-      ai = await provider.complete(prompt, { maxTokens: 2000, temperature: 0.4 });
+      ({ ai, provider } = await completeWithFallback(aiProviders, job.payload?.provider, prompt, { maxTokens: 2000, temperature: 0.4 }));
     } catch (error) {
       await query(`UPDATE content_briefs SET status = 'failed', updated_at = NOW() WHERE id = $1`, [brief.id]);
       throw aiErrorToJobError(error, `${provider.name} content brief request`);

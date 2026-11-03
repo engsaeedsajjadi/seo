@@ -72,6 +72,7 @@ const COST_TABLE: Record<string, { input: number; output: number }> = {
   'gpt-4-turbo': { input: 0.01, output: 0.03 },
   'claude-3-5-sonnet': { input: 0.003, output: 0.015 },
   'claude-3-haiku': { input: 0.00025, output: 0.00125 },
+  'gemini-2.5-flash': { input: 0.0003, output: 0.0025 },
   'gemini-1.5-pro': { input: 0.00125, output: 0.005 },
   'gemini-1.5-flash': { input: 0.000075, output: 0.0003 },
   'default': { input: 0.001, output: 0.002 },
@@ -194,22 +195,25 @@ export class GoogleAIProvider extends BaseAiProvider {
 
   async complete(prompt: string, options: AIOptions = {}): Promise<AIResponse> {
     if (!this.isConfigured()) throw new AiProviderError('Google AI not configured');
-    const model = options.model || 'gemini-1.5-flash';
+    const model = options.model || process.env.GOOGLE_AI_MODEL || 'gemini-2.5-flash';
     const start = Date.now();
     const data = await this.postJson(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.apiKey}`,
-      {},
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      { 'x-goog-api-key': this.apiKey },
       {
         contents: [{ parts: [{ text: options.systemPrompt ? `${options.systemPrompt}\n\n${prompt}` : prompt }] }],
         generationConfig: {
           temperature: options.temperature ?? 0.7,
           maxOutputTokens: options.maxTokens ?? 1000,
+          // Thinking tokens count against the output limit on this model family.
+          ...(model.startsWith('gemini-2.5') ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
         },
       },
       'Google AI',
     );
 
     const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (!content) throw new AiProviderError(`Google AI returned no text (${data.candidates?.[0]?.finishReason || 'unknown'})`);
     const usage = data.usageMetadata || {};
     const inputTokens = usage.promptTokenCount ?? estimateTokens(prompt);
     const outputTokens = usage.candidatesTokenCount ?? estimateTokens(content);
@@ -285,6 +289,31 @@ export function pickAiProvider(providers: AIProvider[], preferred?: string): AIP
     if (found) return found;
   }
   return providers.find((p) => p.isConfigured()) || null;
+}
+
+/**
+ * Use the first working provider. An account without credit or with a rejected key cannot
+ * succeed on retry, so the next configured provider is tried. Other errors surface as they are.
+ */
+export async function completeWithFallback(
+  providers: AIProvider[],
+  preferred: string | undefined,
+  prompt: string,
+  options: AIOptions,
+): Promise<{ ai: AIResponse; provider: AIProvider }> {
+  const first = pickAiProvider(providers, preferred);
+  const ordered = [first, ...providers.filter((p) => p !== first && p.isConfigured())].filter(Boolean) as AIProvider[];
+  let lastError: unknown = new AiProviderError('No AI provider configured');
+  for (const provider of ordered) {
+    try {
+      return { ai: await provider.complete(prompt, options), provider };
+    } catch (error) {
+      lastError = error;
+      const accountProblem = isAiQuotaError(error) || (error instanceof AiProviderError && (error.httpStatus === 401 || error.httpStatus === 403));
+      if (!accountProblem) throw error;
+    }
+  }
+  throw lastError;
 }
 
 /** geo_runs.ai_engine values allowed by the schema CHECK. */
