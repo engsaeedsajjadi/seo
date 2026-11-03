@@ -7,7 +7,9 @@ import { useAppState } from '../lib/store';
 import SchedulePanel from '../components/SchedulePanel';
 import { api } from '../lib/api';
 import type { Job, JobStatus } from '../lib/types';
-import { JOB_TYPE_LABELS, JOB_STATUS_LABELS, formatDateTime } from '../lib/labels';
+import { JOB_TYPE_LABELS, JOB_STATUS_LABELS, formatDateTime, jobFailureReason } from '../lib/labels';
+
+const isFailed = (status: string) => status === 'failed' || status === 'dead_letter';
 import { t } from '../i18n';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
@@ -85,7 +87,7 @@ export default function Automation() {
         </div>
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
           <p className="text-xs text-slate-400">ناموفق</p>
-          <p className="text-2xl font-bold text-accent-red mt-1">{jobs.filter(j => j.status === 'failed').length}</p>
+          <p className="text-2xl font-bold text-accent-red mt-1">{jobs.filter(j => isFailed(j.status)).length}</p>
         </div>
       </div>
 
@@ -117,6 +119,7 @@ export default function Automation() {
                   <td className="px-4 py-2.5 text-sm text-white">{JOB_TYPE_LABELS[job.type] || job.type}</td>
                   <td className="px-4 py-2.5">
                     <JobStatusBadge status={job.status} />
+                    {isFailed(job.status) && <p className="text-[11px] text-red-400 mt-1">{jobFailureReason(job.error)}</p>}
                   </td>
                   <td className="px-4 py-2.5 text-right text-xs text-slate-400">
                     {formatDateTime(job.startedAt)}
@@ -136,11 +139,12 @@ export default function Automation() {
 }
 
 function JobStatusBadge({ status }: { status: JobStatus }) {
-  const styles: Record<JobStatus, string> = {
+  const styles: Record<string, string> = {
     pending: 'bg-slate-500/20 text-slate-400',
     running: 'bg-brand-500/20 text-brand-400',
     completed: 'bg-green-500/20 text-green-400',
     failed: 'bg-red-500/20 text-red-400',
+    dead_letter: 'bg-red-500/20 text-red-400',
     cancelled: 'bg-yellow-500/20 text-yellow-400',
   };
   return (

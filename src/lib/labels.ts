@@ -164,6 +164,18 @@ export function formatDateOnly(value?: string | number | Date | null): string {
   return date.toLocaleDateString('fa-IR');
 }
 
+/** Plain reason for a failed background job. Raw provider errors are not shown to customers. */
+export function jobFailureReason(error?: string | null): string {
+  const text = (error ?? '').toLowerCase();
+  if (!text) return 'علت ثبت نشده است.';
+  if (/401|unauthori[sz]ed|invalid.*(key|api)|incorrect api key/.test(text)) return 'کلید سرویس نامعتبر است.';
+  if (/quota|insufficient|billing|credit/.test(text)) return 'اعتبار یا سهمیهٔ سرویس تمام شده است.';
+  if (/403|forbidden|country|region|territory|unsupported/.test(text)) return 'این سرویس از این منطقه یا با این حساب در دسترس نیست.';
+  if (/429|rate/.test(text)) return 'سرویس موقتاً محدود شده است. بعداً دوباره تلاش کنید.';
+  if (/timeout|timed out|abort|fetch failed|econn|enotfound|network/.test(text)) return 'اتصال به سرویس برقرار نشد.';
+  return 'سرویس خطا داد. دوباره تلاش کنید یا با پشتیبانی تماس بگیرید.';
+}
+
 export function hasAiProvider(status: Record<string, unknown>): boolean {
   return ['openai', 'anthropic', 'google', 'openrouter', 'perplexity'].some((key) => status[key] === 'connected');
 }

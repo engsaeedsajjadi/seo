@@ -116,7 +116,7 @@ export default function AEO() {
                   <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-surface/50">
                     <MessageSquare className="w-4 h-4 text-brand-400 mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
-                      <p className="text-xs text-slate-400 font-mono">{page.url}</p>
+                      <p dir="ltr" className="text-xs text-slate-400 font-mono text-right break-all">{page.url}</p>
                       <p className="text-sm text-slate-200 mt-0.5">{page.title || 'No title'}</p>
                       <p className="text-xs text-slate-500 mt-1">{page.metaDescription || 'No meta description'}</p>
                     </div>

@@ -4,7 +4,7 @@
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'notice';
 export type AuditCategory = 'crawlability' | 'indexability' | 'metadata' | 'content' | 'links' | 'images' | 'performance' | 'security' | 'structured-data' | 'international';
 export type JobType = 'SITE_CRAWL' | 'RANK_CHECK' | 'KEYWORD_REFRESH' | 'BACKLINK_REFRESH' | 'GSC_SYNC' | 'GA4_SYNC' | 'PAGESPEED_CHECK' | 'COMPETITOR_CHECK' | 'AI_VISIBILITY_CHECK' | 'REPORT_GENERATION' | 'ALERT_PROCESSING';
-export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'dead_letter';
 export type PlanTier = 'FREE' | 'STARTER' | 'PRO' | 'AGENCY' | 'ENTERPRISE';
 export type Role = 'owner' | 'admin' | 'manager' | 'seo_manager' | 'analyst' | 'editor' | 'client' | 'viewer';
 export type ProviderStatus = 'connected' | 'not_configured' | 'error' | 'rate_limited';

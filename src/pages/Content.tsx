@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
 import { t } from '../i18n';
-import { hasAiProvider } from '../lib/labels';
+import { hasAiProvider, formatDateOnly } from '../lib/labels';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 interface ContentBrief {
@@ -172,7 +172,7 @@ export default function Content() {
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <h3 className="text-sm font-semibold text-white">{brief.title}</h3>
-                  <p className="text-xs text-slate-400 mt-1">{brief.targetKeyword}{brief.wordCount} words</p>
+                  <p className="text-xs text-slate-400 mt-1">{brief.targetKeyword} · {toPersianDigits(brief.wordCount)} کلمه</p>
                 </div>
                 <StatusBadge status={brief.status} />
               </div>
@@ -186,7 +186,7 @@ export default function Content() {
                   </ul>
                 </details>
               )}
-              <p className="text-[10px] text-slate-500 mt-3">ایجادشده {new Date(brief.createdAt).toLocaleDateString()}</p>
+              <p className="text-[10px] text-slate-500 mt-3">ایجادشده {formatDateOnly(brief.createdAt)}</p>
             </div>
           ))}
         </div>
@@ -244,12 +244,16 @@ export default function Content() {
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     ready: 'bg-green-500/20 text-green-400',
+    generating: 'bg-brand-500/20 text-brand-400',
+    failed: 'bg-red-500/20 text-red-400',
     draft: 'bg-slate-500/20 text-slate-400',
     in_progress: 'bg-brand-500/20 text-brand-400',
     completed: 'bg-green-500/20 text-green-400',
   };
   const labels: Record<string, string> = {
     ready: 'آماده',
+    generating: 'در حال ساخت',
+    failed: 'ناموفق',
     draft: 'پیش‌نویس',
     in_progress: 'در حال ساخت',
     completed: 'تکمیل‌شده',
