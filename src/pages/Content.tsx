@@ -54,6 +54,15 @@ export default function Content() {
       }
     }
     load();
+    // A brief is written in the background, so keep the list current until it finishes.
+    const timer = setInterval(() => {
+      setBriefs((current) => {
+        const isRecent = (brief: { createdAt: string }) => Date.now() - new Date(brief.createdAt).getTime() < 5 * 60 * 1000;
+        if (current.some((brief) => ['pending', 'generating', 'in_progress'].includes(brief.status) || (brief.status === 'draft' && isRecent(brief)))) void load();
+        return current;
+      });
+    }, 6000);
+    return () => clearInterval(timer);
   }, [state.currentProject]);
 
   async function handleCreate() {
