@@ -72,7 +72,8 @@ const COST_TABLE: Record<string, { input: number; output: number }> = {
   'gpt-4-turbo': { input: 0.01, output: 0.03 },
   'claude-3-5-sonnet': { input: 0.003, output: 0.015 },
   'claude-3-haiku': { input: 0.00025, output: 0.00125 },
-  'gemini-2.5-flash': { input: 0.0003, output: 0.0025 },
+  // Standard price from January 2027, so the estimate is not below the real cost.
+  'gemini-3.8-flash': { input: 0.0015, output: 0.0075 },
   'gemini-1.5-pro': { input: 0.00125, output: 0.005 },
   'gemini-1.5-flash': { input: 0.000075, output: 0.0003 },
   'default': { input: 0.001, output: 0.002 },
@@ -190,12 +191,17 @@ export class AnthropicProvider extends BaseAiProvider {
   }
 }
 
+const GEMINI_THINKING_ALLOWANCE = 2000;
+
 export class GoogleAIProvider extends BaseAiProvider {
   name = 'google';
 
   async complete(prompt: string, options: AIOptions = {}): Promise<AIResponse> {
     if (!this.isConfigured()) throw new AiProviderError('Google AI not configured');
-    const model = options.model || process.env.GOOGLE_AI_MODEL || 'gemini-2.5-flash';
+    const model = options.model || process.env.GOOGLE_AI_MODEL || 'gemini-3.8-flash';
+    // Gemini 3 rejects sampling settings, and its thinking tokens count against the output limit.
+    const isGemini3 = !/^gemini-[12]\./.test(model);
+    const maxOutputTokens = options.maxTokens ?? 1000;
     const start = Date.now();
     const data = await this.postJson(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -203,10 +209,9 @@ export class GoogleAIProvider extends BaseAiProvider {
       {
         contents: [{ parts: [{ text: options.systemPrompt ? `${options.systemPrompt}\n\n${prompt}` : prompt }] }],
         generationConfig: {
-          temperature: options.temperature ?? 0.7,
-          maxOutputTokens: options.maxTokens ?? 1000,
-          // Thinking tokens count against the output limit on this model family.
-          ...(model.startsWith('gemini-2.5') ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+          ...(isGemini3
+            ? { maxOutputTokens: maxOutputTokens + GEMINI_THINKING_ALLOWANCE, thinkingConfig: { thinkingLevel: 'low' } }
+            : { temperature: options.temperature ?? 0.7, maxOutputTokens }),
         },
       },
       'Google AI',
@@ -216,7 +221,7 @@ export class GoogleAIProvider extends BaseAiProvider {
     if (!content) throw new AiProviderError(`Google AI returned no text (${data.candidates?.[0]?.finishReason || 'unknown'})`);
     const usage = data.usageMetadata || {};
     const inputTokens = usage.promptTokenCount ?? estimateTokens(prompt);
-    const outputTokens = usage.candidatesTokenCount ?? estimateTokens(content);
+    const outputTokens = (usage.candidatesTokenCount ?? estimateTokens(content)) + (usage.thoughtsTokenCount ?? 0);
     return {
       content,
       model,
@@ -309,7 +314,7 @@ export async function completeWithFallback(
       return { ai: await provider.complete(prompt, options), provider };
     } catch (error) {
       lastError = error;
-      const accountProblem = isAiQuotaError(error) || (error instanceof AiProviderError && (error.httpStatus === 401 || error.httpStatus === 403));
+      const accountProblem = isAiQuotaError(error) || (error instanceof AiProviderError && (error.httpStatus === 401 || error.httpStatus === 403 || error.httpStatus === 404 || /location is not supported/i.test(error.message)));
       if (!accountProblem) throw error;
     }
   }

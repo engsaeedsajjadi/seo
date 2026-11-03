@@ -23,6 +23,7 @@ import {
   parseBriefOutline,
   AiProviderError,
   completeWithFallback,
+  GoogleAIProvider,
   isAiQuotaError,
 } from '../../apps/worker/src/ai.js';
 
@@ -124,6 +125,19 @@ console.log('Testing AI worker module (GEO analysis, brief parsing, providers)..
 
 assert.strictEqual(isAiQuotaError(new AiProviderError('OpenAI error 429: {"type":"insufficient_quota"}', { httpStatus: 429 })), true, 'no credit is not retried');
 assert.strictEqual(isAiQuotaError(new AiProviderError('OpenAI error 429: rate limit reached', { httpStatus: 429 })), false, 'a rate limit is retried');
+{
+  let sent: any;
+  let url = '';
+  const gemini = new GoogleAIProvider('k', (async (u: string, init: any) => { url = u; sent = init; return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ok' }] } }], usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, thoughtsTokenCount: 5 } }), { status: 200 }); }) as any);
+  const reply = await gemini.complete('x', { maxTokens: 800, temperature: 0.2 });
+  const body = JSON.parse(sent.body);
+  assert.ok(url.includes('gemini-3.8-flash') && !url.includes('key='), 'current model, key not in the URL');
+  assert.strictEqual(sent.headers['x-goog-api-key'], 'k');
+  assert.strictEqual(body.generationConfig.temperature, undefined, 'Gemini 3 receives no temperature');
+  assert.strictEqual(body.generationConfig.thinkingConfig.thinkingLevel, 'low');
+  assert.strictEqual(reply.outputTokens, 6, 'thinking tokens are counted');
+}
+
 {
   const fake = (name: string, fail?: Error) => ({ name, isConfigured: () => true, complete: async () => { if (fail) throw fail; return { content: name } as any; } }) as any;
   const noCredit = new AiProviderError('error 429: insufficient_quota', { httpStatus: 429 });

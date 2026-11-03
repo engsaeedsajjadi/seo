@@ -168,6 +168,8 @@ export function formatDateOnly(value?: string | number | Date | null): string {
 export function jobFailureReason(error?: string | null): string {
   const text = (error ?? '').toLowerCase();
   if (!text) return 'علت ثبت نشده است.';
+  if (/404|no longer available|not found/.test(text)) return 'مدل انتخاب‌شده در این سرویس در دسترس نیست.';
+  if (/location is not supported/.test(text)) return 'این سرویس از این منطقه در دسترس نیست.';
   if (/401|unauthori[sz]ed|invalid.*(key|api)|incorrect api key/.test(text)) return 'کلید سرویس نامعتبر است.';
   if (/quota|insufficient|billing|credit/.test(text)) return 'اعتبار یا سهمیهٔ سرویس تمام شده است.';
   if (/403|forbidden|country|region|territory|unsupported/.test(text)) return 'این سرویس از این منطقه یا با این حساب در دسترس نیست.';

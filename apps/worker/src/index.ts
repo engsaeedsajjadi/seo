@@ -956,6 +956,10 @@ function aiErrorToJobError(error: unknown, context: string): JobError {
     if (isAiQuotaError(error)) {
       return new JobError(`AI provider has no credit — ${error.message}`, 'NON_RETRYABLE', false);
     }
+    // A rejected request or a retired model gives the same answer on every attempt.
+    if (error.httpStatus === 400 || error.httpStatus === 404) {
+      return new JobError(`${context} failed — ${error.message}`, 'NON_RETRYABLE', false);
+    }
     return new JobError(`${context} failed — ${error.message}`, 'RETRYABLE', true);
   }
   return new JobError(`${context} failed — ${error instanceof Error ? error.message : String(error)}`, 'RETRYABLE', true);
