@@ -1317,7 +1317,7 @@ export function createApp() {
   // Step 2 (browser redirect from Google — no auth header; identity
   // and CSRF protection come from the HMAC-signed state parameter).
   app.get('/api/v1/integrations/google/callback', async (req: Request, res: Response) => {
-    const integrationsUrl = `${config.appUrl}/integrations`;
+    const integrationsUrl = `${config.appUrl}/#/integrations`;
     try {
       const { code, state, error } = req.query as Record<string, string | undefined>;
       if (error) {
@@ -1395,6 +1395,27 @@ export function createApp() {
       const propertyName = typeof req.body?.propertyName === 'string' ? req.body.propertyName : undefined;
       const row = await googleService.bindProjectProperty(req.organizationId!, project.id, 'ga4', { propertyId, propertyName });
       res.json({ success: true, data: { id: row.id, status: row.status, provider: 'ga4', propertyId, propertyName, lastSyncAt: row.lastSyncAt, lastError: row.lastError } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/api/v1/projects/:projectId/integrations/:provider/sync', authMiddleware, requireVerifiedEmail, async (req: AuthRequest, res, next) => {
+    try {
+      const { provider } = req.params;
+      if (provider !== 'gsc' && provider !== 'ga4') {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'provider must be gsc or ga4' } });
+      }
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      const job = await jobRepository.create({
+        organizationId: req.organizationId!,
+        projectId: project.id,
+        type: provider === 'gsc' ? 'GSC_SYNC' : 'GA4_SYNC',
+        payload: { projectId: project.id },
+        idempotencyKey: `${provider}_sync_${project.id}_${Date.now()}`,
+      });
+      res.status(201).json({ success: true, data: { job } });
     } catch (error) {
       next(error);
     }

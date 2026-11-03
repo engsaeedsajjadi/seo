@@ -54,7 +54,9 @@ export default function Rankings() {
     setChecking(true);
     setCheckResult(null);
     try {
-      const result = await api.checkRankings(state.currentProject.id);
+      const result = state.providerStatus.dataForSeo === 'connected'
+        ? await api.checkRankings(state.currentProject.id)
+        : await api.syncGoogleProperty(state.currentProject.id, 'gsc');
       if (result.success) {
         setCheckResult(`بررسی رتبه در صف قرار گرفت. نتیجه به‌زودی نمایش داده می‌شود.`);
       } else {

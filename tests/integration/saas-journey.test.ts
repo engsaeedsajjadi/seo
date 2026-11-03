@@ -147,6 +147,7 @@ try {
   const crossRoutes: Array<[string, string, unknown?]> = [
     ['GET', `/projects/${pidb}`], ['PATCH', `/projects/${pidb}`, { name: 'hack' }], ['DELETE', `/projects/${pidb}`],
     ['GET', `/projects/${pidb}/audit/findings`], ['GET', `/projects/${pidb}/audit/score`], ['GET', `/projects/${pidb}/keywords`],
+    ['POST', `/projects/${pidb}/integrations/gsc/sync`, {}],
     ['POST', `/projects/${pidb}/keywords`, { keywords: ['x'] }], ['GET', `/projects/${pidb}/rankings`], ['POST', `/projects/${pidb}/crawl`, {}],
     ['GET', `/projects/${pidb}/reports`], ['POST', `/projects/${pidb}/reports`, { type: 'seo', format: 'json' }], ['GET', `/projects/${pidb}/alerts`],
     ['GET', `/projects/${pidb}/jobs`], ['GET', `/projects/${pidb}/backlinks`], ['GET', `/projects/${pidb}/competitors`],

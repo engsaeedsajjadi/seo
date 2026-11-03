@@ -685,6 +685,22 @@ export class ApiClient {
     return this.request('/api/v1/integrations/google/status');
   }
 
+  async getGscSites(): Promise<ApiResult<{ sites: { siteUrl: string; permissionLevel: string }[] }>> {
+    return this.request('/api/v1/integrations/google/gsc/sites');
+  }
+
+  async getGa4Properties(): Promise<ApiResult<{ properties: { propertyId: string; displayName?: string; propertyName?: string }[] }>> {
+    return this.request('/api/v1/integrations/google/ga4/properties');
+  }
+
+  async bindGoogleProperty(projectId: string, provider: 'gsc' | 'ga4', body: { siteUrl?: string; propertyId?: string; propertyName?: string }): Promise<ApiResult<{ status: string }>> {
+    return this.request(`/api/v1/projects/${encodeURIComponent(projectId)}/integrations/${provider}`, { method: 'PUT', body: JSON.stringify(body) });
+  }
+
+  async syncGoogleProperty(projectId: string, provider: 'gsc' | 'ga4'): Promise<ApiResult<{ job: Job }>> {
+    return this.request(`/api/v1/projects/${encodeURIComponent(projectId)}/integrations/${provider}/sync`, { method: 'POST', body: '{}' });
+  }
+
   async disconnectGoogle(): Promise<ApiResult<{ disconnected: boolean }>> {
     return this.request('/api/v1/integrations/google', { method: 'DELETE' });
   }
