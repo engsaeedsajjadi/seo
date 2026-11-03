@@ -8,7 +8,7 @@ import { downloadCsv } from '../lib/csv';
 import { api } from '../lib/api';
 import type { Severity, AuditCategory, AuditFinding } from '../lib/types';
 import { t } from '../i18n';
-import { SEVERITY_LABELS, FINDING_STATUS_LABELS, CATEGORY_LABELS, JOB_STATUS_LABELS, apiMessage, findingTitle, findingDescription, findingRecommendation } from '../lib/labels';
+import { scoreBand, SEVERITY_LABELS, FINDING_STATUS_LABELS, CATEGORY_LABELS, JOB_STATUS_LABELS, apiMessage, findingTitle, findingDescription, findingRecommendation } from '../lib/labels';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 export default function SiteAudit() {
@@ -193,10 +193,10 @@ export default function SiteAudit() {
       {overallScore !== null ? (
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <div className="col-span-2 md:col-span-1 bg-surface-2 border border-surface-3/50 rounded-xl p-5 flex flex-col items-center justify-center">
-            <div className={`text-4xl font-bold ${overallScore >= 80 ? 'text-accent-green' : overallScore >= 60 ? 'text-accent-yellow' : 'text-accent-red'}`}>
+            <div className={`text-4xl font-bold ${scoreBand(overallScore).color}`}>
               {toPersianDigits(overallScore)}
             </div>
-            <p className="text-xs text-slate-400 mt-1">امتیاز کلی</p>
+            <p className="text-xs text-slate-400 mt-1">سلامت سایت: {scoreBand(overallScore).label}</p>
             <p className="text-[10px] text-slate-500 mt-1">بر اساس {toPersianDigits(findings.length)} یافته</p>
           </div>
           <SeverityCard severity="critical" count={severityCounts.critical} total={findings.length} />

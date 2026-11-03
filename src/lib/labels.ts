@@ -167,3 +167,11 @@ export function formatDateOnly(value?: string | number | Date | null): string {
 export function hasAiProvider(status: Record<string, unknown>): boolean {
   return ['openai', 'anthropic', 'google', 'openrouter', 'perplexity'].some((key) => status[key] === 'connected');
 }
+
+/** Bands used by Ahrefs for its Health Score. */
+export function scoreBand(score: number): { label: string; color: string } {
+  if (score >= 91) return { label: 'عالی', color: 'text-accent-green' };
+  if (score >= 71) return { label: 'خوب', color: 'text-accent-green' };
+  if (score >= 31) return { label: 'متوسط', color: 'text-accent-yellow' };
+  return { label: 'ضعیف', color: 'text-accent-red' };
+}

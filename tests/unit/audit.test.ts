@@ -68,4 +68,16 @@ console.log(`SEO Score: ${score.overall}`);
 assert(score.overall >= 0 && score.overall <= 100, 'Score should be 0-100');
 assert(score.overall < 100, 'Score should be less than 100 with issues');
 
+// Score follows the share of healthy pages, not the raw number of issues.
+const urls = (n: number) => Array.from({ length: n }, (_, i) => `https://example.com/${i}`);
+const finding = (severity: string, category: string, affectedUrls: string[]) => ({ ruleId: 'x', severity, category, title: 'x', description: 'x', evidence: {}, affectedUrls, recommendation: 'x' }) as any;
+assert.strictEqual(calculateSeoScore([], urls(10)).overall, 100, 'no issues is 100');
+assert.strictEqual(calculateSeoScore([finding('high', 'content', urls(2))], urls(10)).overall, 80, '2 of 10 pages with errors is 80');
+assert.strictEqual(calculateSeoScore([finding('high', 'content', urls(9)), finding('high', 'metadata', urls(9))], urls(100)).overall, 91, 'two errors on one page count once');
+assert.strictEqual(calculateSeoScore([finding('low', 'images', urls(37))], urls(100)).overall, 99, 'minor issues cost little');
+assert.strictEqual(calculateSeoScore([finding('medium', 'metadata', urls(10))], urls(10)).overall, 90, 'a warning on every page costs 10');
+assert.strictEqual(calculateSeoScore([finding('low', 'crawlability', ['https://example.com/sitemap.xml'])], urls(10)).overall, 98, 'site-wide issue has a fixed cost');
+assert.strictEqual(calculateSeoScore([], []).overall, 0, 'nothing crawled is not a perfect score');
+assert.strictEqual(calculateSeoScore([finding('high', 'links', urls(5))], urls(10)).categories.links, 50, 'category follows the same rule');
+
 console.log('✅ Audit engine tests passed');

@@ -870,22 +870,15 @@ export function createApp() {
 
       const result = await crawlRepository.getFindings(project.id, req.organizationId!, { limit: 1000 });
 
-      let score = 100;
-      const deductions: Record<string, number> = { critical: 10, high: 5, medium: 2, low: 1, notice: 0 };
       const breakdown: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0, notice: 0 };
-
       result.items.forEach((f: any) => {
-        const deduction = (deductions[f.severity] || 0) * Math.min(f.affectedUrls?.length || 1, 5);
-        score -= deduction;
         breakdown[f.severity] = (breakdown[f.severity] || 0) + 1;
       });
-
-      score = Math.max(0, Math.min(100, score));
 
       res.json({
         success: true,
         data: {
-          overall: Math.round(score),
+          overall: project.seoScore,
           findingsCount: result.total,
           projectSeoScore: project.seoScore,
           lastCrawlAt: project.lastCrawlAt,

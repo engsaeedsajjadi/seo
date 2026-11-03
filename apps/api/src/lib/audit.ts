@@ -392,42 +392,36 @@ export function runAudit(context: AuditContext): AuditFinding[] {
   return findings;
 }
 
-export function calculateSeoScore(findings: AuditFinding[]): { overall: number; categories: Record<Category, number> } {
-  // Transparent scoring: start at 100, deduct based on severity
-  let score = 100;
-  const categoryScores: Record<string, { total: number; count: number }> = {};
+const PAGE_PENALTY: Record<Severity, number> = { critical: 100, high: 100, medium: 10, low: 3, notice: 0 };
+const SITE_WIDE_PENALTY: Record<Severity, number> = { critical: 10, high: 5, medium: 3, low: 2, notice: 0 };
+const MAX_WARNING_PENALTY = 30;
+const ALL_SCORE_CATEGORIES = ['crawlability', 'indexability', 'metadata', 'content', 'links', 'images', 'performance', 'security', 'structured_data', 'international'] as Category[];
 
-  const deductions: Record<Severity, number> = {
-    critical: 10,
-    high: 5,
-    medium: 2,
-    low: 1,
-    notice: 0,
-  };
-
-  for (const finding of findings) {
-    const deduction = deductions[finding.severity] * Math.min(finding.affectedUrls.length, 5); // cap per rule
-    score -= deduction;
-
-    if (!categoryScores[finding.category]) {
-      categoryScores[finding.category] = { total: 100, count: 0 };
+export function calculateSeoScore(findings: AuditFinding[], pageUrls?: string[]): { overall: number; categories: Record<Category, number> } {
+  // Site health, in the style of the market leaders: the average health of the crawled pages.
+  // A page with an error (critical or high) scores 0, as in the Ahrefs Health Score. Lesser issues
+  // lower a page by a smaller amount, and pages without issues stay at 100. Issues that are not
+  // tied to a crawled page, such as a missing sitemap, take a small fixed amount off the site.
+  const pages = new Set(pageUrls ?? findings.flatMap((f) => f.affectedUrls));
+  if (pageUrls && pages.size === 0) {
+    return { overall: 0, categories: Object.fromEntries(ALL_SCORE_CATEGORIES.map((cat) => [cat, 0])) as Record<Category, number> };
+  }
+  const health = (items: AuditFinding[]): number => {
+    const pagePenalty = new Map<string, number>();
+    let siteWide = 0;
+    for (const finding of items) {
+      const isError = finding.severity === 'critical' || finding.severity === 'high';
+      const onPages = [...new Set(finding.affectedUrls)].filter((url) => pages.has(url));
+      if (onPages.length === 0) siteWide += SITE_WIDE_PENALTY[finding.severity];
+      for (const url of onPages) {
+        const current = pagePenalty.get(url) ?? 0;
+        pagePenalty.set(url, isError ? 100 : current >= 100 ? 100 : Math.max(current, Math.min(MAX_WARNING_PENALTY, current + PAGE_PENALTY[finding.severity])));
+      }
     }
-    categoryScores[finding.category].total -= deduction;
-    categoryScores[finding.category].count++;
-  }
-
-  score = Math.max(0, Math.min(100, score));
-
-  const categories: Record<string, number> = {};
-  for (const [cat, data] of Object.entries(categoryScores)) {
-    categories[cat] = Math.max(0, Math.min(100, data.total));
-  }
-
-  // Ensure all categories have at least a default
-  const allCategories: Category[] = ['crawlability', 'indexability', 'metadata', 'content', 'links', 'images', 'performance', 'security', 'structured_data', 'international'];
-  for (const cat of allCategories) {
-    if (!(cat in categories)) categories[cat] = 100;
-  }
-
-  return { overall: Math.round(score), categories: categories as Record<Category, number> };
+    const lost = [...pagePenalty.values()].reduce((sum, penalty) => sum + penalty, 0);
+    const average = pages.size > 0 ? 100 - lost / pages.size : 100;
+    return Math.round(Math.max(0, Math.min(100, average - siteWide)));
+  };
+  const categories = Object.fromEntries(ALL_SCORE_CATEGORIES.map((cat) => [cat, health(findings.filter((f) => f.category === cat))])) as Record<Category, number>;
+  return { overall: health(findings), categories };
 }

@@ -8,7 +8,7 @@ import {
 import { useAppState, getProviderLabel } from '../lib/store';
 import { api } from '../lib/api';
 import { t } from '../i18n';
-import { JOB_TYPE_LABELS, findingTitle, CATEGORY_LABELS } from '../lib/labels';
+import { scoreBand, JOB_TYPE_LABELS, findingTitle, CATEGORY_LABELS } from '../lib/labels';
 
 const CUSTOMER_PROVIDERS = ['googleSearchConsole', 'googleAnalytics', 'openai', 'anthropic'];
 import { toPersianDigits, formatPersianNumber, formatPersianDate, formatRelativePersianTime } from '../lib/persian';
@@ -100,7 +100,7 @@ export default function Dashboard() {
             <>
               <div className="mt-3 flex items-end gap-2">
                 <span className="text-5xl font-bold text-white persian-numbers">{toPersianDigits(seoScore)}</span>
-                <span className="text-sm text-slate-400 mb-2">/۱۰۰</span>
+                <span className="text-sm text-slate-400 mb-2">/۱۰۰ · {scoreBand(seoScore).label}</span>
               </div>
               <p className="text-xs text-slate-400 mt-2 font-vazirmatn-light">بر اساس {toPersianDigits(auditFindings.length)} یافته ممیزی</p>
             </>
