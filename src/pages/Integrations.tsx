@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   ExternalLink, CheckCircle2, XCircle, Clock, AlertCircle,
   Settings, RefreshCw, Database, Bot, CreditCard, HardDrive, Search
@@ -18,26 +19,21 @@ interface Integration {
   icon: React.ElementType;
 }
 
-async function handleConnectGoogle() {
+async function connectGoogle(onError: (message: string) => void) {
   const result = await api.getGoogleConnectUrl();
-  if (result.success) {
-    window.location.href = result.data.url;
-  } else {
-    window.alert('اتصال گوگل هنوز فعال نشده است.');
-  }
+  if (result.success) window.location.href = result.data.url;
+  else onError('اتصال گوگل هنوز فعال نشده است. با پشتیبانی تماس بگیرید.');
 }
 
-async function handleDisconnectGoogle() {
+async function disconnectGoogle(onError: (message: string) => void) {
   const result = await api.disconnectGoogle();
-  if (result.success) {
-    window.location.reload();
-  } else {
-    window.alert(result.error.message || 'قطع اتصال گوگل انجام نشد.');
-  }
+  if (result.success) window.location.reload();
+  else onError('قطع اتصال گوگل انجام نشد.');
 }
 
 export default function Integrations() {
   const { state } = useAppState();
+  const [googleError, setGoogleError] = useState('');
 
   const integrations: Integration[] = [
     { key: 'dataForSeo', name: 'DataForSEO', description: 'خارج از ایران. برای ایران از ورود فایل و سرچ کنسول استفاده کنید. دادهٔ نتایج جست‌وجو، کلمات کلیدی، رتبه، بک‌لینک و رقبا', category: 'data', status: state.providerStatus.dataForSeo, envVars: ['DATAFORSEO_LOGIN', 'DATAFORSEO_PASSWORD'], icon: Search },
@@ -61,6 +57,8 @@ export default function Integrations() {
           <p className="text-sm text-slate-400 mt-1">وضعیت سرویس‌های خارجی متصل</p>
         </div>
       </div>
+
+      {googleError && <p role="alert" className="bg-accent-red/10 border border-accent-red/30 rounded-xl p-4 text-sm text-accent-red">{googleError}</p>}
 
       {/* Status Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -113,7 +111,7 @@ export default function Integrations() {
                   <div className="mt-3 flex items-center gap-2">
                     {(integration.key === 'googleSearchConsole' || integration.key === 'googleAnalytics') && integration.status !== 'connected' && (
                       <button
-                        onClick={handleConnectGoogle}
+                        onClick={() => void connectGoogle(setGoogleError)}
                         className="flex-1 px-3 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-lg flex items-center justify-center gap-1"
                       >
                         <ExternalLink className="w-3 h-3" /> اتصال به گوگل
@@ -121,7 +119,7 @@ export default function Integrations() {
                     )}
                     {(integration.key === 'googleSearchConsole' || integration.key === 'googleAnalytics') && integration.status === 'connected' && (
                       <button
-                        onClick={handleDisconnectGoogle}
+                        onClick={() => void disconnectGoogle(setGoogleError)}
                         className="flex-1 px-3 py-2 bg-surface-3/30 hover:bg-surface-3/50 text-slate-300 text-xs font-medium rounded-lg flex items-center justify-center gap-1"
                       >
                         <XCircle className="w-3 h-3" /> قطع اتصال گوگل

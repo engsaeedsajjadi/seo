@@ -172,7 +172,6 @@ export default function Alerts() {
                   </div>
                   <p className="text-xs text-slate-400 mt-1">{alertText(alert).message}</p>
                   <div className="flex items-center gap-3 mt-2">
-                    <span className="text-[10px] text-slate-500">{alert.rule}</span>
                     <span className="text-[10px] text-slate-500">{formatDateTime(alert.triggeredAt)}</span>
                   </div>
                 </div>

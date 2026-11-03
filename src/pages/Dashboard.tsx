@@ -133,7 +133,7 @@ export default function Dashboard() {
         />
         <StatCard
           title="وضعیت سرویس‌ها"
-          value={`${toPersianDigits(Object.values(state.providerStatus).filter(s => s === 'connected').length)}/${toPersianDigits(Object.keys(state.providerStatus).length)}`}
+          value={`${toPersianDigits(CUSTOMER_PROVIDERS.filter(key => state.providerStatus[key as keyof typeof state.providerStatus] === 'connected').length)}/${toPersianDigits(CUSTOMER_PROVIDERS.length)}`}
           subtitle="یکپارچه‌سازی متصل"
           icon={CheckCircle2}
           link="/integrations"

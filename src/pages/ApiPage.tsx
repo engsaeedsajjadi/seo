@@ -1,6 +1,7 @@
 import { authenticatedFetch } from '../lib/api';
 import { useState, useEffect } from 'react';
 import { t } from '../i18n';
+import { formatDateOnly } from '../lib/labels';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 import {
   Shield, Key, Code, ExternalLink, Copy, CheckCircle2,
@@ -216,7 +217,7 @@ export default function ApiPage() {
             {keyError && <p className="text-xs text-accent-red mb-3">{keyError}</p>}
             {newKeyResult && (
               <div className="bg-accent-green/20 border border-accent-green/30 rounded-lg p-3 mb-4">
-                <p className="text-xs text-accent-green font-mono break-all">کلید {newKeyResult.id}: {newKeyResult.key} — shown only once, hash stored, prefix {newKeyResult.key.substring(0, 12)}..., scopes, revoke, lastUsedAt</p>
+                <div className="space-y-2"><p className="text-xs text-accent-green">این کلید فقط همین یک بار نمایش داده می‌شود. آن را در جای امنی نگه دارید.</p><code dir="ltr" className="block text-right text-xs text-white font-mono break-all">{newKeyResult.key}</code></div>
               </div>
             )}
             {loadingKeys ? (
@@ -234,7 +235,7 @@ export default function ApiPage() {
                           <span key={s} className="px-1.5 py-0.5 rounded text-[10px] bg-brand-500/20 text-brand-400">{s}</span>
                         ))}
                       </div>
-                      <p className="text-xs text-slate-400 mt-1 font-mono">{apiKey.keyPrefix}...  · Created: {new Date(apiKey.createdAt).toLocaleDateString()} · Last used: {apiKey.lastUsedAt ? new Date(apiKey.lastUsedAt).toLocaleDateString() : 'never'}</p>
+                      <p className="text-xs text-slate-400 mt-1 font-mono"><span dir="ltr">{apiKey.keyPrefix}...</span> · ساخته‌شده: {formatDateOnly(apiKey.createdAt)} · آخرین استفاده: {apiKey.lastUsedAt ? formatDateOnly(apiKey.lastUsedAt) : 'هنوز استفاده نشده'}</p>
                     </div>
                     <button onClick={() => handleRevokeKey(apiKey.id)} className="p-1.5 rounded hover:bg-surface-3/50 text-accent-red text-xs flex items-center gap-1"><Trash2 className="w-3 h-3" /> لغو</button>
                   </div>
@@ -270,7 +271,7 @@ export default function ApiPage() {
                   }`}>
                     {endpoint.method}
                   </span>
-                  <code className="text-xs text-slate-300 font-mono flex-1">{endpoint.path}</code>
+                  <code dir="ltr" className="text-xs text-slate-300 font-mono flex-1 text-right break-all">{endpoint.path}</code>
                   <span className="text-xs text-slate-500">{endpoint.desc}</span>
                 </div>
               ))}

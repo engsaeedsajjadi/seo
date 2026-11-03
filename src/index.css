@@ -92,13 +92,6 @@ pre,
   flex-direction: row-reverse;
 }
 
-[dir="rtl"] .text-left {
-  text-align: right;
-}
-
-[dir="rtl"] .text-right {
-  text-align: left;
-}
 
 /* RTL border adjustments */
 [dir="rtl"] .border-l {

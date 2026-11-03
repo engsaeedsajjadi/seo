@@ -81,9 +81,9 @@ export function getStatusColor(status: ProviderStatus): string {
 export function getStatusLabel(status: ProviderStatus): string {
   switch (status) {
     case 'connected': return 'متصل';
-    case 'not_configured': return 'پیکربندی نشده';
+    case 'not_configured': return 'فعال نشده';
     case 'error': return 'خطا';
-    case 'rate_limited': return 'محدودیت نرخ';
+    case 'rate_limited': return 'موقتاً محدود';
   }
 }
 
