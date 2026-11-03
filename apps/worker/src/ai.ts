@@ -53,6 +53,12 @@ export class AiProviderError extends Error {
   }
 }
 
+/** An exhausted provider account stays exhausted, so retrying only repeats the failure. */
+export function isAiQuotaError(error: unknown): boolean {
+  return error instanceof AiProviderError
+    && /insufficient_quota|credit_balance|billing_hard_limit|credit balance is too low/i.test(error.message);
+}
+
 export interface AIProvider {
   name: string;
   isConfigured(): boolean;

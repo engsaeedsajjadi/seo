@@ -21,6 +21,8 @@ import {
   extractUrlsFromText,
   buildBriefPrompt,
   parseBriefOutline,
+  AiProviderError,
+  isAiQuotaError,
 } from '../../apps/worker/src/ai.js';
 
 console.log('Testing AI worker module (GEO analysis, brief parsing, providers)...');
@@ -119,4 +121,6 @@ console.log('Testing AI worker module (GEO analysis, brief parsing, providers)..
   console.log('  ✓ AI providers: gating, request shape, error status');
 }
 
+assert.strictEqual(isAiQuotaError(new AiProviderError('OpenAI error 429: {"type":"insufficient_quota"}', { httpStatus: 429 })), true, 'no credit is not retried');
+assert.strictEqual(isAiQuotaError(new AiProviderError('OpenAI error 429: rate limit reached', { httpStatus: 429 })), false, 'a rate limit is retried');
 console.log('✅ ai-geo.test.ts — all assertions passed');

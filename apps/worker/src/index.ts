@@ -39,7 +39,7 @@ import {
   defaultGa4Window,
 } from './google.js';
 import {
-  AiProviderError,
+  AiProviderError, isAiQuotaError,
   createAiProviders,
   pickAiProvider,
   aiEngineForProvider,
@@ -952,6 +952,9 @@ function aiErrorToJobError(error: unknown, context: string): JobError {
   if (error instanceof AiProviderError) {
     if (error.httpStatus === 401 || error.httpStatus === 403) {
       return new JobError(`AI provider authentication failed — ${error.message}`, 'NON_RETRYABLE', false);
+    }
+    if (isAiQuotaError(error)) {
+      return new JobError(`AI provider has no credit — ${error.message}`, 'NON_RETRYABLE', false);
     }
     return new JobError(`${context} failed — ${error.message}`, 'RETRYABLE', true);
   }
