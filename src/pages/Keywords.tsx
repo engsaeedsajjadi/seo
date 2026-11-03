@@ -7,6 +7,7 @@ import { api } from '../lib/api';
 import { downloadCsv } from '../lib/csv';
 import type { Keyword } from '../lib/types';
 import { t } from '../i18n';
+import { COUNTRY_LABELS, LANGUAGE_LABELS } from '../lib/labels';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 // Country/language options — same canonical lists as the project form.
@@ -93,7 +94,7 @@ export default function Keywords() {
     if (!state.currentProject) return;
     const terms = seedInput.split('\n').map(s => s.trim()).filter(Boolean);
     if (terms.length === 0) {
-      setAddError('Enter at least one keyword');
+      setAddError('دست‌کم یک کلمهٔ کلیدی وارد کنید.');
       return;
     }
     setAddLoading(true);
@@ -146,7 +147,7 @@ export default function Keywords() {
 
   return (
     <div className="space-y-6" dir="rtl">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">تحقیق کلمات کلیدی</h1>
           <p className="text-sm text-slate-400 mt-1">
@@ -202,7 +203,7 @@ export default function Keywords() {
           className="px-3 py-2 bg-surface-2 border border-surface-3/50 rounded-lg text-xs text-slate-300 flex items-center gap-1"
         >
           <ArrowUpDown className="w-3 h-3" />
-          مرتب‌سازی: {sortBy}
+          مرتب‌سازی: {{position:'رتبه',volume:'حجم جست‌وجو',difficulty:'سختی'}[sortBy]}
         </button>
       </div>
 
@@ -222,11 +223,11 @@ export default function Keywords() {
         </div>
       ) : (
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl overflow-hidden">
-          <table className="w-full">
+          <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-surface-3/50">
-                <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">کلمهٔ کلیدی</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">هدف</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">کلمهٔ کلیدی</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">هدف</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">حجم جست‌وجو</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">CPC</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">KD</th>
@@ -238,13 +239,13 @@ export default function Keywords() {
                 <tr key={keyword.id} className="border-b border-surface-3/20 hover:bg-surface-3/20">
                   <td className="px-4 py-3">
                     <span className="text-sm text-white font-medium">{keywordTerm(keyword)}</span>
-                    <span className="block text-[10px] text-slate-500 ltr-content">{keyword.country}/{keyword.language}</span>
+                    <span className="block text-[10px] text-slate-500 ltr-content">{COUNTRY_LABELS[keyword.country] || keyword.country} · {LANGUAGE_LABELS[keyword.language] || keyword.language}</span>
                   </td>
                   <td className="px-4 py-3">
                     {keyword.intent && <IntentBadge intent={keyword.intent} />}
                   </td>
                   <td className="px-4 py-3 text-right text-sm text-slate-300">
-                    {(() => { const v = keywordVolume(keyword); return v !== null ? formatNumber(v) : '— (provider not configured)'; })()}
+                    {(() => { const v = keywordVolume(keyword); return v !== null ? formatNumber(v) : '—'; })()}
                   </td>
                   <td className="px-4 py-3 text-right text-sm text-slate-300">
                     {keyword.cpc !== null ? `$${keyword.cpc.toFixed(2)}` : '—'}
@@ -253,18 +254,18 @@ export default function Keywords() {
                     {keyword.difficulty !== null ? <DifficultyBadge kd={keyword.difficulty} /> : '—'}
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-medium text-white">
-                    {keyword.currentPosition ?? '— (no rank check yet)'}
+                    {keyword.currentPosition ?? '—'}
                   </td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
       {/* Add Keywords Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg bg-surface-2 border border-surface-3/50 rounded-xl p-6">
             <h2 className="text-lg font-bold text-white mb-4">افزودن کلمات کلیدی</h2>
             <div className="space-y-4">

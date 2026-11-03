@@ -4,6 +4,7 @@ import {
   Bell, AlertTriangle, Check, Trash2, Settings, Filter,
   XCircle, Info, RefreshCw
 } from 'lucide-react';
+import { SEVERITY_LABELS, alertText, apiMessage, formatDateTime } from '../lib/labels';
 import { useAppState } from '../lib/store';
 import { api } from '../lib/api';
 import type { Alert as AlertType } from '../lib/types';
@@ -44,7 +45,7 @@ export default function Alerts() {
   async function handleCreateRule() {
     if (!state.currentProject) return;
     if (!ruleForm.title.trim() || !ruleForm.message.trim()) {
-      setRuleError('Title and message required');
+      setRuleError('عنوان و متن هشدار را وارد کنید.');
       return;
     }
     setRuleLoading(true);
@@ -63,7 +64,7 @@ export default function Alerts() {
         setShowRuleModal(false);
         setRuleForm({ type: 'critical_issue', title: '', message: '', severity: 'medium', channels: ['in_app'] });
       } else {
-        setRuleError(json.error?.message || 'ایجاد انجام نشد');
+        setRuleError(apiMessage(json.error?.message, 'ایجاد انجام نشد'));
       }
     } catch (e) {
       setRuleError(e instanceof Error ? e.message : String(e));
@@ -117,7 +118,7 @@ export default function Alerts() {
 
   return (
     <div className="space-y-6" dir="rtl">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">هشدارها</h1>
           <p className="text-sm text-slate-400 mt-1">هشدارها و اعلان‌های سئوی پروژه</p>
@@ -165,14 +166,14 @@ export default function Alerts() {
                 <AlertIcon severity={alert.severity} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-semibold text-white">{alert.title || alert.message}</h4>
+                    <h4 className="text-sm font-semibold text-white">{alertText(alert).title}</h4>
                     <SeverityBadge severity={alert.severity} />
                     {!alert.read && <span className="w-2 h-2 rounded-full bg-brand-500" />}
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">{alert.message}</p>
+                  <p className="text-xs text-slate-400 mt-1">{alertText(alert).message}</p>
                   <div className="flex items-center gap-3 mt-2">
                     <span className="text-[10px] text-slate-500">{alert.rule}</span>
-                    <span className="text-[10px] text-slate-500">{new Date(alert.triggeredAt).toLocaleString()}</span>
+                    <span className="text-[10px] text-slate-500">{formatDateTime(alert.triggeredAt)}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -189,7 +190,7 @@ export default function Alerts() {
       )}
 
       {showRuleModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg bg-surface-2 border border-surface-3/50 rounded-xl p-6">
             <h2 className="text-lg font-bold text-white mb-4">ایجاد هشدار</h2>
             <div className="space-y-4">
@@ -264,5 +265,5 @@ function SeverityBadge({ severity }: { severity: string }) {
     medium: 'bg-yellow-500/20 text-yellow-400',
     low: 'bg-blue-500/20 text-blue-400',
   };
-  return <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${colors[severity]}`}>{severity}</span>;
+  return <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${colors[severity]}`}>{SEVERITY_LABELS[severity] || severity}</span>;
 }

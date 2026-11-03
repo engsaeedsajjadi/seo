@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Shield, AlertTriangle, CheckCircle2, XCircle, Clock, Play,
   ChevronDown, ChevronRight, Download, Filter, AlertCircle, Zap
@@ -8,10 +8,13 @@ import { downloadCsv } from '../lib/csv';
 import { api } from '../lib/api';
 import type { Severity, AuditCategory, AuditFinding } from '../lib/types';
 import { t } from '../i18n';
+import { SEVERITY_LABELS, FINDING_STATUS_LABELS, CATEGORY_LABELS, JOB_STATUS_LABELS, apiMessage, findingTitle, findingDescription, findingRecommendation } from '../lib/labels';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 export default function SiteAudit() {
-  const { state } = useAppState();
+  const { state, actions } = useAppState();
+  const [crawlActive, setCrawlActive] = useState<string | null>(null);
+  const [crawlRequests, setCrawlRequests] = useState(0);
   const [findings, setFindings] = useState<AuditFinding[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSeverity, setSelectedSeverity] = useState<Severity | 'all'>('all');
@@ -27,7 +30,7 @@ export default function SiteAudit() {
 
   function exportFindings() {
     downloadCsv(`audit-${state.currentProject?.domain}.csv`, ['شدت', 'دسته', 'عنوان', 'وضعیت', 'پیشنهاد', 'صفحات درگیر'],
-      findings.map((f) => [f.severity, f.category, f.title, f.status, f.recommendation, (f.affectedUrls || []).join(' ')]));
+      findings.map((f) => [SEVERITY_LABELS[f.severity] || f.severity, CATEGORY_LABELS[f.category] || f.category, findingTitle(f), FINDING_STATUS_LABELS[f.status] || f.status, findingRecommendation(f), (f.affectedUrls || []).join(' ')]));
   }
 
   async function setFindingStatus(findingId: string, status: 'fixed' | 'ignored') {
@@ -36,26 +39,51 @@ export default function SiteAudit() {
     if (result.success) setFindings((prev) => prev.map((f) => (f.id === findingId ? { ...f, status } : f)));
   }
 
-  useEffect(() => {
-  
-  async function loadFindings() {
-      if (!state.currentProject) {
-        setLoading(false);
-        return;
-      }
+  const projectId = state.currentProject?.id;
+  const setCurrentProject = actions.setCurrentProject;
 
-      try {
-        const result = await api.getAuditFindings(state.currentProject.id);
-        if (result.success) setFindings(result.data);
-      } catch (error) {
-        console.error('Failed to load audit findings:', error);
-      } finally {
-        setLoading(false);
-      }
+  const loadFindings = useCallback(async () => {
+    if (!projectId) {
+      setLoading(false);
+      return;
     }
+    try {
+      const result = await api.getAuditFindings(projectId);
+      if (result.success) setFindings(result.data);
+    } catch (error) {
+      console.error('Failed to load audit findings:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
 
-    loadFindings();
-  }, [state.currentProject]);
+  useEffect(() => { void loadFindings(); }, [loadFindings]);
+
+  // Follow the running crawl, including the first one queued when the project was created.
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let wasActive = false;
+    async function poll() {
+      const result = await api.getJobs(projectId!);
+      if (cancelled) return;
+      if (result.success) {
+        const active = result.data.find((job) => job.type === 'SITE_CRAWL' && (job.status === 'pending' || job.status === 'running'));
+        setCrawlActive(active ? active.status : null);
+        if (wasActive && !active) {
+          setCrawlSuccess('خزش تمام شد و نتیجه به‌روز شد.');
+          await loadFindings();
+          const fresh = await api.getProject(projectId!);
+          if (!cancelled && fresh.success) setCurrentProject(fresh.data);
+        }
+        wasActive = Boolean(active);
+      }
+      if (!cancelled && wasActive) timer = setTimeout(() => void poll(), 6000);
+    }
+    void poll();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [projectId, crawlRequests, loadFindings, setCurrentProject]);
 
   async function handleStartCrawl() {
     if (!state.currentProject) return;
@@ -68,12 +96,10 @@ export default function SiteAudit() {
         maxPages: crawlOptions.maxPages,
       });
       if (result.success) {
-        setCrawlSuccess('خزش در صف قرار گرفت. نتیجه به‌زودی نمایش داده می‌شود.');
+        setCrawlRequests((n) => n + 1);
         setShowRunCrawl(false);
-        // Optionally refresh findings after delay
-        setTimeout(() => window.location.reload(), 2000);
       } else {
-        setCrawlError(result.error.message);
+        setCrawlError(apiMessage(result.error.message));
       }
     } catch (e) {
       setCrawlError(e instanceof Error ? e.message : String(e));
@@ -106,9 +132,8 @@ export default function SiteAudit() {
     notice: findings.filter(f => f.severity === 'notice').length,
   };
 
-  const overallScore = findings.length > 0
-    ? Math.max(0, Math.round(100 - (severityCounts.critical * 10 + severityCounts.high * 5 + severityCounts.medium * 2 + severityCounts.low * 1)))
-    : null;
+  // The score comes from the server, so every page shows the same number.
+  const overallScore = state.currentProject?.seoScore ?? null;
 
   if (loading) {
     return (
@@ -124,7 +149,7 @@ export default function SiteAudit() {
   return (
     <div className="space-y-6" dir="rtl">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">ممیزی سایت</h1>
           <p className="text-sm text-slate-400 mt-1">
@@ -138,7 +163,8 @@ export default function SiteAudit() {
           </button>
           <button
             onClick={() => setShowRunCrawl(true)}
-            className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2"
+            disabled={crawlActive !== null}
+            className="px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg flex items-center gap-2"
           >
             <Play className="w-4 h-4" />
             اجرای خزش
@@ -146,6 +172,12 @@ export default function SiteAudit() {
         </div>
       </div>
 
+      {crawlActive && (
+        <div role="status" className="bg-brand-600/10 border border-brand-600/30 rounded-xl p-4 text-sm text-slate-200 flex items-center gap-3">
+          <div className="w-4 h-4 border-2 border-brand-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+          <span>خزش سایت {JOB_STATUS_LABELS[crawlActive]} است. نتیجه پس از پایان خودکار نمایش داده می‌شود و می‌توانید از این صفحه خارج شوید.</span>
+        </div>
+      )}
       {crawlSuccess && (
         <div className="bg-accent-green/20 border border-accent-green/30 rounded-xl p-4 text-sm text-accent-green">
           {crawlSuccess}
@@ -159,13 +191,13 @@ export default function SiteAudit() {
 
       {/* Score Overview */}
       {overallScore !== null ? (
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-          <div className="md:col-span-1 bg-surface-2 border border-surface-3/50 rounded-xl p-5 flex flex-col items-center justify-center">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          <div className="col-span-2 md:col-span-1 bg-surface-2 border border-surface-3/50 rounded-xl p-5 flex flex-col items-center justify-center">
             <div className={`text-4xl font-bold ${overallScore >= 80 ? 'text-accent-green' : overallScore >= 60 ? 'text-accent-yellow' : 'text-accent-red'}`}>
-              {overallScore}
+              {toPersianDigits(overallScore)}
             </div>
             <p className="text-xs text-slate-400 mt-1">امتیاز کلی</p>
-            <p className="text-[10px] text-slate-500 mt-1">بر اساس {findings.length} یافته</p>
+            <p className="text-[10px] text-slate-500 mt-1">بر اساس {toPersianDigits(findings.length)} یافته</p>
           </div>
           <SeverityCard severity="critical" count={severityCounts.critical} total={findings.length} />
           <SeverityCard severity="high" count={severityCounts.high} total={findings.length} />
@@ -173,7 +205,7 @@ export default function SiteAudit() {
           <SeverityCard severity="low" count={severityCounts.low} total={findings.length} />
           <SeverityCard severity="notice" count={severityCounts.notice} total={findings.length} />
         </div>
-      ) : (
+      ) : crawlActive ? null : (
         <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-8 text-center">
           <AlertCircle className="w-12 h-12 text-accent-yellow mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-white mb-2">هنوز ممیزی‌ای انجام نشده است</h3>
@@ -193,7 +225,7 @@ export default function SiteAudit() {
       {/* Filters */}
       {findings.length > 0 && (
         <>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Filter className="w-4 h-4 text-slate-400" />
             <select
               value={selectedSeverity}
@@ -221,11 +253,11 @@ export default function SiteAudit() {
               <option value="images">تصاویر</option>
               <option value="performance">کارایی</option>
               <option value="security">امنیت</option>
-              <option value="structured-data">داده ساختاریافته</option>
+              <option value="structured_data">داده ساختاریافته</option>
               <option value="international">سئوی بین‌المللی</option>
             </select>
-            <span className="text-xs text-slate-500 ml-auto">
-              نمایش {filteredFindings.length} از {findings.length} یافته
+            <span className="text-xs text-slate-500 ms-auto">
+              نمایش {toPersianDigits(filteredFindings.length)} از {toPersianDigits(findings.length)} یافته
             </span>
           </div>
 
@@ -235,22 +267,21 @@ export default function SiteAudit() {
               <div key={finding.id} className="bg-surface-2 border border-surface-3/50 rounded-xl overflow-hidden">
                 <button
                   onClick={() => setExpandedRule(expandedRule === finding.id ? null : finding.id)}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-surface-3/20 text-left"
+                  className="w-full flex items-center gap-4 p-4 hover:bg-surface-3/20 text-right"
                 >
                   <SeverityIcon severity={finding.severity} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-slate-500">{finding.ruleId}</span>
-                      <span className="text-sm font-medium text-white">{finding.title}</span>
+                      <span className="text-sm font-medium text-white">{findingTitle(finding)}</span>
                     </div>
-                    <p className="text-xs text-slate-400 mt-0.5">{finding.category} · {finding.affectedUrls.length} URL{finding.affectedUrls.length !== 1 ? 's' : ''} affected — evidence-based</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{CATEGORY_LABELS[finding.category] || finding.category} · {toPersianDigits(finding.affectedUrls.length)} صفحه</p>
                   </div>
                   <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
                     finding.status === 'open' ? 'bg-red-500/20 text-red-400' :
                     finding.status === 'fixed' ? 'bg-green-500/20 text-green-400' :
                     'bg-slate-500/20 text-slate-400'
                   }`}>
-                    {finding.status}
+                    {FINDING_STATUS_LABELS[finding.status] || finding.status}
                   </span>
                   {expandedRule === finding.id ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
                 </button>
@@ -260,11 +291,11 @@ export default function SiteAudit() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <h4 className="text-xs font-semibold text-slate-300 mb-1">توضیح</h4>
-                        <p className="text-xs text-slate-400">{finding.description}</p>
+                        <p className="text-xs text-slate-400">{findingDescription(finding)}</p>
                       </div>
                       <div>
                         <h4 className="text-xs font-semibold text-slate-300 mb-1">پیشنهاد</h4>
-                        <p className="text-xs text-slate-400">{finding.recommendation}</p>
+                        <p className="text-xs text-slate-400">{findingRecommendation(finding)}</p>
                       </div>
                     </div>
                     {finding.affectedUrls.length > 0 && (
@@ -272,15 +303,15 @@ export default function SiteAudit() {
                         <h4 className="text-xs font-semibold text-slate-300 mb-1">صفحات درگیر</h4>
                         <div className="max-h-32 overflow-y-auto space-y-1">
                           {finding.affectedUrls.slice(0, 10).map((url, i) => (
-                            <p key={i} className="text-xs text-slate-400 font-mono truncate">{url}</p>
+                            <a key={i} href={url} target="_blank" rel="noopener noreferrer" dir="ltr" className="block text-right text-xs text-brand-400 hover:underline font-mono truncate">{url}</a>
                           ))}
                           {finding.affectedUrls.length > 10 && (
-                            <p className="text-xs text-slate-500">… و {finding.affectedUrls.length - 10} مورد دیگر</p>
+                            <p className="text-xs text-slate-500">… و {toPersianDigits(finding.affectedUrls.length - 10)} مورد دیگر — فهرست کامل در خروجی CSV</p>
                           )}
                         </div>
                       </div>
                     )}
-                    <div className="mt-3 flex items-center gap-2">
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
                       <button onClick={() => setFindingStatus(finding.id, 'fixed')} className="px-3 py-1.5 bg-accent-green/20 text-accent-green text-xs rounded-lg hover:bg-accent-green/30">
                         علامت‌گذاری به‌عنوان رفع‌شده
                       </button>
@@ -298,7 +329,7 @@ export default function SiteAudit() {
 
       {/* Run Crawl Modal */}
       {showRunCrawl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-md bg-surface-2 border border-surface-3/50 rounded-xl p-6">
             <h2 className="text-lg font-bold text-white mb-2">اجرای خزش سایت</h2>
             <p className="text-sm text-slate-400 mb-4">
@@ -352,8 +383,8 @@ function SeverityCard({ severity, count, total }: { severity: Severity; count: n
   };
   return (
     <div className={`border rounded-xl p-4 ${colors[severity]}`}>
-      <p className={`text-2xl font-bold ${textColors[severity]}`}>{count}</p>
-      <p className="text-xs text-slate-400 capitalize mt-1">{severity}</p>
+      <p className={`text-2xl font-bold ${textColors[severity]}`}>{toPersianDigits(count)}</p>
+      <p className="text-xs text-slate-400 mt-1">{SEVERITY_LABELS[severity]}</p>
       {total > 0 && (
         <div className="mt-2 w-full bg-surface-3/50 rounded-full h-1">
           <div className={`h-1 rounded-full ${textColors[severity].replace('text-', 'bg-')}`} style={{ width: `${(count / total) * 100}%` }} />

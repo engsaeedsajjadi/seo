@@ -12,7 +12,7 @@ import { creditRepository } from '../repositories/credit.repository.js';
 import { auditLogRepository } from '../repositories/audit-log.repository.js';
 
 function generateSlug(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 50) + '-' + Math.random().toString(36).substring(2, 6);
+  return (name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'org').substring(0, 50) + '-' + Math.random().toString(36).substring(2, 6);
 }
 
 export const authService = {
@@ -31,7 +31,7 @@ export const authService = {
       const user = await userRepository.create({ email, name, passwordHash });
 
       const org = await organizationRepository.create({
-        name: `${name}'s Organization`,
+        name: `سازمان ${name}`,
         slug: generateSlug(name),
         ownerId: user.id,
         plan: 'FREE',

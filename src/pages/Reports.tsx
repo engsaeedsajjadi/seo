@@ -9,7 +9,7 @@ export default function Reports(){
   const [reports,setReports]=useState<Report[]>([]);
   const [loading,setLoading]=useState(true);const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');const [notice,setNotice]=useState('');
-  const [format,setFormat]=useState('json');
+  const [format,setFormat]=useState('html');
   const load=useCallback(async()=>{
     if(!projectId){setLoading(false);return;}
     const result=await api.getReports(projectId);
@@ -42,18 +42,18 @@ export default function Reports(){
     <h1 className="text-2xl font-bold text-white">گزارش‌های سئو</h1>
     <p>گزارش از داده‌های ذخیره‌شدهٔ همین پروژه تهیه می‌شود. خروجی HTML قابل چاپ است.</p>
     {error&&<p role="alert" className="text-red-400">{error}</p>}{notice&&<p role="status" className="text-green-400">{notice}</p>}
-    <form onSubmit={generate} className="flex items-end gap-3 bg-surface-2 rounded-xl p-5">
-      <label>قالب خروجی<select value={format} onChange={e=>setFormat(e.target.value)} className="block bg-surface p-2 rounded mt-2">
-        <option value="json">JSON</option><option value="csv">CSV</option><option value="html">HTML قابل چاپ</option>
+    <form onSubmit={generate} className="flex flex-wrap items-end gap-3 bg-surface-2 border border-surface-3/50 rounded-xl p-5">
+      <label>قالب خروجی<select value={format} onChange={e=>setFormat(e.target.value)} className="block bg-surface border border-surface-3/50 px-3 py-2 rounded-lg mt-2 text-sm text-white">
+        <option value="html">HTML قابل چاپ</option><option value="csv">CSV</option><option value="json">JSON</option>
       </select></label>
-      <button disabled={busy} className="bg-brand-600 text-white p-2 rounded disabled:opacity-50">ساخت گزارش</button>
-      <button type="button" onClick={()=>void load()} disabled={busy} className="p-2">تازه‌سازی</button>
+      <button disabled={busy} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg disabled:opacity-50">ساخت گزارش</button>
+      <button type="button" onClick={()=>void load()} disabled={busy} className="px-4 py-2.5 text-sm text-slate-300 hover:text-white">تازه‌سازی</button>
     </form>
     {loading?<p role="status">در حال دریافت گزارش‌ها…</p>:reports.length===0?<p>هنوز گزارشی ساخته نشده است.</p>:
       <div className="overflow-x-auto"><table className="w-full bg-surface-2 rounded-xl text-right">
         <thead><tr><th className="p-3">عنوان</th><th>قالب</th><th>وضعیت</th><th>تاریخ</th><th>دریافت</th></tr></thead>
         <tbody>{reports.map(report=><tr key={report.id} className="border-t border-surface-3">
-          <td className="p-3">{report.title}</td><td>{report.format.toUpperCase()}</td><td>{statusLabels[report.status] || report.status}</td><td>{formatPersianDate(report.createdAt,{format:'short'})}</td>
+          <td className="p-3">{/^seo report for /i.test(report.title) ? `گزارش سئو ${report.title.replace(/^seo report for /i, '')}` : report.title}</td><td>{report.format.toUpperCase()}</td><td>{statusLabels[report.status] || report.status}</td><td>{formatPersianDate(report.createdAt,{format:'short'})}</td>
           <td>{(report.status==='completed'||report.status==='ready')&&<button onClick={()=>void download(report)} disabled={busy} className="text-brand-400 p-2">دریافت فایل</button>}</td>
         </tr>)}</tbody>
       </table></div>}

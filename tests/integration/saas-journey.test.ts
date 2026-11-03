@@ -162,8 +162,11 @@ try {
   check('organization stats expose no platform totals', stats.status === 200 && stats.data.orgs === undefined && Number(stats.data.projects) === 1, stats.data);
 
   console.log('--- Crawl, audit and score');
+  await waitFor(async () => (await call('GET', `/projects/${pid}/jobs`, T)).data?.every((j: any) => ['completed', 'dead_letter'].includes(j.status)));
   const crawl = await call('POST', `/projects/${pid}/crawl`, T, { maxPages: 5 });
   check('crawl is accepted', crawl.status === 201, crawl.json);
+  const repeat = await call('POST', `/projects/${pid}/crawl`, T, { maxPages: 5 });
+  check('a second crawl is refused while one is running', repeat.status === 409 && repeat.code === 'CRAWL_ALREADY_RUNNING', repeat.json);
   check('crawl above the maximum is rejected', (await call('POST', `/projects/${pid}/crawl`, T, { maxPages: 5000 })).status === 400);
   const finished = await waitFor(async () => (await call('GET', `/projects/${pid}/jobs`, T)).data?.every((j: any) => ['completed', 'dead_letter'].includes(j.status)));
   check('all crawl jobs finish', finished);

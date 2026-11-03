@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   Globe, Plus, Settings, Trash2, Search, AlertCircle
 } from 'lucide-react';
+import { COUNTRY_LABELS, LANGUAGE_LABELS, DEVICE_LABELS } from '../lib/labels';
 import { useAppState } from '../lib/store';
 import { api } from '../lib/api';
 import type { Project } from '../lib/types';
@@ -22,7 +23,7 @@ export default function Projects() {
 
   return (
     <div className="space-y-6" dir="rtl">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white font-vazirmatn-bold">{t('projects.title')}</h1>
           <p className="text-sm text-slate-400 mt-1 font-vazirmatn-regular">
@@ -118,9 +119,9 @@ function ProjectCard({ project }: { project: Project }) {
       </div>
 
       <div className="flex items-center gap-2 mb-4">
-        <span className="px-2 py-0.5 rounded text-[10px] bg-surface-3/50 text-slate-400 ltr-content">{project.country}</span>
-        <span className="px-2 py-0.5 rounded text-[10px] bg-surface-3/50 text-slate-400 ltr-content">{project.language}</span>
-        <span className="px-2 py-0.5 rounded text-[10px] bg-surface-3/50 text-slate-400 ltr-content">{project.device}</span>
+        <span className="px-2 py-0.5 rounded text-[10px] bg-surface-3/50 text-slate-400 ">{COUNTRY_LABELS[project.country] || project.country}</span>
+        <span className="px-2 py-0.5 rounded text-[10px] bg-surface-3/50 text-slate-400 ">{LANGUAGE_LABELS[project.language] || project.language}</span>
+        <span className="px-2 py-0.5 rounded text-[10px] bg-surface-3/50 text-slate-400 ">{DEVICE_LABELS[project.device] || project.device}</span>
       </div>
 
       <div className="flex items-center gap-2">

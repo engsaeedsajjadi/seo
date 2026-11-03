@@ -279,7 +279,7 @@ export default function Billing() {
 
       {/* Credits — Persian */}
       <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-white mb-4 font-vazirmatn-bold">کیف پول اعتبار — دفتر کل اتمیک واقعی</h3>
+        <h3 className="text-sm font-semibold text-white mb-4 font-vazirmatn-bold">کیف پول اعتبار</h3>
         {loadingCredits ? (
           <div className="flex justify-center py-4"><div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" /></div>
         ) : credits ? (
@@ -291,11 +291,11 @@ export default function Billing() {
             </div>
             <div className="bg-surface/50 rounded-lg p-4 text-center">
               <p className="text-2xl font-bold text-accent-green persian-numbers font-vazirmatn-bold">{toPersianDigits(credits.totalGranted)}</p>
-              <p className="text-xs text-slate-400 mt-1 font-vazirmatn-regular">کل اعطا شده — دفتر کل واقعی</p>
+              <p className="text-xs text-slate-400 mt-1 font-vazirmatn-regular">کل اعتبار دریافتی</p>
             </div>
             <div className="bg-surface/50 rounded-lg p-4 text-center">
               <p className="text-2xl font-bold text-accent-red persian-numbers font-vazirmatn-bold">{toPersianDigits(credits.totalConsumed)}</p>
-              <p className="text-xs text-slate-400 mt-1 font-vazirmatn-regular">کل مصرف شده — تراکنش‌های اعتبار واقعی</p>
+              <p className="text-xs text-slate-400 mt-1 font-vazirmatn-regular">کل اعتبار مصرف‌شده</p>
             </div>
           </div>
         ) : (

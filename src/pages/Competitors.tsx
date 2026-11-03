@@ -4,12 +4,14 @@ import { Target, Plus, AlertCircle, Globe, RefreshCw } from 'lucide-react';
 import { useAppState } from '../lib/store';
 import { api } from '../lib/api';
 import { t } from '../i18n';
+import { apiMessage, formatDateOnly } from '../lib/labels';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 interface Competitor {
   id: string;
   domain: string;
-  created_at: string;
+  createdAt?: string;
+  created_at?: string;
 }
 
 export default function Competitors() {
@@ -70,7 +72,7 @@ export default function Competitors() {
         setDomainInput('');
         setShowAddModal(false);
       } else {
-        setAddError(json.error?.message || 'افزودن انجام نشد');
+        setAddError(apiMessage(json.error?.message, 'افزودن انجام نشد'));
       }
     } catch (e) {
       setAddError(e instanceof Error ? e.message : String(e));
@@ -91,7 +93,7 @@ export default function Competitors() {
 
   return (
     <div className="space-y-6" dir="rtl">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">تحلیل رقبا</h1>
           <p className="text-sm text-slate-400 mt-1">تحلیل رقابتی <span className="text-brand-400">{state.currentProject?.domain}</span> </p>
@@ -104,7 +106,7 @@ export default function Competitors() {
       {providerStatus && (
         <div className={`border rounded-xl p-4 ${providerStatus.configured ? 'bg-surface-2 border-surface-3/50' : 'bg-accent-yellow/10 border-accent-yellow/30'}`}>
           <p className="text-xs text-slate-300">
-            سرویس‌دهنده: {providerStatus.provider || 'none'} — configured: {String(providerStatus.configured)} — status: {providerStatus.status || 'not_configured'} — {providerStatus.message || 'Manual competitor tracking only, automated overlap/visibility requires DataForSEO'}
+            {providerStatus.configured ? 'دادهٔ رقبا فعال است.' : 'فعلاً پیگیری رقبا به‌صورت دستی است. مقایسهٔ خودکار پس از فعال‌شدن سرویس داده نمایش داده می‌شود.'}
           </p>
           
         </div>
@@ -131,12 +133,12 @@ export default function Competitors() {
           </button>
         </div>
       ) : (
-        <div className="bg-surface-2 border border-surface-3/50 rounded-xl overflow-hidden">
-          <table className="w-full">
+        <div className="bg-surface-2 border border-surface-3/50 rounded-xl overflow-x-auto">
+          <table className="w-full min-w-[560px]">
             <thead>
               <tr className="border-b border-surface-3/50">
-                <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">دامنه</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">افزوده‌شده</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">دامنه</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">افزوده‌شده</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">وضعیت</th>
               </tr>
             </thead>
@@ -144,7 +146,7 @@ export default function Competitors() {
               {competitors.map(c => (
                 <tr key={c.id} className="border-b border-surface-3/20 hover:bg-surface-3/20">
                   <td className="px-4 py-3 text-sm text-white font-medium flex items-center gap-2"><Globe className="w-4 h-4 text-slate-500" />{c.domain}</td>
-                  <td className="px-4 py-3 text-sm text-slate-400">{new Date(c.created_at).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-sm text-slate-400">{formatDateOnly(c.createdAt ?? c.created_at)}</td>
                   <td className="px-4 py-3 text-right text-xs text-slate-400">دادهٔ هم‌پوشانی پس از فعال‌شدن سرویس‌دهنده نمایش داده می‌شود</td>
                 </tr>
               ))}
@@ -154,25 +156,25 @@ export default function Competitors() {
       )}
 
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-surface-2 border border-surface-3/50 rounded-xl p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <form onSubmit={(e) => { e.preventDefault(); void handleAdd(); }} className="w-full max-w-md bg-surface-2 border border-surface-3/50 rounded-xl p-6">
             <h2 className="text-lg font-bold text-white mb-4">افزودن رقیب</h2>
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-medium text-slate-300 mb-1.5 block">دامنهٔ رقیب</label>
-                <input type="text" value={domainInput} onChange={e => setDomainInput(e.target.value)} placeholder="competitor.com" className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-600/50" />
+                <input type="text" dir="ltr" autoFocus value={domainInput} onChange={e => setDomainInput(e.target.value)} placeholder="competitor.com" className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-600/50" />
               </div>
               <p className="text-xs text-slate-400">نشانی‌های داخلی و خصوصی پذیرفته نمی‌شوند.</p>
               {addError && <p className="text-xs text-accent-red">{addError}</p>}
             </div>
             <div className="flex items-center justify-end gap-3 mt-6">
-              <button onClick={() => setShowAddModal(false)} disabled={addLoading} className="px-4 py-2 text-sm text-slate-400 hover:text-white disabled:opacity-50">انصراف</button>
-              <button onClick={handleAdd} disabled={addLoading} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50">
+              <button type="button" onClick={() => setShowAddModal(false)} disabled={addLoading} className="px-4 py-2 text-sm text-slate-400 hover:text-white disabled:opacity-50">انصراف</button>
+              <button type="submit" disabled={addLoading} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50">
                 {addLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
                 {addLoading ? 'در حال افزودن…' : 'افزودن'}
               </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </div>

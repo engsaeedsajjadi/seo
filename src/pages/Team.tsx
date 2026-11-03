@@ -51,33 +51,33 @@ export default function Team() {
     <p className="text-slate-400">مالک و مدیر سازمان می‌توانند کاربران دارای حساب را تا سقف پلن اضافه کنند.</p>
     {error && <p role="alert" className="text-red-400">{error}</p>}
     {notice && <p role="status" className="text-green-400">{notice}</p>}
-    <form onSubmit={add} className="flex flex-wrap gap-3 bg-surface-2 rounded-xl p-5">
-      <label className="text-slate-300">ایمیل عضو
-        <input type="email" dir="ltr" required value={email} onChange={e=>setEmail(e.target.value)} className="block bg-surface rounded p-2" />
+    <form onSubmit={add} className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_180px_auto] items-end gap-3 bg-surface-2 border border-surface-3/50 rounded-xl p-5">
+      <label className="text-sm text-slate-300">ایمیل عضو
+        <input type="email" dir="ltr" required value={email} onChange={e=>setEmail(e.target.value)} className="block w-full mt-1.5 bg-surface border border-surface-3/50 rounded-lg px-3 py-2.5 text-sm text-white text-right focus:outline-none focus:border-brand-600/50" />
       </label>
-      <label className="text-slate-300">نقش
-        <select value={role} onChange={e=>setRole(e.target.value)} className="block bg-surface rounded p-2">
+      <label className="text-sm text-slate-300">نقش
+        <select value={role} onChange={e=>setRole(e.target.value)} className="block w-full mt-1.5 bg-surface border border-surface-3/50 rounded-lg px-3 py-2.5 text-sm text-white">
           {roles.map(([value,label])=><option key={value} value={value}>{label}</option>)}
         </select>
       </label>
-      <button disabled={busy} className="bg-brand-600 rounded p-3 self-end disabled:opacity-50">{busy?'در حال ثبت…':'افزودن عضو'}</button>
+      <button disabled={busy} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg px-4 py-2.5 disabled:opacity-50">{busy?'در حال ثبت…':'افزودن عضو'}</button>
     </form>
-    <div className="bg-surface-2 rounded-xl p-5 text-slate-300 space-y-3">
-      <h2>دسترسی پروژه برای مشتری</h2>
-      <label className="block">مشتری<select aria-label="انتخاب مشتری" value={client} onChange={e=>setClient(e.target.value)} className="bg-surface p-2 rounded mx-2">
+    <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5 text-slate-300 grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <h2 className="sm:col-span-2 text-sm font-semibold text-white">دسترسی پروژه برای مشتری</h2>
+      <label className="text-sm">مشتری<select aria-label="انتخاب مشتری" value={client} onChange={e=>setClient(e.target.value)} className="block w-full mt-1.5 bg-surface border border-surface-3/50 rounded-lg px-3 py-2.5 text-sm text-white">
         <option value="">انتخاب کنید</option>{members.filter(m=>m.role==='client').map(m=><option key={m.userId} value={m.userId}>{m.name}</option>)}
       </select></label>
-      <label className="block">پروژه<select aria-label="انتخاب پروژه" value={project} onChange={e=>setProject(e.target.value)} className="bg-surface p-2 rounded mx-2">
+      <label className="text-sm">پروژه<select aria-label="انتخاب پروژه" value={project} onChange={e=>setProject(e.target.value)} className="block w-full mt-1.5 bg-surface border border-surface-3/50 rounded-lg px-3 py-2.5 text-sm text-white">
         <option value="">انتخاب کنید</option>{state.projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
       </select></label>
-      <button disabled={!client||!project||busy} onClick={()=>assignment('PUT')} className="bg-brand-600 p-2 rounded disabled:opacity-50">ثبت دسترسی</button>
-      <button disabled={!client||!project||busy} onClick={()=>assignment('DELETE')} className="text-red-400 p-2 disabled:opacity-50">لغو دسترسی</button>
+      <div className="sm:col-span-2 flex flex-wrap gap-3"><button disabled={!client||!project||busy} onClick={()=>assignment('PUT')} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg disabled:opacity-50">ثبت دسترسی</button>
+      <button disabled={!client||!project||busy} onClick={()=>assignment('DELETE')} className="text-red-400 text-sm px-4 py-2.5 disabled:opacity-50">لغو دسترسی</button></div>
     </div>
-    <div className="bg-surface-2 rounded-xl p-5 text-slate-300">
+    <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5 text-slate-300">
       {loading ? <p role="status">در حال دریافت اعضا…</p> : <>
-        <h2 className="mb-4">اعضا ({toPersianDigits(members.length)})</h2>
+        <h2 className="mb-4 text-sm font-semibold text-white">اعضا ({toPersianDigits(members.length)})</h2>
         {members.map(member=><div key={member.id} className="flex justify-between border-b border-surface-3 py-3">
-          <div><p>{member.name}</p><p dir="ltr" className="text-sm text-slate-400">{member.email}</p></div>
+          <div><p>{member.name}</p><p dir="ltr" className="text-sm text-slate-400 text-right">{member.email}</p></div>
           <span>{labels[member.role] || member.role}</span>
         </div>)}
       </>}

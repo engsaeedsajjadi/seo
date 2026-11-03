@@ -7,6 +7,7 @@ import {
   Shield, Zap, ChevronDown, ChevronRight, Menu, X, LogOut, User,
   AlertTriangle, CheckCircle2, XCircle, Clock, ExternalLink
 } from 'lucide-react';
+import { COUNTRY_LABELS, LANGUAGE_LABELS } from '../lib/labels';
 import { useAppState, getProviderLabel, getStatusColor, getStatusLabel } from '../lib/store';
 import { t } from '../i18n';
 import { toPersianDigits, formatPersianNumber } from '../lib/persian';
@@ -95,7 +96,8 @@ export default function Layout() {
     return projectId ? `/projects/${projectId}${path}` : '/projects';
   };
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string, itemPath: string = path) =>
+    location.pathname === path && (itemPath === path || !PROJECT_SCOPED_PATHS.has(itemPath) || path !== '/projects');
 
   const [identity,setIdentity] = useState<{name:string;role:string;emailVerified?:boolean;platformAdmin?:boolean}>({name:'',role:''});
   const [organizations,setOrganizations] = useState<Array<{id:string;name:string}>>([]);
@@ -123,7 +125,8 @@ export default function Layout() {
   return (
     <div className="flex h-screen overflow-hidden bg-surface" dir="rtl">
       {/* Sidebar - RTL: on the right side */}
-      <aside className={`${sidebarOpen ? 'w-64' : 'w-16'} flex-shrink-0 bg-surface-2 border-l border-surface-3/50 flex flex-col transition-all duration-200`}>
+      {sidebarOpen && <button type="button" aria-label={t('common.closeMenu')} onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-30 bg-black/60 lg:hidden" />}
+      <aside className={`fixed inset-y-0 right-0 z-40 w-72 lg:static lg:z-auto ${sidebarOpen ? 'translate-x-0 lg:w-64' : 'translate-x-full lg:translate-x-0 lg:w-16'} flex-shrink-0 bg-surface-2 border-l border-surface-3/50 flex flex-col transition-all duration-200`}>
         {/* Logo */}
         <div className="h-14 flex items-center px-4 border-b border-surface-3/50">
           <div className="flex items-center gap-2">
@@ -160,9 +163,10 @@ export default function Layout() {
                         key={item.path}
                         to={to}
                         aria-label={item.label}
-                        aria-current={isActive(to) ? 'page' : undefined}
+                        onClick={() => { if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                        aria-current={isActive(to, item.path) ? 'page' : undefined}
                         className={`flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-colors font-vazirmatn-regular ${
-                          isActive(to)
+                          isActive(to, item.path)
                             ? 'bg-brand-600/20 text-brand-400 border border-brand-600/30'
                             : 'text-slate-300 hover:bg-surface-3/50 hover:text-white'
                         }`}
@@ -194,14 +198,17 @@ export default function Layout() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header - RTL */}
-        <header className="h-14 bg-surface-2/80 backdrop-blur-sm border-b border-surface-3/50 flex items-center justify-between px-6" dir="rtl">
-          <div className="flex items-center gap-4">
-            <h1 className="text-sm font-medium text-slate-300 font-vazirmatn-medium">
-              {state.currentProject ? state.currentProject.domain : t('common.noData')}
+        <header className="h-14 bg-surface-2/80 backdrop-blur-sm border-b border-surface-3/50 flex items-center justify-between gap-2 px-3 lg:px-6" dir="rtl">
+          <div className="flex items-center gap-2 lg:gap-4 min-w-0">
+            <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t('common.openMenu')} className="lg:hidden p-2 -ms-1 rounded-lg text-slate-300 hover:bg-surface-3/50 flex-shrink-0">
+              <Menu className="w-5 h-5" />
+            </button>
+            <h1 className="text-sm font-medium text-slate-300 font-vazirmatn-medium truncate">
+              {state.currentProject ? state.currentProject.domain : 'پروژه‌ای انتخاب نشده'}
             </h1>
             {state.currentProject && (
-              <span className="px-2 py-0.5 rounded text-xs bg-surface-3/50 text-slate-400 font-vazirmatn-light ltr-content">
-                {state.currentProject.country} / {state.currentProject.language}
+              <span className="hidden md:inline px-2 py-0.5 rounded text-xs bg-surface-3/50 text-slate-400 font-vazirmatn-light whitespace-nowrap">
+                {COUNTRY_LABELS[state.currentProject.country] || state.currentProject.country} · {LANGUAGE_LABELS[state.currentProject.language] || state.currentProject.language}
               </span>
             )}
           </div>
@@ -211,7 +218,7 @@ export default function Layout() {
             <button
               onClick={() => setShowProviderPanel(!showProviderPanel)}
               aria-label={t('common.integrations')}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-3/30 hover:bg-surface-3/50 text-sm"
+              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-3/30 hover:bg-surface-3/50 text-sm"
             >
               <div className="flex gap-1">
                 {Object.entries(state.providerStatus).slice(0, 4).map(([key, status]) => (
@@ -292,7 +299,7 @@ export default function Layout() {
         )}
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto scrollbar-thin p-6" dir="rtl">
+        <main className="flex-1 overflow-y-auto scrollbar-thin p-4 lg:p-6" dir="rtl">
           {state.currentOrg?.role==='client' && <p role="status" className="mb-4 text-sm text-slate-400">دسترسی مشتری فقط برای مشاهدهٔ پروژه‌های تخصیص‌یافته است.</p>}
           <VerifyEmailBanner visible={identity.emailVerified === false} />
           {identity.platformAdmin && location.pathname !== '/platform' && (

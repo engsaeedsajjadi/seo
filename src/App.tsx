@@ -54,7 +54,7 @@ function App() {
     theme: 'dark',
   });
 
-  const setCurrentProject = useCallback((project: Project | null) => setState(s => ({ ...s, currentProject: project })), []);
+  const setCurrentProject = useCallback((project: Project | null) => setState(s => ({ ...s, currentProject: project, projects: project ? s.projects.map(p => p.id === project.id ? project : p) : s.projects })), []);
   const actions: AppActions = {
     setAuthenticated: (v) => setState(s => ({ ...s, isAuthenticated: v })),
     setCurrentOrg: (org) => setState(s => ({ ...s, currentOrg: org })),
@@ -421,7 +421,7 @@ function ProjectLayout() {
     api.getProject(projectId).then(result => {
       if (cancelled) return;
       if (result.success) { setCurrentProject(result.data); setResolved(projectId); }
-      else setError(result.error.status === 404 ? 'پروژه پیدا نشد یا به آن دسترسی ندارید.' : 'بارگذاری پروژه ناموفق بود. دوباره تلاش کنید.');
+      else setError(result.error.status === 429 ? 'تعداد درخواست‌ها زیاد بوده است. چند دقیقه دیگر دوباره تلاش کنید.' : result.error.status === 404 ? 'پروژه پیدا نشد یا به آن دسترسی ندارید.' : 'بارگذاری پروژه ناموفق بود. دوباره تلاش کنید.');
     });
     return () => { cancelled = true; };
   }, [projectId, setCurrentProject]);

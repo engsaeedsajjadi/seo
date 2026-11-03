@@ -8,6 +8,8 @@ import { toRankRows } from '../lib/csv-parse';
 import { api } from '../lib/api';
 import type { RankingEntry } from '../lib/types';
 import { t } from '../i18n';
+import { Link } from 'react-router-dom';
+import { apiMessage, formatDateTime } from '../lib/labels';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 export default function Rankings() {
@@ -45,6 +47,8 @@ export default function Rankings() {
     loadRankings();
   }, [state.currentProject, importRevision]);
 
+  const rankSourceReady = state.providerStatus.dataForSeo === 'connected' || state.providerStatus.googleSearchConsole === 'connected';
+
   async function handleCheckNow() {
     if (!state.currentProject) return;
     setChecking(true);
@@ -57,7 +61,7 @@ export default function Rankings() {
         if (result.error.code === 'PROVIDER_NOT_CONFIGURED') {
           setCheckResult(`سرویس بررسی رتبه هنوز فعال نشده است.`);
         } else {
-          setCheckResult(`خطا: ${result.error.message}`);
+          setCheckResult(apiMessage(result.error.message));
         }
       }
     } catch (e) {
@@ -122,7 +126,7 @@ export default function Rankings() {
   return (
     <div className="space-y-6">
       {importPanel}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">پیگیری رتبه</h1>
           <p className="text-sm text-slate-400 mt-1">
@@ -144,10 +148,10 @@ export default function Rankings() {
               <Smartphone className="w-3 h-3" /> موبایل
             </button>
           </div>
-          <button onClick={handleCheckNow} disabled={checking} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50">
+          {rankSourceReady && <button onClick={handleCheckNow} disabled={checking} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50">
             {checking ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
             {checking ? 'در حال ثبت در صف…' : 'بررسی رتبه'}
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -161,11 +165,11 @@ export default function Rankings() {
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-12 text-center">
           <BarChart3 className="w-12 h-12 text-slate-500 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-white mb-2">هنوز رتبه‌ای ثبت نشده است</h3>
-          <p className="text-sm text-slate-400 mb-4">کلمات کلیدی را اضافه کنید و بررسی رتبه را اجرا کنید.</p>
-          <button onClick={handleCheckNow} disabled={checking} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2 disabled:opacity-50">
+          <p className="text-sm text-slate-400 mb-4 max-w-lg mx-auto">{rankSourceReady ? 'کلمات کلیدی را اضافه کنید و بررسی رتبه را اجرا کنید.' : 'برای دیدن رتبه‌ها، سرچ کنسول گوگل را وصل کنید یا خروجی CSV آن را از کادر بالا وارد کنید.'}</p>
+          {rankSourceReady ? <button onClick={handleCheckNow} disabled={checking} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2 disabled:opacity-50">
             {checking ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
-            Check Now — Queues RANK_CHECK Job
-          </button>
+            بررسی رتبه
+          </button> : <Link to="/integrations" className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2">اتصال سرچ کنسول</Link>}
         </div>
       ) : (
         <>
@@ -201,13 +205,13 @@ export default function Rankings() {
               <h3 className="text-sm font-semibold text-white">رتبهٔ کلمات کلیدی</h3>
               <span className="text-xs text-slate-400">
                 <Calendar className="w-3 h-3 inline mr-1" />
-                {rankings.length > 0 && `Last checked: ${new Date(rankings[0].date).toLocaleString()}`}
+                {rankings.length > 0 && `آخرین بررسی: ${formatDateTime(rankings[0].date)}`}
               </span>
             </div>
-            <table className="w-full">
+            <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-surface-3/50">
-                  <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">کلمهٔ کلیدی</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">کلمهٔ کلیدی</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">رتبه</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">تغییر</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">نشانی</th>
@@ -236,7 +240,7 @@ export default function Rankings() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </>
       )}

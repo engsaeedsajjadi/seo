@@ -185,3 +185,13 @@ pre,
 }
 
 button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Comfortable touch targets on phones and tablets. */
+@media (pointer: coarse) {
+  main button,
+  main select,
+  main input:not([type='checkbox']):not([type='radio']),
+  main a.inline-flex {
+    min-height: 44px;
+  }
+}

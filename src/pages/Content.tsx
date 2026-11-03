@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
 import { t } from '../i18n';
+import { hasAiProvider } from '../lib/labels';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 interface ContentBrief {
@@ -99,7 +100,7 @@ export default function Content() {
     );
   }
 
-  if (providerError) {
+  if (providerError || !hasAiProvider(state.providerStatus as unknown as Record<string, unknown>)) {
     return (
       <div className="space-y-6" dir="rtl">
         <div>
@@ -112,7 +113,7 @@ export default function Content() {
           <p className="text-sm text-slate-400 max-w-md mx-auto mb-4">
             سرویس هوش مصنوعی هنوز فعال نشده است.
           </p>
-          <div className="bg-surface/50 rounded-lg p-4 max-w-sm mx-auto text-left">
+          <div className="bg-surface/50 rounded-lg p-4 max-w-sm mx-auto text-right">
             <p className="text-xs font-semibold text-slate-300 mb-2">سرویس‌های پشتیبانی‌شده:</p>
             <ul className="text-xs text-slate-400 space-y-1">
               <li>• OpenAI</li>
@@ -140,7 +141,7 @@ export default function Content() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">موتور محتوا</h1>
           <p className="text-sm text-slate-400 mt-1">تولید محتوا با کمک هوش مصنوعی</p>
@@ -192,7 +193,7 @@ export default function Content() {
       )}
 
       {showCreateBrief && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg bg-surface-2 border border-surface-3/50 rounded-xl p-6">
             <h2 className="text-lg font-bold text-white mb-4">ایجاد بریف محتوا</h2>
             <div className="space-y-4">
@@ -221,8 +222,8 @@ export default function Content() {
               {createError && <p className="text-xs text-accent-red">{createError}</p>}
               <div className="bg-surface/50 rounded-lg p-3">
                 <p className="text-xs text-slate-400">
-                  <Bot className="w-3.5 h-3.5 inline mr-1 text-accent-purple" />
-                  
+                  <Bot className="w-3.5 h-3.5 inline me-1 text-accent-purple" />
+                  بریف با هوش مصنوعی ساخته می‌شود و از اعتبار شما کم می‌کند.
                 </p>
               </div>
             </div>
@@ -248,10 +249,10 @@ function StatusBadge({ status }: { status: string }) {
     completed: 'bg-green-500/20 text-green-400',
   };
   const labels: Record<string, string> = {
-    ready: 'Ready',
-    draft: 'Draft',
-    in_progress: 'In Progress — worker job',
-    completed: 'Completed',
+    ready: 'آماده',
+    draft: 'پیش‌نویس',
+    in_progress: 'در حال ساخت',
+    completed: 'تکمیل‌شده',
   };
   return <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${styles[status] || 'bg-slate-500/20 text-slate-400'}`}>{labels[status] || status}</span>;
 }

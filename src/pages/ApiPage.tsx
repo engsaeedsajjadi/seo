@@ -209,7 +209,7 @@ export default function ApiPage() {
                 <input value={newKeyName} onChange={e => setNewKeyName(e.target.value)} placeholder="کلید اصلی" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500" />
                 <input value={newKeyScopes} onChange={e => setNewKeyScopes(e.target.value)} placeholder="read,write" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500 w-24" />
                 <button onClick={handleCreateKey} disabled={keyLoading} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-lg flex items-center gap-1 disabled:opacity-50">
-                  {keyLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Key className="w-3 h-3" />} Generate
+                  {keyLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Key className="w-3 h-3" />} ساخت کلید
                 </button>
               </div>
             </div>

@@ -57,8 +57,7 @@ export default function Agency() {
           <Building2 className="w-12 h-12 text-accent-yellow mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-white mb-2">نیازمند پلن آژانس</h3>
           <p className="text-sm text-slate-400 max-w-md mx-auto mb-4">
-            Agency features including client management, white-label branding, and client portal
-            are available on the Agency and Enterprise plans.
+            مدیریت مشتریان، گزارش با برند اختصاصی و پرتال مشتری در پلن‌های آژانس و سازمانی در دسترس است.
           </p>
           <a href="#/billing" className="inline-flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg">
             ارتقا به پلن آژانس
@@ -81,7 +80,7 @@ export default function Agency() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">داشبورد آژانس</h1>
           <p className="text-sm text-slate-400 mt-1">مشتریان و پروژه‌های سئوی آن‌ها را مدیریت کنید</p>

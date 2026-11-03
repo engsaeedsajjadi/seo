@@ -7,6 +7,7 @@ import { useAppState } from '../lib/store';
 import SchedulePanel from '../components/SchedulePanel';
 import { api } from '../lib/api';
 import type { Job, JobStatus } from '../lib/types';
+import { JOB_TYPE_LABELS, JOB_STATUS_LABELS, formatDateTime } from '../lib/labels';
 import { t } from '../i18n';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
@@ -100,11 +101,11 @@ export default function Automation() {
             <p className="text-sm text-slate-400">با اجرای ممیزی، خزش یا عملیات دیگر، کارها اینجا نمایش داده می‌شوند.</p>
           </div>
         ) : (
-          <table className="w-full">
+          <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-surface-3/50">
-                <th className="text-left px-4 py-2 text-xs font-medium text-slate-400">کار</th>
-                <th className="text-left px-4 py-2 text-xs font-medium text-slate-400">وضعیت</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">کار</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">وضعیت</th>
                 <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">شروع</th>
                 <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">تکمیل‌شده</th>
                 <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">تلاش‌ها</th>
@@ -113,21 +114,21 @@ export default function Automation() {
             <tbody>
               {jobs.map((job) => (
                 <tr key={job.id} className="border-b border-surface-3/20 hover:bg-surface-3/20">
-                  <td className="px-4 py-2.5 text-sm text-white">{job.type.replace(/_/g, ' ')}</td>
+                  <td className="px-4 py-2.5 text-sm text-white">{JOB_TYPE_LABELS[job.type] || job.type}</td>
                   <td className="px-4 py-2.5">
                     <JobStatusBadge status={job.status} />
                   </td>
                   <td className="px-4 py-2.5 text-right text-xs text-slate-400">
-                    {job.startedAt ? new Date(job.startedAt).toLocaleString() : '—'}
+                    {formatDateTime(job.startedAt)}
                   </td>
                   <td className="px-4 py-2.5 text-right text-xs text-slate-400">
-                    {job.completedAt ? new Date(job.completedAt).toLocaleString() : '—'}
+                    {formatDateTime(job.completedAt)}
                   </td>
-                  <td className="px-4 py-2.5 text-right text-xs text-slate-300">{job.attempts}</td>
+                  <td className="px-4 py-2.5 text-right text-xs text-slate-300">{toPersianDigits(job.attempts)}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
     </div>
@@ -144,7 +145,7 @@ function JobStatusBadge({ status }: { status: JobStatus }) {
   };
   return (
     <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${styles[status]}`}>
-      {status}
+      {JOB_STATUS_LABELS[status] || status}
     </span>
   );
 }

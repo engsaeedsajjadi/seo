@@ -2320,8 +2320,8 @@ class Worker {
   private async createAlertIfNeeded(job: Job, status: string, result: any) {
     if (job.type === 'SITE_CRAWL' && status === 'completed' && job.projectId && result?.seoScore !== undefined && result.seoScore < 50) {
       await this.insertSystemAlert(job.organizationId, job.projectId, 'low_seo_score', 'seo', 'medium',
-        `Low SEO score: ${result.seoScore}`,
-        `Low SEO score ${result.seoScore} for project ${job.projectId}`,
+        `امتیاز سئو پایین است: ${result.seoScore}`,
+        'نتیجهٔ آخرین خزش این پروژه زیر ۵۰ است. یافته‌های ممیزی را بررسی کنید.',
         { seoScore: result.seoScore, jobId: job.id });
     }
   }

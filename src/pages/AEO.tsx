@@ -69,7 +69,7 @@ export default function AEO() {
           <p className="text-sm text-slate-400 max-w-md mx-auto mb-4">
             سرویس هوش مصنوعی هنوز فعال نشده است.
           </p>
-          <div className="bg-surface/50 rounded-lg p-4 max-w-sm mx-auto text-left">
+          <div className="bg-surface/50 rounded-lg p-4 max-w-sm mx-auto text-right">
             <p className="text-xs font-semibold text-slate-300 mb-2">این بخش پس از فعال‌شدن سرویس هوش مصنوعی در دسترس است:</p>
             <ul className="text-xs text-slate-400 space-y-1">
               <li>• با فعال‌شدن سرویس، تحلیل به‌طور خودکار انجام می‌شود</li>

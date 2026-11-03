@@ -5,9 +5,12 @@ import {
   TrendingDown, ArrowRight, Zap, Clock, Activity, CheckCircle2,
   XCircle
 } from 'lucide-react';
-import { useAppState } from '../lib/store';
+import { useAppState, getProviderLabel } from '../lib/store';
 import { api } from '../lib/api';
 import { t } from '../i18n';
+import { JOB_TYPE_LABELS, findingTitle, CATEGORY_LABELS } from '../lib/labels';
+
+const CUSTOMER_PROVIDERS = ['googleSearchConsole', 'googleAnalytics', 'openai', 'anthropic'];
 import { toPersianDigits, formatPersianNumber, formatPersianDate, formatRelativePersianTime } from '../lib/persian';
 import type { AuditFinding, Job } from '../lib/types';
 
@@ -58,23 +61,13 @@ export default function Dashboard() {
     );
   }
 
-  // Calculate real SEO score from audit findings
-  const severityCounts = {
-    critical: auditFindings.filter(f => f.severity === 'critical').length,
-    high: auditFindings.filter(f => f.severity === 'high').length,
-    medium: auditFindings.filter(f => f.severity === 'medium').length,
-    low: auditFindings.filter(f => f.severity === 'low').length,
-    notice: auditFindings.filter(f => f.severity === 'notice').length,
-  };
-
-  const seoScore = auditFindings.length > 0
-    ? Math.max(0, Math.round(100 - (severityCounts.critical * 10 + severityCounts.high * 5 + severityCounts.medium * 2 + severityCounts.low * 1)))
-    : null;
+  const seoScore = state.currentProject?.seoScore ?? null;
+  const countBySeverity = (severity: string) => auditFindings.filter(f => f.severity === severity).length;
 
   return (
     <div className="space-y-6" dir="rtl">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white font-vazirmatn-bold">{t('dashboard.title')}</h1>
           <p className="text-sm text-slate-400 mt-1 font-vazirmatn-regular">
@@ -127,7 +120,7 @@ export default function Dashboard() {
         <StatCard
           title="یافته‌های ممیزی"
           value={toPersianDigits(auditFindings.length)}
-          subtitle={`${toPersianDigits(severityCounts.critical)} بحرانی، ${toPersianDigits(severityCounts.high)} مهم`}
+          subtitle={`${toPersianDigits(countBySeverity('critical'))} بحرانی، ${toPersianDigits(countBySeverity('high'))} مهم`}
           icon={Shield}
           link="/audit"
         />
@@ -165,8 +158,8 @@ export default function Dashboard() {
               <div key={finding.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-3/30">
                 <SeverityBadge severity={finding.severity} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-slate-200 truncate font-vazirmatn-regular">{finding.title}</p>
-                  <p className="text-xs text-slate-500 font-vazirmatn-light">{finding.category} · {toPersianDigits(finding.affectedUrls.length)} آدرس</p>
+                  <p className="text-sm text-slate-200 truncate font-vazirmatn-regular">{findingTitle(finding)}</p>
+                  <p className="text-xs text-slate-500 font-vazirmatn-light">{CATEGORY_LABELS[finding.category] || finding.category} · {toPersianDigits(finding.affectedUrls.length)} صفحه</p>
                 </div>
                 <ArrowRight className="w-4 h-4 text-slate-500 rotate-180" />
               </div>
@@ -193,7 +186,7 @@ export default function Dashboard() {
               <div key={job.id} className="flex items-center gap-3 p-2 rounded-lg">
                 <JobStatusIcon status={job.status} />
                 <div className="flex-1">
-                  <p className="text-xs font-medium text-slate-200 font-vazirmatn-medium">{job.type.replace(/_/g, ' ')}</p>
+                  <p className="text-xs font-medium text-slate-200 font-vazirmatn-medium">{JOB_TYPE_LABELS[job.type] || job.type}</p>
                   <p className="text-[10px] text-slate-500 font-vazirmatn-light">
                     {job.status === 'running' && 'در حال اجرا...'}
                     {job.status === 'completed' && `تکمیل شده ${job.completedAt ? formatRelativePersianTime(job.completedAt) : ''}`}
@@ -210,15 +203,15 @@ export default function Dashboard() {
       {/* Provider Status Banner */}
       <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
         <h3 className="text-sm font-semibold text-white mb-3 font-vazirmatn-bold">وضعیت یکپارچه‌سازی‌ها</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          {Object.entries(state.providerStatus).map(([key, status]) => (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-3">
+          {CUSTOMER_PROVIDERS.map((key) => [key, state.providerStatus[key as keyof typeof state.providerStatus]] as const).map(([key, status]) => (
             <div key={key} className="flex flex-col items-center gap-2 p-3 rounded-lg bg-surface/50">
               <div className={`w-3 h-3 rounded-full ${
                 status === 'connected' ? 'bg-accent-green' :
                 status === 'error' ? 'bg-accent-red' :
                 'bg-accent-yellow'
               }`} />
-              <span className="text-[10px] text-slate-400 text-center font-vazirmatn-light">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+              <span className="text-[10px] text-slate-400 text-center font-vazirmatn-light">{getProviderLabel(key)}</span>
               <span className={`text-[10px] font-vazirmatn-regular ${
                 status === 'connected' ? 'text-accent-green' :
                 status === 'error' ? 'text-accent-red' :
@@ -246,7 +239,7 @@ function StatCard({ title, value, subtitle, icon: Icon, link }: {
 }) {
   return (
     <Link to={link} className="bg-surface-2 border border-surface-3/50 rounded-xl p-5 hover:border-brand-600/30 transition-colors">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs font-medium text-slate-400 uppercase tracking-wider font-vazirmatn-medium">{title}</p>
         <Icon className="w-4 h-4 text-slate-500" />
       </div>

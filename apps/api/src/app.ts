@@ -761,6 +761,11 @@ export function createApp() {
         return res.status(402).json({ success: false, error: { code: 'INSUFFICIENT_CREDITS', message: 'Insufficient credits for crawl' } });
       }
 
+      const running = await jobRepository.findByOrganization(req.organizationId!, { projectId: project.id, type: 'SITE_CRAWL', limit: 20 });
+      if (running.items.some((job) => job.status === 'pending' || job.status === 'running')) {
+        return res.status(409).json({ success: false, error: { code: 'CRAWL_ALREADY_RUNNING', message: 'A crawl is already running for this project' } });
+      }
+
       const crawlRun = await crawlRepository.create({
         organizationId: req.organizationId!,
         projectId: project.id,

@@ -23,7 +23,7 @@ async function handleConnectGoogle() {
   if (result.success) {
     window.location.href = result.data.url;
   } else {
-    window.alert(result.error.message || 'Google OAuth is not configured on the server (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).');
+    window.alert('اتصال گوگل هنوز فعال نشده است.');
   }
 }
 
@@ -45,21 +45,17 @@ export default function Integrations() {
     { key: 'anthropic', name: 'Anthropic', description: 'تولید و تحلیل پیشرفتهٔ محتوا', category: 'ai', status: state.providerStatus.anthropic, envVars: ['ANTHROPIC_API_KEY'], icon: Bot },
     { key: 'googleSearchConsole', name: 'Google Search Console', description: 'دادهٔ عملکرد جست‌وجوی ارگانیک', category: 'analytics', status: state.providerStatus.googleSearchConsole, envVars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], icon: Search },
     { key: 'googleAnalytics', name: 'Google Analytics 4', description: 'دادهٔ ترافیک، نشست و تبدیل', category: 'analytics', status: state.providerStatus.googleAnalytics, envVars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], icon: Database },
-    { key: 'stripe', name: 'درگاه پرداخت', description: 'پرداخت و مدیریت اشتراک', category: 'payments', status: state.providerStatus.stripe, envVars: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'], icon: CreditCard },
-    { key: 's3', name: 'S3 Storage', description: 'ذخیره‌سازی گزارش‌ها و خروجی‌ها', category: 'storage', status: state.providerStatus.s3, envVars: ['S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET'], icon: HardDrive },
   ];
 
   const categories = [
     { key: 'data', label: 'سرویس‌های دادهٔ سئو', color: 'text-brand-400' },
     { key: 'ai', label: 'سرویس‌های هوش مصنوعی', color: 'text-accent-purple' },
     { key: 'analytics', label: 'تحلیل و جست‌وجو', color: 'text-accent-green' },
-    { key: 'payments', label: 'پرداخت', color: 'text-accent-yellow' },
-    { key: 'storage', label: 'ذخیره‌سازی', color: 'text-slate-400' },
   ];
 
   return (
     <div className="space-y-6" dir="rtl">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">یکپارچه‌سازی‌ها</h1>
           <p className="text-sm text-slate-400 mt-1">وضعیت سرویس‌های خارجی متصل</p>
@@ -67,7 +63,7 @@ export default function Integrations() {
       </div>
 
       {/* Status Summary */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-surface-2 border border-accent-green/30 rounded-xl p-4 flex items-center gap-3">
           <CheckCircle2 className="w-5 h-5 text-accent-green" />
           <div>
@@ -114,17 +110,6 @@ export default function Integrations() {
                     <StatusIndicator status={integration.status} />
                   </div>
 
-                  <div className="mt-4 bg-surface/50 rounded-lg p-3">
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase mb-2">تنظیمات لازم (توسط مدیر سیستم)</p>
-                    <div className="space-y-1">
-                      {integration.envVars.map(envVar => (
-                        <div key={envVar} className="flex items-center gap-2">
-                          <code className="text-[11px] font-mono text-slate-300 bg-surface-3/30 px-1.5 py-0.5 rounded">{envVar}</code>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
                   <div className="mt-3 flex items-center gap-2">
                     {(integration.key === 'googleSearchConsole' || integration.key === 'googleAnalytics') && integration.status !== 'connected' && (
                       <button
@@ -149,30 +134,6 @@ export default function Integrations() {
           </div>
         );
       })}
-
-      {/* Provider Architecture Note */}
-      <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-white mb-2">ترتیب استفاده از سرویس‌ها</h3>
-        <p className="text-xs text-slate-400 mb-3">
-          RankForge uses a provider abstraction layer. Each data type (keywords, SERP, backlinks, AI) has an interface
-          that can be implemented by multiple providers. This prevents vendor lock-in and allows switching providers
-          without changing application code.
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="bg-surface/50 rounded-lg p-3">
-            <p className="text-xs font-semibold text-brand-400 mb-1">SerpProvider</p>
-            <p className="text-[10px] text-slate-400">DataForSEO → SerpApi → Custom</p>
-          </div>
-          <div className="bg-surface/50 rounded-lg p-3">
-            <p className="text-xs font-semibold text-accent-purple mb-1">AIProvider</p>
-            <p className="text-[10px] text-slate-400">OpenAI → Anthropic → Google → OpenRouter</p>
-          </div>
-          <div className="bg-surface/50 rounded-lg p-3">
-            <p className="text-xs font-semibold text-accent-green mb-1">BacklinkProvider</p>
-            <p className="text-[10px] text-slate-400">DataForSEO → Custom index</p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

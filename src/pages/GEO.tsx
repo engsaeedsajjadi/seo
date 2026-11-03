@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
 import { t } from '../i18n';
+import { formatDateTime } from '../lib/labels';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 interface GeoRun {
@@ -102,18 +103,16 @@ export default function GEO() {
           <p className="text-sm text-slate-400 max-w-md mx-auto mb-4">
             سرویس هوش مصنوعی هنوز فعال نشده است.
           </p>
-          <div className="bg-surface/50 rounded-lg p-4 max-w-sm mx-auto text-left">
+          <div className="bg-surface/50 rounded-lg p-4 max-w-sm mx-auto text-right">
             <p className="text-xs font-semibold text-slate-300 mb-2">برای فعال‌سازی:</p>
             <ul className="text-xs text-slate-400 space-y-1">
               <li>• مدیر سیستم باید یک سرویس هوش مصنوعی را فعال کند</li>
-              <li>• اختیاری: پیگیری در Perplexity</li>
-              <li>• نام برند در تنظیمات پروژه</li>
-              <li></li>
+              <li>• نام برند را در تنظیمات پروژه وارد کنید</li>
             </ul>
           </div>
           <button onClick={handleCheck} disabled={checkLoading} className="mt-4 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2 disabled:opacity-50">
             {checkLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            Check Provider Status
+            بررسی دوباره
           </button>
           {checkResult && <p className="mt-3 text-xs text-slate-400 max-w-md mx-auto">{checkResult}</p>}
         </div>
@@ -156,7 +155,7 @@ export default function GEO() {
           <p className="text-sm text-slate-400 mb-4">برای سنجش حضور برند خود در پاسخ‌های هوش مصنوعی، یک بررسی اجرا کنید.</p>
           <button onClick={handleCheck} disabled={checkLoading} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2 disabled:opacity-50">
             {checkLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            Run Check — Queues AI_VISIBILITY_CHECK Job
+            اجرای بررسی
           </button>
         </div>
       ) : (
@@ -168,7 +167,7 @@ export default function GEO() {
                   <p className="text-sm text-white font-medium">{run.prompt}</p>
                   <p className="text-xs text-slate-400 mt-1">سرویس‌دهنده: {run.provider}{String(run.brandMentioned)}{run.visibilityScore}{run.cost}</p>
                 </div>
-                <span className="text-[10px] text-slate-500">{new Date(run.createdAt).toLocaleString()}</span>
+                <span className="text-[10px] text-slate-500">{formatDateTime(run.createdAt)}</span>
               </div>
               <p className="text-xs text-slate-300 bg-surface/50 rounded p-3 font-mono">{run.response.substring(0, 300)}...</p>
             </div>

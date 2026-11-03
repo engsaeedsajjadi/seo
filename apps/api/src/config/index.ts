@@ -140,7 +140,7 @@ export const config = {
 
   rateLimit: {
     windowMs: parseInt(getEnv('RATE_LIMIT_WINDOW_MS', false, '900000'), 10),
-    maxRequests: parseInt(getEnv('RATE_LIMIT_MAX_REQUESTS', false, '100'), 10),
+    maxRequests: parseInt(getEnv('RATE_LIMIT_MAX_REQUESTS', false, '1000'), 10),
   },
 
   features: {

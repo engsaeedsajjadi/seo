@@ -27,12 +27,11 @@ export default function SettingsPage() {
   }
   return <section dir="rtl" className="space-y-6 text-slate-300">
     <h1 className="text-2xl text-white font-bold">{client?'تنظیمات حساب':'تنظیمات سازمان'}</h1>
-    {!client && <form onSubmit={save} className="bg-surface-2 rounded-xl p-5 space-y-4">
-      <label className="block">نام سازمان
-        <input required maxLength={255} value={name} onChange={e=>setName(e.target.value)} className="block w-full bg-surface p-3 rounded mt-2" />
+    {!client && <form onSubmit={save} className="bg-surface-2 border border-surface-3/50 rounded-xl p-5 space-y-4">
+      <label className="block text-sm">نام سازمان
+        <input required maxLength={255} value={name} onChange={e=>setName(e.target.value)} className="block w-full max-w-xl bg-surface border border-surface-3/50 px-3 py-2.5 rounded-lg mt-1.5 text-sm text-white focus:outline-none focus:border-brand-600/50" />
       </label>
-      <p>شناسهٔ سازمان: <span dir="ltr">{state.currentOrg?.slug}</span></p>
-      <button disabled={busy} className="bg-brand-600 text-white p-3 rounded disabled:opacity-50">{busy?'در حال ذخیره…':'ذخیره تنظیمات'}</button>
+      <button disabled={busy} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg disabled:opacity-50">{busy?'در حال ذخیره…':'ذخیره تنظیمات'}</button>
       {message && <p role={failed?'alert':'status'}>{message}</p>}
     </form>}
     <SessionSettings />
@@ -42,6 +41,6 @@ export default function SettingsPage() {
       <Link to="/billing" className="text-brand-400">اشتراک و صورتحساب</Link>
       <Link to="/integrations" className="text-brand-400">اتصال سرویس‌ها</Link>
     </nav>}
-    <p className="text-sm text-slate-400">نشست‌ها پس از خروج باطل می‌شوند. ورود دومرحله‌ای در این نسخه ارائه نمی‌شود.</p>
+    
   </section>;
 }
