@@ -8,6 +8,10 @@ import { t } from '../i18n';
 import { formatDateTime } from '../lib/labels';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
+function geoPrompt(domain: string, language: string): string {
+  return language === 'fa' ? `${domain} چیست و چه خدماتی ارائه می‌دهد؟` : `What is ${domain}?`;
+}
+
 interface GeoRun {
   id: string;
   prompt: string;
@@ -26,6 +30,7 @@ export default function GEO() {
   const [providerError, setProviderError] = useState<string | null>(null);
   const [checkLoading, setCheckLoading] = useState(false);
   const [checkResult, setCheckResult] = useState<string | null>(null);
+  const [checkQueued, setCheckQueued] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -51,7 +56,12 @@ export default function GEO() {
       }
     }
     load();
-  }, [state.currentProject]);
+    if (!checkQueued) return;
+    // The check runs in the background, so look for its result for two minutes.
+    const timer = setInterval(() => void load(), 6000);
+    const stop = setTimeout(() => clearInterval(timer), 120000);
+    return () => { clearInterval(timer); clearTimeout(stop); };
+  }, [state.currentProject, checkQueued]);
 
   async function handleCheck() {
     if (!state.currentProject) return;
@@ -62,10 +72,11 @@ export default function GEO() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: `What is ${state.currentProject.domain}?` }),
+        body: JSON.stringify({ prompt: geoPrompt(state.currentProject.domain, state.currentProject.language) }),
       });
       const json = await res.json();
       if (json.success) {
+        setCheckQueued((n) => n + 1);
         setCheckResult(`بررسی در صف قرار گرفت. نتیجه به‌زودی اینجا نمایش داده می‌شود.`);
       } else {
         if (json.error?.code === 'PROVIDER_NOT_CONFIGURED') {
@@ -165,11 +176,11 @@ export default function GEO() {
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <p className="text-sm text-white font-medium">{run.prompt}</p>
-                  <p className="text-xs text-slate-400 mt-1">سرویس‌دهنده: {run.provider}{String(run.brandMentioned)}{run.visibilityScore}{run.cost}</p>
+                  <p className="text-xs text-slate-400 mt-1">سرویس: {run.provider === 'google' ? 'Gemini' : run.provider} · برند در پاسخ {run.brandMentioned ? 'دیده شد' : 'دیده نشد'} · امتیاز دیده‌شدن: {toPersianDigits(run.visibilityScore ?? 0)}</p>
                 </div>
                 <span className="text-[10px] text-slate-500">{formatDateTime(run.createdAt)}</span>
               </div>
-              <p className="text-xs text-slate-300 bg-surface/50 rounded p-3 font-mono">{run.response.substring(0, 300)}...</p>
+              <p dir="auto" className="text-sm leading-7 text-slate-300 bg-surface/50 rounded p-3 whitespace-pre-line">{run.response}</p>
             </div>
           ))}
         </div>

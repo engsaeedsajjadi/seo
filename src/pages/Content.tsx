@@ -232,7 +232,7 @@ export default function Content() {
               <div className="bg-surface/50 rounded-lg p-3">
                 <p className="text-xs text-slate-400">
                   <Bot className="w-3.5 h-3.5 inline me-1 text-accent-purple" />
-                  بریف با هوش مصنوعی ساخته می‌شود و از اعتبار شما کم می‌کند.
+                  بریف با هوش مصنوعی ساخته می‌شود و یکی از سهمیهٔ ماهانهٔ هوش مصنوعی شما کم می‌کند.
                 </p>
               </div>
             </div>

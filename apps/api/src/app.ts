@@ -2315,7 +2315,7 @@ export function createApp() {
         organizationId: req.organizationId!,
         projectId: project.id,
         type: 'AI_VISIBILITY_CHECK',
-        payload: { projectId: project.id, prompt: prompt || `What is ${project.domain}?` },
+        payload: { projectId: project.id, prompt: prompt || (project.language === 'fa' ? `${project.domain} چیست و چه خدماتی ارائه می‌دهد؟` : `What is ${project.domain}?`) },
         idempotencyKey: `geo_${project.id}_${Date.now()}`,
       });
 
