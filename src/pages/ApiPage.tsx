@@ -1,7 +1,7 @@
 import { authenticatedFetch } from '../lib/api';
 import { useState, useEffect } from 'react';
 import { t } from '../i18n';
-import { formatDateOnly } from '../lib/labels';
+import { apiMessage, formatDateOnly } from '../lib/labels';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 import {
   Shield, Key, Code, ExternalLink, Copy, CheckCircle2,
@@ -73,7 +73,7 @@ export default function ApiPage() {
 
   async function handleCreateKey() {
     if (!newKeyName.trim()) {
-      setKeyError('Name required');
+      setKeyError('نام کلید را وارد کنید.');
       return;
     }
     setKeyLoading(true);
@@ -118,7 +118,7 @@ export default function ApiPage() {
 
   async function handleCreateWebhook() {
     if (!webhookUrl.trim()) {
-      setWebhookError('URL required');
+      setWebhookError('نشانی وب‌هوک را وارد کنید.');
       return;
     }
     setWebhookLoading(true);
@@ -133,11 +133,11 @@ export default function ApiPage() {
       const json = await res.json();
       if (json.success) {
         setWebhooks(prev => [json.data, ...prev]);
-        setWebhookSuccess(`Webhook created: ${json.data.id} — secret ${json.data.secretPrefix}... shown once, HMAC-SHA256 signed delivery, retry/backoff, SSRF protected`);
+        setWebhookSuccess(json.data.secret);
         setWebhookUrl('');
         setWebhookError(null);
       } else {
-        setWebhookError(json.error?.message || 'انجام نشد');
+        setWebhookError(json.error?.code === 'VALIDATION_ERROR' ? 'نشانی یا نام رویدادها معتبر نیست. رویدادها را با کاما از هم جدا کنید.' : apiMessage(json.error?.message));
       }
     } catch (e) {
       setWebhookError(e instanceof Error ? e.message : String(e));
@@ -336,14 +336,14 @@ export default function ApiPage() {
               <h3 className="text-sm font-semibold text-white">وب‌هوک‌های خروجی</h3>
               <div className="flex items-center gap-2">
                 <input value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} placeholder="https://hooks.example.com/rankforge" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500 w-64" />
-                <input value={webhookEvents} onChange={e => setWebhookEvents(e.target.value)} placeholder="crawl.completed,rank.updated" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500 w-48" />
+                <input dir="ltr" value={webhookEvents} onChange={e => setWebhookEvents(e.target.value)} placeholder="crawl.completed,rank.updated" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500 w-48" />
                 <button onClick={handleCreateWebhook} disabled={webhookLoading} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-lg flex items-center gap-1 disabled:opacity-50">
                   {webhookLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : null} افزودن
                 </button>
               </div>
             </div>
             {webhookError && <p className="text-xs text-accent-red mb-3">{webhookError}</p>}
-            {webhookSuccess && <p className="text-xs text-accent-green mb-3">{webhookSuccess}</p>}
+            {webhookSuccess && <div className="bg-accent-green/10 border border-accent-green/30 rounded-lg p-3 mb-3 space-y-2"><p className="text-xs text-accent-green">وب‌هوک ساخته شد. این کلید مخفی فقط همین یک بار نمایش داده می‌شود؛ آن را در جای امنی نگه دارید.</p><code dir="ltr" className="block text-right text-xs text-white font-mono break-all">{webhookSuccess}</code></div>}
             <p className="text-xs text-slate-400 mb-4">
               هنگام رخ‌دادن رویدادها اعلان دریافت کنید. هر ارسال در هدر X-RankForge-Signature با HMAC-SHA256 امضا می‌شود؛ کلید امضا، هش SHA-256 کلید مخفی شماست. ارسال ناموفق تا ۵ بار تکرار می‌شود.
             </p>

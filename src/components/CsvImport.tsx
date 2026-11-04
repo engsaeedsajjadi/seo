@@ -26,7 +26,9 @@ export default function CsvImport<T>({ title, help, endpoint, toRows, body, onIm
     if (!file) return;
     setBusy(true); setMessage(''); setFailed(false);
     try {
-      const rows = toRows(parseCsv(await file.text()));
+      const table = parseCsv(await file.text());
+      const rows = toRows(table);
+      const skipped = rows ? Math.max(0, table.length - 1 - rows.length) : 0;
       if (!rows) throw new Error('ستون‌های لازم در این فایل پیدا نشد. یک خروجی CSV از سرچ کنسول یا ابزار سئو انتخاب کنید.');
       if (rows.length === 0) throw new Error('ردیف معتبری در این فایل نبود.');
       if (rows.length > MAX_ROWS) throw new Error(`هر فایل حداکثر ${formatPersianNumber(MAX_ROWS)} ردیف می‌تواند داشته باشد.`);
@@ -38,7 +40,7 @@ export default function CsvImport<T>({ title, help, endpoint, toRows, body, onIm
       });
       const json = await res.json();
       if (!json.success) throw new Error('ورود فایل انجام نشد. لطفاً دوباره تلاش کنید.');
-      setMessage(summary(json.data));
+      setMessage(summary(json.data) + (skipped > 0 ? ` ${formatPersianNumber(skipped)} ردیف نامعتبر کنار گذاشته شد.` : ''));
       onImported();
     } catch (error) {
       setFailed(true);

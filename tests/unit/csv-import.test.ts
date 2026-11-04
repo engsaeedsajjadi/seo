@@ -15,4 +15,5 @@ assert.equal(toRankRows(parseCsv('foo,bar\n1,2\n')), null);
 assert.deepEqual(toBacklinkRows(parseCsv('Referring page URL,Target URL,Anchor,Domain rating,Nofollow\nhttps://a.ir/x,https://me.ir/,لینک,40,true\n'))?.[0], { sourceUrl: 'https://a.ir/x', targetUrl: 'https://me.ir/', anchor: 'لینک', domainRating: 40, nofollow: true });
 assert.equal(toBacklinkRows(parseCsv('Site,Linking pages,Target pages\nexample.ir,3,1\n'))?.[0].sourceUrl, 'https://example.ir');
 assert.equal(parseNumber('abc'), undefined);
+assert.strictEqual(toBacklinkRows([['Top linking sites'], ['not-a-url'], ['example.com']])?.length, 1, 'an address without a domain is skipped');
 console.log('PASS: CSV import parses real export formats');

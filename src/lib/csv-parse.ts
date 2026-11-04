@@ -79,8 +79,11 @@ export function toBacklinkRows(rows: string[][]): BacklinkRow[] | null {
   return body.flatMap((r) => {
     const raw = r[s]?.trim();
     if (!raw) return [];
+    const sourceUrl = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    // A source must be a real address with a domain, such as example.com.
+    try { if (!new URL(sourceUrl).hostname.includes('.')) return []; } catch { return []; }
     return [{
-      sourceUrl: /^https?:\/\//i.test(raw) ? raw : `https://${raw}`,
+      sourceUrl,
       targetUrl: t >= 0 ? r[t]?.trim() || undefined : undefined,
       anchor: a >= 0 ? r[a]?.trim() || undefined : undefined,
       domainRating: d >= 0 ? parseNumber(r[d]) : undefined,
