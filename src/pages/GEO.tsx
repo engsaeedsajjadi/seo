@@ -176,7 +176,7 @@ export default function GEO() {
                 </div>
                 <span className="text-[10px] text-slate-500">{formatDateTime(run.createdAt)}</span>
               </div>
-              <p dir="auto" className="text-sm leading-7 text-slate-300 bg-surface/50 rounded p-3 whitespace-pre-line">{run.response}</p>
+              <p dir="auto" className="text-sm leading-7 text-slate-300 bg-surface/50 rounded p-3 whitespace-pre-line">{run.response.replace(/\*\*/g, '').replace(/^#{1,6}\s*/gm, '').replace(/^\*\s+/gm, '• ')}</p>
             </div>
           ))}
         </div>

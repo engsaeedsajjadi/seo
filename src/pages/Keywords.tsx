@@ -275,7 +275,7 @@ export default function Keywords() {
                   rows={5}
                   value={seedInput}
                   onChange={e => setSeedInput(e.target.value)}
-                  placeholder="seo tools&#10;keyword research&#10;site audit"
+                  placeholder="بلیط هواپیما&#10;رزرو هتل&#10;آموزش سئو"
                   className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-600/50 resize-none"
                 />
               </div>
