@@ -6,6 +6,7 @@ import {
 import { useAppState } from '../lib/store';
 import { downloadCsv } from '../lib/csv';
 import { api } from '../lib/api';
+import { PLAN_LIMITS } from '../lib/types';
 import type { Severity, AuditCategory, AuditFinding } from '../lib/types';
 import { t } from '../i18n';
 import { scoreBand, SEVERITY_LABELS, FINDING_STATUS_LABELS, CATEGORY_LABELS, JOB_STATUS_LABELS, apiMessage, findingTitle, findingDescription, findingRecommendation } from '../lib/labels';
@@ -21,7 +22,8 @@ export default function SiteAudit() {
   const [selectedCategory, setSelectedCategory] = useState<AuditCategory | 'all'>('all');
   const [expandedRule, setExpandedRule] = useState<string | null>(null);
   const [showRunCrawl, setShowRunCrawl] = useState(false);
-  const [crawlOptions, setCrawlOptions] = useState({ maxDepth: 5, maxPages: 500 });
+  const monthlyPages = PLAN_LIMITS[(state.currentOrg?.plan ?? 'FREE') as keyof typeof PLAN_LIMITS]?.crawledPages ?? 300;
+  const [crawlOptions, setCrawlOptions] = useState({ maxDepth: 5, maxPages: Math.min(500, monthlyPages) });
   const [crawlLoading, setCrawlLoading] = useState(false);
   const [crawlError, setCrawlError] = useState<string | null>(null);
   const [crawlSuccess, setCrawlSuccess] = useState<string | null>(null);
@@ -99,7 +101,9 @@ export default function SiteAudit() {
         setCrawlRequests((n) => n + 1);
         setShowRunCrawl(false);
       } else {
-        setCrawlError(apiMessage(result.error.message));
+        setCrawlError(result.error.code === 'LIMIT_REACHED'
+          ? `سقف ${toPersianDigits(monthlyPages)} صفحهٔ این ماه پلن شما تمام شده است. اول ماه بعد دوباره باز می‌شود، یا می‌توانید پلن را ارتقا دهید.`
+          : apiMessage(result.error.message));
       }
     } catch (e) {
       setCrawlError(e instanceof Error ? e.message : String(e));
@@ -347,7 +351,7 @@ export default function SiteAudit() {
                 <input type="number" value={crawlOptions.maxDepth} onChange={e => setCrawlOptions(o => ({ ...o, maxDepth: parseInt(e.target.value) || 1 }))} min={1} max={10} className="w-full mt-1 px-3 py-2 bg-surface border border-surface-3/50 rounded-lg text-sm text-white" />
               </div>
               <div>
-                <label className="text-xs text-slate-400">حداکثر صفحات (۱ تا ۱۰۰۰)</label>
+                <label className="text-xs text-slate-400">حداکثر صفحات (سقف ماهانهٔ پلن: {toPersianDigits(monthlyPages)})</label>
                 <input type="number" value={crawlOptions.maxPages} onChange={e => setCrawlOptions(o => ({ ...o, maxPages: parseInt(e.target.value) || 1 }))} min={1} max={1000} className="w-full mt-1 px-3 py-2 bg-surface border border-surface-3/50 rounded-lg text-sm text-white" />
               </div>
             </div>

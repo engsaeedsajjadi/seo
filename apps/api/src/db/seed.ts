@@ -20,7 +20,7 @@ async function seed() {
       INSERT INTO plans (id, name, description, price_monthly_cents, price_annual_cents, limits, features, is_active, monthly_credits)
       VALUES
         ('FREE', 'Free', 'Perfect for trying RankForge', 0, 0,
-         '{"projects": 1, "keywords": 10, "crawledPages": 100, "rankChecks": 100, "aiOperations": 10, "reports": 5, "users": 1, "apiRequests": 100, "competitors": 2, "backlinks": 100, "crawlDepth": 2, "historyMonths": 1}',
+         '{"projects": 1, "keywords": 10, "crawledPages": 300, "rankChecks": 100, "aiOperations": 10, "reports": 5, "users": 1, "apiRequests": 100, "competitors": 2, "backlinks": 100, "crawlDepth": 2, "historyMonths": 1}',
          '["1 Project", "10 Keywords", "Basic Crawl", "Community Support"]', true, 0),
         ('STARTER', 'Starter', 'For small websites and bloggers', 2900, 29000,
          '{"projects": 3, "keywords": 100, "crawledPages": 1000, "rankChecks": 1000, "aiOperations": 100, "reports": 20, "users": 2, "apiRequests": 1000, "competitors": 5, "backlinks": 1000, "crawlDepth": 3, "historyMonths": 3}',

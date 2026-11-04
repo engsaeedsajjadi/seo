@@ -191,7 +191,7 @@ export interface PlanLimits {
 
 // Display defaults mirror seeded plans. Server-side plan limits remain authoritative.
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
-  FREE: { projects:1, keywords:10, crawledPages:100, rankChecks:100, aiOperations:10, reports:5, users:1, apiRequests:100, competitors:2 },
+  FREE: { projects:1, keywords:10, crawledPages:300, rankChecks:100, aiOperations:10, reports:5, users:1, apiRequests:100, competitors:2 },
   STARTER: { projects:3, keywords:100, crawledPages:1000, rankChecks:1000, aiOperations:100, reports:20, users:2, apiRequests:1000, competitors:5 },
   PRO: { projects:10, keywords:500, crawledPages:10000, rankChecks:5000, aiOperations:500, reports:100, users:5, apiRequests:5000, competitors:10 },
   AGENCY: { projects:50, keywords:2500, crawledPages:50000, rankChecks:25000, aiOperations:2500, reports:500, users:20, apiRequests:25000, competitors:25 },
