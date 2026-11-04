@@ -189,6 +189,9 @@ try {
   check('report completes', await waitFor(async () => (await call('GET', `/projects/${pid}/reports`, T)).data?.some((r: any) => r.status === 'completed')));
   const alert = await call('POST', `/projects/${pid}/alerts`, T, { title: 'a', message: 'm', type: 'rank_drop', severity: 'notice' });
   check('customer can create an alert', alert.status === 201, alert.json);
+  const geoRun = await call('POST', `/projects/${pid}/geo/check`, T, {});
+  const geoJobs = (await call('GET', `/projects/${pid}/jobs`, T)).data ?? [];
+  check('GEO question does not name the brand', geoRun.status === 400 ? geoRun.code === 'KEYWORDS_REQUIRED' : !JSON.stringify(geoJobs.find((j: any) => j.type === 'AI_VISIBILITY_CHECK')?.payload ?? '').includes('.'), geoRun.json);
   check('brief is queued', (await call('POST', `/projects/${pid}/content/briefs`, T, { title: 't', targetKeyword: 'k' })).status === 201);
 
   console.log('--- Quotas');

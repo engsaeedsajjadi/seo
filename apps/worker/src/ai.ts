@@ -202,7 +202,7 @@ export class GoogleAIProvider extends BaseAiProvider {
 
   async complete(prompt: string, options: AIOptions = {}): Promise<AIResponse> {
     if (!this.isConfigured()) throw new AiProviderError('Google AI not configured');
-    const model = options.model || process.env.GOOGLE_AI_MODEL || 'gemini-3.8-flash';
+    const model = options.model || process.env.GOOGLE_AI_MODEL || 'gemini-3.5-flash-lite';
     // Gemini 3 rejects sampling settings, and its thinking tokens count against the output limit.
     const isGemini3 = !/^gemini-[12]\./.test(model);
     const maxOutputTokens = options.maxTokens ?? 1000;

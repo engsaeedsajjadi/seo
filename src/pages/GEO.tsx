@@ -5,12 +5,8 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
 import { t } from '../i18n';
-import { formatDateTime } from '../lib/labels';
+import { apiMessage, formatDateTime } from '../lib/labels';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
-
-function geoPrompt(domain: string, language: string): string {
-  return language === 'fa' ? `${domain} چیست و چه خدماتی ارائه می‌دهد؟` : `What is ${domain}?`;
-}
 
 interface GeoRun {
   id: string;
@@ -72,7 +68,7 @@ export default function GEO() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: geoPrompt(state.currentProject.domain, state.currentProject.language) }),
+        body: JSON.stringify({}),
       });
       const json = await res.json();
       if (json.success) {
@@ -82,7 +78,7 @@ export default function GEO() {
         if (json.error?.code === 'PROVIDER_NOT_CONFIGURED') {
           setProviderError(json.error.message);
         }
-        setCheckResult(`خطا: ${json.error?.message || 'ناموفق'}`);
+        setCheckResult(json.error?.code === 'KEYWORDS_REQUIRED' ? 'ابتدا در صفحه‌ی کلمات کلیدی یک کلمه اضافه کنید. بررسی با همان کلمه و بدون نام برند انجام می‌شود.' : apiMessage(json.error?.message));
       }
     } catch (e) {
       setCheckResult(e instanceof Error ? e.message : String(e));

@@ -2330,13 +2330,24 @@ export function createApp() {
       await remainingMonthlyQuota(req.organizationId!, 'aiOperations', USED_AI_OPERATIONS);
 
       const schema = z.object({ prompt: z.string().min(1).max(1000).optional() });
-      const { prompt } = schema.parse(req.body || {});
+      const { prompt: requestedPrompt } = schema.parse(req.body || {});
+
+      // The question must not name the brand, otherwise every answer repeats it and the score means nothing.
+      let prompt = requestedPrompt;
+      if (!prompt) {
+        const keyword = await query(`SELECT keyword FROM keywords WHERE project_id = $1 AND organization_id = $2 ORDER BY created_at ASC LIMIT 1`, [project.id, req.organizationId!]);
+        const term = keyword.rows[0]?.keyword;
+        if (!term) {
+          return res.status(400).json({ success: false, error: { code: 'KEYWORDS_REQUIRED', message: 'Add a keyword first' } });
+        }
+        prompt = project.language === 'fa' ? `بهترین سایت‌ها برای ${term} کدام‌اند؟` : `What are the best websites for ${term}?`;
+      }
 
       const job = await jobRepository.create({
         organizationId: req.organizationId!,
         projectId: project.id,
         type: 'AI_VISIBILITY_CHECK',
-        payload: { projectId: project.id, prompt: prompt || (project.language === 'fa' ? `${project.domain} چیست و چه خدماتی ارائه می‌دهد؟` : `What is ${project.domain}?`) },
+        payload: { projectId: project.id, prompt },
         idempotencyKey: `geo_${project.id}_${Date.now()}`,
       });
 

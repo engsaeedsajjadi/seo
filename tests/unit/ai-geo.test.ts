@@ -131,7 +131,7 @@ assert.strictEqual(isAiQuotaError(new AiProviderError('OpenAI error 429: rate li
   const gemini = new GoogleAIProvider('k', (async (u: string, init: any) => { url = u; sent = init; return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ok' }] } }], usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, thoughtsTokenCount: 5 } }), { status: 200 }); }) as any);
   const reply = await gemini.complete('x', { maxTokens: 800, temperature: 0.2 });
   const body = JSON.parse(sent.body);
-  assert.ok(url.includes('gemini-3.8-flash') && !url.includes('key='), 'current model, key not in the URL');
+  assert.ok(url.includes('gemini-3.5-flash-lite') && !url.includes('key='), 'current model, key not in the URL');
   assert.strictEqual(sent.headers['x-goog-api-key'], 'k');
   assert.strictEqual(body.generationConfig.temperature, undefined, 'Gemini 3 receives no temperature');
   assert.strictEqual(body.generationConfig.thinkingConfig.thinkingLevel, 'low');
