@@ -503,3 +503,81 @@ export async function recordAiUsage(queryFn: QueryFn, input: AiUsageInput): Prom
     ],
   );
 }
+
+// ============================================================
+// Site fix suggestions — titles and meta descriptions the WordPress plugin can apply
+// ============================================================
+
+export const FIX_PROMPT_VERSION = 'worker-fix-v1';
+export type FixKind = 'meta_title' | 'meta_description';
+export interface FixCandidate { url: string; kind: FixKind; title: string | null; h1: string | null; metaDescription: string | null; reason: string }
+export interface FixSuggestion { url: string; kind: FixKind; value: string }
+
+export const FIX_LIMITS: Record<FixKind, { min: number; max: number }> = {
+  meta_title: { min: 15, max: 65 },
+  meta_description: { min: 70, max: 165 },
+};
+
+export function buildFixPrompt(candidates: FixCandidate[], language: string | null | undefined, domain: string): string {
+  const persian = (language ?? 'fa') === 'fa';
+  const rows = candidates.map((c, i) => JSON.stringify({
+    i, url: c.url, kind: c.kind, reason: c.reason, title: c.title ?? '', h1: c.h1 ?? '', description: c.metaDescription ?? '',
+  })).join('\n');
+  return [
+    `You are an SEO editor for the website ${domain}.`,
+    `Write a replacement for each item below, in ${persian ? 'Persian (Farsi)' : 'the language of the page'}.`,
+    `- kind "meta_title": a unique page title of ${FIX_LIMITS.meta_title.min}-60 characters that says what the page offers.`,
+    `- kind "meta_description": a description of ${FIX_LIMITS.meta_description.min}-155 characters that invites the click.`,
+    'Use only facts present in the item. Do not invent prices, dates, discounts or claims. No quotes or emoji.',
+    'Return only a JSON array: [{"i": <number>, "value": "<text>"}].',
+    '',
+    rows,
+  ].join('\n');
+}
+
+/** Keeps only answers that match a requested item and fit its length limits. */
+export function parseFixSuggestions(content: string, candidates: FixCandidate[]): FixSuggestion[] {
+  const match = content.match(/\[[\s\S]*\]/);
+  if (!match) return [];
+  let items: unknown;
+  try { items = JSON.parse(match[0]); } catch { return []; }
+  if (!Array.isArray(items)) return [];
+  const out: FixSuggestion[] = [];
+  const seen = new Set<number>();
+  for (const item of items) {
+    const i = Number((item as any)?.i);
+    const value = String((item as any)?.value ?? '').replace(/\s+/g, ' ').replace(/^["'«]+|["'»]+$/g, '').trim();
+    const candidate = candidates[i];
+    if (!candidate || seen.has(i)) continue;
+    const limits = FIX_LIMITS[candidate.kind];
+    if (value.length < limits.min || value.length > limits.max) continue;
+    if (/<|>/.test(value)) continue;
+    seen.add(i);
+    out.push({ url: candidate.url, kind: candidate.kind, value });
+  }
+  return out;
+}
+
+/** Pages from one crawl that need a new title or description, most important first. */
+export function selectFixCandidates(
+  pages: { url: string; title: string | null; h1: string | null; meta_description: string | null }[],
+  openFixes: Set<string>,
+  limit = 20,
+): FixCandidate[] {
+  const byTitle = new Map<string, number>();
+  for (const p of pages) if (p.title) byTitle.set(p.title.trim(), (byTitle.get(p.title.trim()) ?? 0) + 1);
+  const out: FixCandidate[] = [];
+  const push = (c: FixCandidate) => { if (!openFixes.has(`${c.kind}|${c.url}`) && out.length < limit) out.push(c); };
+  for (const p of pages) {
+    const base = { url: p.url, title: p.title, h1: p.h1, metaDescription: p.meta_description };
+    if (!p.meta_description?.trim()) push({ ...base, kind: 'meta_description', reason: 'missing description' });
+  }
+  for (const p of pages) {
+    const base = { url: p.url, title: p.title, h1: p.h1, metaDescription: p.meta_description };
+    const title = p.title?.trim() ?? '';
+    if (!title) push({ ...base, kind: 'meta_title', reason: 'missing title' });
+    else if ((byTitle.get(title) ?? 0) > 1) push({ ...base, kind: 'meta_title', reason: 'title used by another page' });
+    else if (title.length > 65) push({ ...base, kind: 'meta_title', reason: 'title too long' });
+  }
+  return out;
+}

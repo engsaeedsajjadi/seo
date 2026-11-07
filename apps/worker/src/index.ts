@@ -48,6 +48,10 @@ import {
   parseBriefOutline,
   recordAiUsage,
   BRIEF_PROMPT_VERSION,
+  buildFixPrompt,
+  parseFixSuggestions,
+  selectFixCandidates,
+  FIX_PROMPT_VERSION,
   type AIProvider,
 } from './ai.js';
 
@@ -1261,6 +1265,8 @@ class Worker {
         return this.handleAiVisibilityCheck(job, signal);
       case 'CONTENT_BRIEF':
         return this.handleContentBrief(job, signal);
+      case 'FIX_SUGGESTIONS':
+        return this.handleFixSuggestions(job, signal);
       case 'REPORT_GENERATION':
         return this.handleReportGeneration(job, signal);
       case 'ALERT_EVALUATION':
@@ -2092,6 +2098,76 @@ class Worker {
       visibilityScore: analysis.visibilityScore,
       estimatedCostUsd: ai.estimatedCostUsd,
     };
+  }
+
+  private async handleFixSuggestions(job: Job, signal: AbortSignal): Promise<any> {
+    if (!job.projectId) throw new JobError('Project missing for fix suggestions — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
+    const aiProviders = createWorkerAiProviders();
+    let provider = pickAiProvider(aiProviders, job.payload?.provider);
+    if (!provider) throw new JobError(AI_NOT_CONFIGURED_MESSAGE, 'PROVIDER_NOT_CONFIGURED', false);
+
+    const project = (await query(
+      `SELECT id, domain, normalized_domain, language FROM projects WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
+      [job.projectId, job.organizationId]
+    )).rows[0];
+    if (!project) throw new JobError('Project not found', 'NON_RETRYABLE', false);
+
+    const run = (await query(
+      `SELECT id FROM crawl_runs WHERE project_id = $1 AND organization_id = $2 AND status = 'completed' ORDER BY created_at DESC LIMIT 1`,
+      [project.id, job.organizationId]
+    )).rows[0];
+    if (!run) throw new JobError('No completed crawl for this project — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
+
+    const pages = (await query(
+      `SELECT url, title, h1, meta_description FROM crawl_pages
+       WHERE crawl_run_id = $1 AND organization_id = $2 AND status_code = 200
+         AND (content_type IS NULL OR content_type ILIKE 'text/html%') AND COALESCE(is_noindex, FALSE) = FALSE
+       ORDER BY url LIMIT 500`,
+      [run.id, job.organizationId]
+    )).rows;
+    const open = (await query(
+      `SELECT kind, page_url FROM site_fixes WHERE project_id = $1 AND organization_id = $2
+       AND status IN ('proposed', 'approved', 'applied', 'rollback_requested')`,
+      [project.id, job.organizationId]
+    )).rows;
+    const candidates = selectFixCandidates(pages, new Set(open.map((r: any) => `${r.kind}|${r.page_url}`)));
+    if (candidates.length === 0) return { created: 0, candidates: 0 };
+    if (signal.aborted) throw new JobError('Fix suggestions aborted', 'TIMEOUT', true);
+
+    let ai;
+    try {
+      ({ ai, provider } = await completeWithFallback(aiProviders, job.payload?.provider,
+        buildFixPrompt(candidates, project.language, project.normalized_domain || project.domain),
+        { maxTokens: 3000, temperature: 0.3 }));
+    } catch (error) {
+      throw aiErrorToJobError(error, `${provider.name} fix suggestions request`);
+    }
+    if (signal.aborted) throw new JobError('Fix suggestions aborted', 'TIMEOUT', true);
+
+    const suggestions = parseFixSuggestions(ai.content, candidates);
+    let created = 0;
+    for (const s of suggestions) {
+      const current = candidates.find((c) => c.url === s.url && c.kind === s.kind);
+      try {
+        await query(
+          `INSERT INTO site_fixes (organization_id, project_id, kind, page_url, current_value, proposed_value, source)
+           VALUES ($1, $2, $3, $4, $5, $6, 'ai')`,
+          [job.organizationId, project.id, s.kind, s.url,
+            (s.kind === 'meta_title' ? current?.title : current?.metaDescription)?.slice(0, 1000) ?? null, s.value]
+        );
+        created++;
+      } catch (error: any) {
+        if (error?.code !== '23505') throw error;
+      }
+    }
+
+    await recordAiUsage(query, {
+      organizationId: job.organizationId, projectId: project.id, provider: ai.provider, model: ai.model,
+      inputTokens: ai.inputTokens, outputTokens: ai.outputTokens, estimatedCostUsd: ai.estimatedCostUsd,
+      operation: 'fix_suggestions', idempotencyKey: `fixes_${job.id}`, referenceType: 'project', referenceId: project.id,
+    });
+    console.log(JSON.stringify({ level: 'info', msg: 'Fix suggestions created', job_id: job.id, created, candidates: candidates.length, prompt: FIX_PROMPT_VERSION }));
+    return { created, candidates: candidates.length };
   }
 
   private async handleContentBrief(job: Job, signal: AbortSignal): Promise<any> {

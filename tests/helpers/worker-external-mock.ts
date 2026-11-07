@@ -64,6 +64,13 @@ let hookCalls = 0;
   }
   if (url.hostname === 'api.openai.com') {
     if (body.includes('FAIL-AI')) return json({ error: { message: 'simulated AI outage' } }, 500);
+    if (body.includes('SEO editor for the website')) {
+      const items = [...body.matchAll(/\\"i\\":(\d+),\\"url\\":\\"[^\\]*\\",\\"kind\\":\\"(meta_\w+)\\"/g)].map((m) => ({
+        i: Number(m[1]),
+        value: m[2] === 'meta_title' ? 'City tours for every family' : 'Book a city tour with a local guide, small groups and flexible times on every day of the week here.',
+      }));
+      return json({ model: 'mock-model', choices: [{ message: { content: JSON.stringify(items) } }], usage: { prompt_tokens: 11, completion_tokens: 22 } });
+    }
     return json({ model: 'mock-model', choices: [{ message: { content: '{"sections":[{"heading":"Intro"}]}' } }], usage: { prompt_tokens: 11, completion_tokens: 22 } });
   }
   throw new Error(`Unmocked outbound request: ${url.hostname}`);

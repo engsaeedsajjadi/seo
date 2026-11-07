@@ -15,7 +15,7 @@ const requiredTables = [
   'users', 'organizations', 'organization_members', 'projects', 'crawls', 'crawl_runs',
   'crawl_pages', 'crawl_issues', 'audit_findings', 'keywords', 'keyword_snapshots', 'keyword_rankings',
   'competitors', 'backlinks', 'jobs', 'job_attempts', 'integrations', 'gsc_metrics', 'ga4_metrics',
-  'pagespeed_results', 'geo_runs', 'content_briefs', 'ai_usage', 'reports', 'alerts',
+  'pagespeed_results', 'geo_runs', 'content_briefs', 'ai_usage', 'reports', 'alerts', 'site_fixes',
   'credit_wallets', 'credit_transactions', 'usage_records', 'invoices', 'api_keys', 'webhooks',
   'webhook_deliveries', 'audit_logs', 'feature_flags', '_migrations',
 ];
@@ -26,7 +26,7 @@ const rlsTables = [
   'competitors', 'backlinks', 'jobs', 'job_attempts', 'alerts', 'reports', 'integrations',
   'credit_wallets', 'credit_transactions', 'usage_records', 'invoices', 'api_keys',
   'audit_logs', 'gsc_metrics', 'ga4_metrics', 'pagespeed_results', 'geo_runs', 'content_briefs',
-  'ai_usage', 'feature_flags',
+  'ai_usage', 'feature_flags', 'site_fixes',
 ];
 
 async function verifyDatabase() {

@@ -148,6 +148,8 @@ try {
     ['GET', `/projects/${pidb}`], ['PATCH', `/projects/${pidb}`, { name: 'hack' }], ['DELETE', `/projects/${pidb}`],
     ['GET', `/projects/${pidb}/audit/findings`], ['GET', `/projects/${pidb}/audit/score`], ['GET', `/projects/${pidb}/keywords`],
     ['POST', `/projects/${pidb}/integrations/gsc/sync`, {}],
+    ['GET', `/projects/${pidb}/fixes`], ['POST', `/projects/${pidb}/fixes/suggest`, {}], ['GET', `/projects/${pidb}/wp/pending`],
+    ['POST', `/projects/${pidb}/wp/images`, { images: [] }],
     ['POST', `/projects/${pidb}/keywords`, { keywords: ['x'] }], ['GET', `/projects/${pidb}/rankings`], ['POST', `/projects/${pidb}/crawl`, {}],
     ['GET', `/projects/${pidb}/reports`], ['POST', `/projects/${pidb}/reports`, { type: 'seo', format: 'json' }], ['GET', `/projects/${pidb}/alerts`],
     ['GET', `/projects/${pidb}/jobs`], ['GET', `/projects/${pidb}/backlinks`], ['GET', `/projects/${pidb}/competitors`],
@@ -193,6 +195,34 @@ try {
   const geoJobs = (await call('GET', `/projects/${pid}/jobs`, T)).data ?? [];
   check('GEO question does not name the brand', geoRun.status === 400 ? geoRun.code === 'KEYWORDS_REQUIRED' : !JSON.stringify(geoJobs.find((j: any) => j.type === 'AI_VISIBILITY_CHECK')?.payload ?? '').includes('.'), geoRun.json);
   check('brief is queued', (await call('POST', `/projects/${pid}/content/briefs`, T, { title: 't', targetKeyword: 'k' })).status === 201);
+
+  console.log('--- Site fixes and the WordPress plugin flow');
+  const lastRun = (await owner.query(`SELECT id FROM crawl_runs WHERE project_id = $1 AND status = 'completed' ORDER BY created_at DESC LIMIT 1`, [pid])).rows[0];
+  await owner.query(`INSERT INTO crawl_pages (crawl_run_id, organization_id, project_id, url, status_code, content_type, title, h1, meta_description)
+    VALUES ($1, (SELECT organization_id FROM projects WHERE id = $2), $2, 'https://fixture.rankforge.test/tours', 200, 'text/html', 'Tours of the city for families', 'Tours', NULL)`, [lastRun.id, pid]);
+  const suggest = await call('POST', `/projects/${pid}/fixes/suggest`, T, {});
+  check('fix suggestions are queued', suggest.status === 201, suggest.json);
+  check('a second suggestion run waits for the first', [409, 201].includes((await call('POST', `/projects/${pid}/fixes/suggest`, T, {})).status));
+  const proposed = async () => ((await call('GET', `/projects/${pid}/fixes`, T)).data?.fixes ?? []).find((f: any) => f.pageUrl === 'https://fixture.rankforge.test/tours' && f.kind === 'meta_description');
+  check('AI writes a description for the page without one', await waitFor(async () => !!(await proposed()), 20000));
+  const fix = await proposed();
+  const pluginKey = (await call('POST', '/api-keys', T, { name: 'wp', scopes: ['read', 'write'] })).data?.key as string;
+  check('the plugin key cannot approve changes', (await call('PATCH', `/projects/${pid}/fixes/${fix.id}`, pluginKey, { action: 'approve' })).status === 403);
+  check('nothing reaches the site before approval', !((await call('GET', `/projects/${pid}/wp/pending`, pluginKey)).data?.fixes ?? []).some((f: any) => f.id === fix.id));
+  check('a value with HTML is refused', (await call('PATCH', `/projects/${pid}/fixes/${fix.id}`, T, { action: 'approve', proposedValue: '<script>x</script>' })).status === 400);
+  const edited = 'City tours for families with local guides, small groups and flexible times every day of the week.';
+  check('the customer can edit and approve', (await call('PATCH', `/projects/${pid}/fixes/${fix.id}`, T, { action: 'approve', proposedValue: edited })).data?.status === 'approved');
+  const pending = await call('GET', `/projects/${pid}/wp/pending?version=1.0.0`, pluginKey);
+  check('the plugin receives the approved value', pending.data?.fixes?.some((f: any) => f.id === fix.id && f.value === edited), pending.json);
+  check('the plugin check-in is recorded', (await call('GET', `/projects/${pid}/fixes`, T)).data?.plugin?.version === '1.0.0');
+  check('the plugin reports it applied', (await call('POST', `/projects/${pid}/wp/results`, pluginKey, { results: [{ id: fix.id, status: 'applied', previousValue: 'old' }] })).data?.updated === 1);
+  check('a repeated report changes nothing', (await call('POST', `/projects/${pid}/wp/results`, pluginKey, { results: [{ id: fix.id, status: 'applied' }] })).data?.updated === 0);
+  check('a rollback can be requested', (await call('PATCH', `/projects/${pid}/fixes/${fix.id}`, T, { action: 'rollback' })).data?.status === 'rollback_requested');
+  check('the plugin receives the old value for rollback', (await call('GET', `/projects/${pid}/wp/pending`, pluginKey)).data?.fixes?.some((f: any) => f.id === fix.id && f.previousValue === 'old'));
+  check('the plugin reports the rollback', (await call('POST', `/projects/${pid}/wp/results`, pluginKey, { results: [{ id: fix.id, status: 'rolled_back' }] })).data?.updated === 1);
+  const image = { pageUrl: 'https://fixture.rankforge.test/tours', src: 'https://fixture.rankforge.test/a.jpg', proposedValue: 'City tour bus' };
+  check('the plugin proposes image alt text', (await call('POST', `/projects/${pid}/wp/images`, pluginKey, { images: [image] })).data?.created === 1);
+  check('the same image is proposed once', (await call('POST', `/projects/${pid}/wp/images`, pluginKey, { images: [image] })).data?.created === 0);
 
   console.log('--- Quotas');
   const orgId = a.data.user.organizationId as string;

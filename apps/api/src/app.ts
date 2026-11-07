@@ -1840,6 +1840,150 @@ export function createApp() {
     }
   });
 
+  // ---------------------------------------------------------------- site fixes (WordPress plugin)
+  // Customers approve every change; the plugin only applies approved fixes and reports back.
+  const FIX_COLUMNS = `id, kind, page_url AS "pageUrl", target, current_value AS "currentValue", proposed_value AS "proposedValue",
+    status, source, previous_value AS "previousValue", error, applied_at AS "appliedAt", created_at AS "createdAt", updated_at AS "updatedAt"`;
+  const FIX_LENGTH: Record<string, number> = { meta_title: 65, meta_description: 165, image_alt: 150 };
+  const PLUGIN_VERSION_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+$/;
+
+  function rejectApiKey(req: AuthRequest) {
+    if (req.apiKeyId) throw new ApiError(403, 'FORBIDDEN', 'Only a signed-in user can approve site changes');
+  }
+
+  app.get('/api/v1/projects/:projectId/fixes', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      rejectApiKey(req);
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      const fixes = await query(`SELECT ${FIX_COLUMNS} FROM site_fixes WHERE project_id = $1 AND organization_id = $2
+        ORDER BY CASE status WHEN 'proposed' THEN 0 WHEN 'approved' THEN 1 WHEN 'failed' THEN 2 ELSE 3 END, updated_at DESC LIMIT 500`,
+        [project.id, req.organizationId!]);
+      const plugin = await query(`SELECT wp_plugin_seen_at AS "seenAt", wp_plugin_version AS "version" FROM projects WHERE id = $1 AND organization_id = $2`,
+        [project.id, req.organizationId!]);
+      res.json({ success: true, data: { fixes: fixes.rows, plugin: plugin.rows[0] ?? null } });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/v1/projects/:projectId/fixes/suggest', authMiddleware, requireVerifiedEmail, async (req: AuthRequest, res, next) => {
+    try {
+      rejectApiKey(req);
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      if (!(config.providers.openai || config.providers.anthropic || config.providers.googleAi)) {
+        return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'AI provider not configured' } });
+      }
+      const crawl = await query(`SELECT 1 FROM crawl_runs WHERE project_id = $1 AND organization_id = $2 AND status = 'completed' LIMIT 1`,
+        [project.id, req.organizationId!]);
+      if (!crawl.rows.length) return res.status(400).json({ success: false, error: { code: 'CRAWL_REQUIRED', message: 'Run a crawl first' } });
+      const running = await jobRepository.findByOrganization(req.organizationId!, { projectId: project.id, type: 'FIX_SUGGESTIONS', limit: 5 });
+      if (running.items.some((job) => job.status === 'pending' || job.status === 'running')) {
+        return res.status(409).json({ success: false, error: { code: 'ALREADY_RUNNING', message: 'Suggestions are already being written' } });
+      }
+      await remainingMonthlyQuota(req.organizationId!, 'aiOperations', USED_AI_OPERATIONS);
+      const job = await jobRepository.create({
+        organizationId: req.organizationId!, projectId: project.id, type: 'FIX_SUGGESTIONS',
+        payload: { projectId: project.id }, idempotencyKey: `fixes_${project.id}_${Date.now()}`,
+      });
+      res.status(201).json({ success: true, data: { job } });
+    } catch (error) { next(error); }
+  });
+
+  app.patch('/api/v1/projects/:projectId/fixes/:fixId', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      rejectApiKey(req);
+      const body = z.object({
+        action: z.enum(['approve', 'reject', 'rollback', 'reopen']),
+        proposedValue: z.string().trim().min(1).max(500).optional(),
+      }).parse(req.body || {});
+      const fix = (await query(`SELECT id, kind, status FROM site_fixes WHERE id = $1 AND project_id = $2 AND organization_id = $3`,
+        [req.params.fixId, req.params.projectId, req.organizationId!])).rows[0];
+      if (!fix) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Fix not found' } });
+      const allowed: Record<string, { from: string[]; to: string }> = {
+        approve: { from: ['proposed', 'failed', 'rejected'], to: 'approved' },
+        reject: { from: ['proposed', 'approved', 'failed'], to: 'rejected' },
+        rollback: { from: ['applied'], to: 'rollback_requested' },
+        reopen: { from: ['rolled_back'], to: 'proposed' },
+      };
+      const rule = allowed[body.action];
+      if (!rule.from.includes(fix.status)) {
+        return res.status(409).json({ success: false, error: { code: 'INVALID_STATE', message: `Cannot ${body.action} a fix that is ${fix.status}` } });
+      }
+      if (body.proposedValue !== undefined && (body.action !== 'approve' || body.proposedValue.length > FIX_LENGTH[fix.kind] || /[<>]/.test(body.proposedValue))) {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid value' } });
+      }
+      const updated = await query(
+        `UPDATE site_fixes SET status = $4, proposed_value = COALESCE($5, proposed_value), error = NULL, updated_at = NOW()
+         WHERE id = $1 AND project_id = $2 AND organization_id = $3 RETURNING ${FIX_COLUMNS}`,
+        [fix.id, req.params.projectId, req.organizationId!, rule.to, body.proposedValue ?? null]);
+      res.json({ success: true, data: updated.rows[0] });
+    } catch (error) { next(error); }
+  });
+
+  // Called by the WordPress plugin with an API key (read and write scopes).
+  app.get('/api/v1/projects/:projectId/wp/pending', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      const version = String(req.query.version ?? '');
+      await query(`UPDATE projects SET wp_plugin_seen_at = NOW(), wp_plugin_version = $3 WHERE id = $1 AND organization_id = $2`,
+        [project.id, req.organizationId!, PLUGIN_VERSION_PATTERN.test(version) ? version : null]);
+      const fixes = await query(`SELECT id, kind, page_url AS "pageUrl", target, proposed_value AS "value", previous_value AS "previousValue", status
+        FROM site_fixes WHERE project_id = $1 AND organization_id = $2 AND status IN ('approved', 'rollback_requested')
+        ORDER BY updated_at LIMIT 100`, [project.id, req.organizationId!]);
+      res.json({ success: true, data: { domain: project.domain, fixes: fixes.rows } });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/v1/projects/:projectId/wp/results', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const body = z.object({ results: z.array(z.object({
+        id: z.string().uuid(),
+        status: z.enum(['applied', 'failed', 'rolled_back']),
+        previousValue: z.string().max(1000).nullable().optional(),
+        error: z.string().max(500).optional(),
+      })).max(100) }).parse(req.body || {});
+      let updated = 0;
+      for (const r of body.results) {
+        // A result moves a fix only along the path the customer started.
+        const from = r.status === 'rolled_back' ? ['rollback_requested'] : r.status === 'applied' ? ['approved'] : ['approved', 'rollback_requested'];
+        const nextStatus = r.status === 'failed' ? `CASE status WHEN 'rollback_requested' THEN 'applied' ELSE 'failed' END` : `'${r.status}'`;
+        const result = await query(
+          `UPDATE site_fixes SET status = ${nextStatus}, error = $5,
+             previous_value = CASE WHEN $4::text = 'applied' THEN $6 ELSE previous_value END,
+             applied_at = CASE WHEN $4::text = 'applied' THEN NOW() ELSE applied_at END, updated_at = NOW()
+           WHERE id = $1 AND project_id = $2 AND organization_id = $3 AND status = ANY($7::text[])`,
+          [r.id, req.params.projectId, req.organizationId!, r.status, r.status === 'failed' ? (r.error ?? 'Unknown error').slice(0, 500) : null,
+            r.previousValue ?? null, from]);
+        updated += result.rowCount ?? 0;
+      }
+      res.json({ success: true, data: { updated } });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/v1/projects/:projectId/wp/images', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      const body = z.object({ images: z.array(z.object({
+        pageUrl: z.string().url().max(2048),
+        src: z.string().url().max(2048),
+        proposedValue: z.string().trim().min(2).max(150).refine((v) => !/[<>]/.test(v)),
+      })).max(200) }).parse(req.body || {});
+      let created = 0;
+      for (const image of body.images) {
+        const result = await query(
+          `INSERT INTO site_fixes (organization_id, project_id, kind, page_url, target, current_value, proposed_value, source)
+           SELECT $1, $2, 'image_alt', $3, $4, '', $5, 'plugin'
+           WHERE NOT EXISTS (SELECT 1 FROM site_fixes WHERE project_id = $2 AND organization_id = $1 AND kind = 'image_alt'
+             AND page_url = $3 AND target = $4 AND status IN ('proposed', 'approved', 'applied', 'rollback_requested', 'rejected'))`,
+          [req.organizationId!, project.id, image.pageUrl, image.src, image.proposedValue]);
+        created += result.rowCount ?? 0;
+      }
+      res.json({ success: true, data: { created } });
+    } catch (error) { next(error); }
+  });
+
   app.post('/api/v1/projects/:projectId/content/briefs', authMiddleware, requireVerifiedEmail, async (req: AuthRequest, res, next) => {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
