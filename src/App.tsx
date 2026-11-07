@@ -7,6 +7,7 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Projects from './pages/Projects';
 import SiteAudit from './pages/SiteAudit';
+import SiteFixes from './pages/SiteFixes';
 import Keywords from './pages/Keywords';
 import Rankings from './pages/Rankings';
 import Competitors from './pages/Competitors';
@@ -224,6 +225,7 @@ function App() {
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:projectId" element={<ProjectLayout />}>
                 <Route path="audit" element={<SiteAudit />} />
+                <Route path="fixes" element={<SiteFixes />} />
                 <Route path="keywords" element={<Keywords />} />
                 <Route path="rankings" element={<Rankings />} />
                 <Route path="competitors" element={<Competitors />} />

@@ -51,6 +51,8 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
       if (!/^\/api\/v1\/(projects|jobs|integrations\/status)(\/|$)/.test(req.path)) throw new ApiError(403,'FORBIDDEN','API key cannot access account management');
       const read=req.method==='GET' || req.method==='HEAD';
       if (!(row.scopes || []).includes(read?'read':'write')) throw new ApiError(403,'FORBIDDEN','API key scope is insufficient');
+      // The WordPress plugin reports back after every read, so a read-only key would only half work.
+      if (/^\/api\/v1\/projects\/[^/]+\/wp\//.test(req.path) && !(row.scopes || []).includes('write')) throw new ApiError(403,'FORBIDDEN','API key scope is insufficient');
       req.organizationId=row.organization_id;req.userId=row.owner_id;req.apiKeyId=row.id;
       req.user={role:read?'Viewer':'SEO_Manager'};
       if (!routeAllowed(req.user.role,req.method,req.path)) throw new ApiError(403,'FORBIDDEN','Operation not permitted for API key');

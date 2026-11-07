@@ -44,6 +44,7 @@ export const JOB_TYPE_LABELS: Record<string, string> = {
   AI_VISIBILITY_CHECK: 'بررسی دیده‌شدن در هوش مصنوعی',
   REPORT_GENERATION: 'ساخت گزارش',
   WEBHOOK_DELIVERY: 'ارسال وب‌هوک',
+  FIX_SUGGESTIONS: 'نوشتن پیشنهاد اصلاح سایت',
 };
 
 export const JOB_STATUS_LABELS: Record<string, string> = {

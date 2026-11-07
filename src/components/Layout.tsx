@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Globe, Search, BarChart3, Target, Link2, FileText,
   Bot, Brain, Radio, Bell, Settings, CreditCard, Users, Building2,
-  Shield, Zap, ChevronDown, ChevronRight, Menu, X, LogOut, User,
+  Shield, Zap, Wand2, ChevronDown, ChevronRight, Menu, X, LogOut, User,
   AlertTriangle, CheckCircle2, XCircle, Clock, ExternalLink
 } from 'lucide-react';
 import { COUNTRY_LABELS, LANGUAGE_LABELS } from '../lib/labels';
@@ -26,6 +26,7 @@ const navSections = [
     titleKey: 'common.seoAudit',
     items: [
       { path: '/audit', icon: Shield, label: 'ممیزی سایت', labelKey: 'common.siteAudit' },
+      { path: '/fixes', icon: Wand2, label: 'اصلاح خودکار سایت', labelKey: 'common.siteAudit' },
       { path: '/keywords', icon: Search, label: 'کلمات کلیدی', labelKey: 'common.keywords' },
       { path: '/rankings', icon: BarChart3, label: 'رتبه‌بندی', labelKey: 'common.rankings' },
       { path: '/competitors', icon: Target, label: 'رقبا', labelKey: 'common.competitors' },
@@ -70,7 +71,7 @@ import { api } from '../lib/api';
 // Sidebar items that live under a project (/projects/:id/...) — linking to the
 // bare path used to bounce back to the dashboard via the catch-all route.
 const PROJECT_SCOPED_PATHS = new Set([
-  '/audit', '/keywords', '/rankings', '/competitors', '/backlinks',
+  '/audit', '/fixes', '/keywords', '/rankings', '/competitors', '/backlinks',
   '/content', '/geo', '/aeo', '/reports', '/automation', '/alerts',
 ]);
 

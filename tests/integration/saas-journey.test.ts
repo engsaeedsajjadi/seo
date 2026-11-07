@@ -207,6 +207,8 @@ try {
   check('AI writes a description for the page without one', await waitFor(async () => !!(await proposed()), 20000));
   const fix = await proposed();
   const pluginKey = (await call('POST', '/api-keys', T, { name: 'wp', scopes: ['read', 'write'] })).data?.key as string;
+  const readOnlyKey = (await call('POST', '/api-keys', T, { name: 'wp-read', scopes: ['read'] })).data?.key as string;
+  check('a read-only key cannot connect the plugin', (await call('GET', `/projects/${pid}/wp/pending`, readOnlyKey)).status === 403);
   check('the plugin key cannot approve changes', (await call('PATCH', `/projects/${pid}/fixes/${fix.id}`, pluginKey, { action: 'approve' })).status === 403);
   check('nothing reaches the site before approval', !((await call('GET', `/projects/${pid}/wp/pending`, pluginKey)).data?.fixes ?? []).some((f: any) => f.id === fix.id));
   check('a value with HTML is refused', (await call('PATCH', `/projects/${pid}/fixes/${fix.id}`, T, { action: 'approve', proposedValue: '<script>x</script>' })).status === 400);

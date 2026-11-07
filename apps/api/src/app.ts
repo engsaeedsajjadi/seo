@@ -1917,7 +1917,13 @@ export function createApp() {
          WHERE id = $1 AND project_id = $2 AND organization_id = $3 RETURNING ${FIX_COLUMNS}`,
         [fix.id, req.params.projectId, req.organizationId!, rule.to, body.proposedValue ?? null]);
       res.json({ success: true, data: updated.rows[0] });
-    } catch (error) { next(error); }
+    } catch (error) {
+      // A newer change for the same field is already open.
+      if ((error as { code?: string }).code === '23505') {
+        return res.status(409).json({ success: false, error: { code: 'FIX_CONFLICT', message: 'Another change for this field is already open' } });
+      }
+      next(error);
+    }
   });
 
   // Called by the WordPress plugin with an API key (read and write scopes).
@@ -1976,7 +1982,7 @@ export function createApp() {
           `INSERT INTO site_fixes (organization_id, project_id, kind, page_url, target, current_value, proposed_value, source)
            SELECT $1, $2, 'image_alt', $3, $4, '', $5, 'plugin'
            WHERE NOT EXISTS (SELECT 1 FROM site_fixes WHERE project_id = $2 AND organization_id = $1 AND kind = 'image_alt'
-             AND page_url = $3 AND target = $4 AND status IN ('proposed', 'approved', 'applied', 'rollback_requested', 'rejected'))`,
+             AND page_url = $3 AND target = $4 AND status IN ('proposed', 'approved', 'applied', 'rollback_requested', 'rejected', 'rolled_back'))`,
           [req.organizationId!, project.id, image.pageUrl, image.src, image.proposedValue]);
         created += result.rowCount ?? 0;
       }

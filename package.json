@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/build-wp-plugin.mjs dist/downloads",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:unit && npm run test:security && npm run test:integration && npm run test:e2e",
     "test:unit": "node --import tsx tests/unit/ssrf.test.ts && node --import tsx tests/unit/audit.test.ts && node --import tsx tests/unit/credit.test.ts && node --import tsx tests/unit/job-atomic.test.ts && node --import tsx tests/unit/credit-atomic.test.ts && node --import tsx tests/unit/timeout.test.ts && node --import tsx tests/unit/dataforseo.test.ts && node --import tsx tests/unit/scheduler.test.ts && node --import tsx tests/unit/keyword-competitor.test.ts && node --import tsx tests/unit/ai-geo.test.ts && node --import tsx tests/unit/google-oauth.test.ts && node --import tsx tests/unit/stripe-billing.test.ts",

@@ -1,0 +1,55 @@
+import { execFileSync } from 'node:child_process';
+const S = process.argv[2];
+const ctx = JSON.parse((await import('node:fs')).readFileSync(`${S}/wp-ctx.json`, 'utf8'));
+const base = 'http://127.0.0.1:3001/api/v1';
+let passed = 0; const failed = [];
+const check = (n, ok, d) => { if (ok) { passed++; console.log('PASS', n); } else { failed.push(n); console.log('FAIL', n, d === undefined ? '' : JSON.stringify(d).slice(0, 400)); } };
+const call = async (m, p, b) => { const r = await fetch(base + p, { method: m, headers: { 'content-type': 'application/json', origin: 'http://localhost:4173', authorization: `Bearer ${ctx.token}` }, body: b ? JSON.stringify(b) : undefined }); return (await r.json()).data; };
+const sync = (...a) => JSON.parse(execFileSync('php', [`${S}/wp-sync.php`, `${S}/wpsite`, ...a], { encoding: 'utf8' }).trim().split('\n').pop());
+const page = async () => await (await fetch('http://127.0.0.1:8088/tours/')).text();
+const fixes = async () => (await call('GET', `/projects/${ctx.pid}/fixes`)).fixes;
+
+let r = sync('reset-scan');
+check('nothing is applied before approval', /^0 تغییر/.test(r.message), r);
+check('the plugin check-in shows in the app', (await call('GET', `/projects/${ctx.pid}/fixes`)).plugin?.version === '1.0.0');
+let images = (await fixes()).filter((f) => f.kind === 'image_alt');
+check('images without alt are proposed from the plugin', images.length === 2, images);
+const beach = images.find((f) => /beach-sunset/.test(f.target));
+const camera = images.find((f) => /IMG_2041/.test(f.target));
+check('the media title is the starting text', beach?.proposedValue === 'غروب ساحل کیش', beach);
+check('a camera file name is not used as alt text', camera?.proposedValue === 'تورهای کیش', camera);
+check('a second scan the same day sends nothing', sync().message.indexOf('تصویر') === -1);
+
+for (const f of (await fixes()).filter((f) => f.status === 'proposed' && f.id !== camera.id)) await call('PATCH', `/projects/${ctx.pid}/fixes/${f.id}`, { action: 'approve' });
+r = sync();
+check('approved fixes are applied and one fails', /^3 تغییر انجام شد، 1 ناموفق/.test(r.message), r);
+let html = await page();
+check('the new title is on the page', html.includes('<title>تور کیش ۱۴۰۵ | قیمت و رزرو آنلاین تورهای کیش</title>'), html.match(/<title>.*<\/title>/)?.[0]);
+check('the meta description is on the page', /<meta name="description" content="مقایسه‌ی قیمت تورهای کیش/.test(html));
+check('the image alt is set in the media library', r.attachmentAlt === 'غروب ساحل کیش', r.attachmentAlt);
+check('the image alt is set in the page', /<img[^>]*beach-sunset-300x225\.jpg[^>]*alt="غروب ساحل کیش"|alt="غروب ساحل کیش"[^>]*beach-sunset-300x225/.test(html));
+check('other images and markup are untouched', r.content.includes('<img src="http://localhost:8088/wp-content/uploads/IMG_2041.jpg" data-x="keep">') && r.content.includes('<!-- wp:image -->'), r.content);
+let all = await fixes();
+const byKind = (k, u = 'http://localhost:8088/tours/') => all.find((f) => f.kind === k && f.pageUrl === u);
+check('applied status is reported to the app', byKind('meta_title').status === 'applied' && byKind('meta_description').status === 'applied' && all.find((f) => f.id === beach.id).status === 'applied');
+check('the previous title is kept for rollback', byKind('meta_title').previousValue === '', byKind('meta_title'));
+const missing = byKind('meta_title', 'http://localhost:8088/no-such-page/');
+check('a missing page is reported as failed with a reason', missing.status === 'failed' && /پیدا نشد/.test(missing.error || ''), missing);
+check('a repeated sync applies nothing again', /^0 تغییر/.test(sync().message));
+
+await call('PATCH', `/projects/${ctx.pid}/fixes/${byKind('meta_title').id}`, { action: 'rollback' });
+await call('PATCH', `/projects/${ctx.pid}/fixes/${beach.id}`, { action: 'rollback' });
+r = sync();
+html = await page();
+check('rollback restores the original title', html.includes('<title>تورهای کیش &#8211; سایت آزمایشی</title>'), html.match(/<title>.*<\/title>/)?.[0]);
+check('rollback removes the image alt from the page and library', r.attachmentAlt === '' && !/alt="غروب ساحل کیش"/.test(r.content), r);
+check('the description stays applied', /<meta name="description"/.test(html));
+all = await fixes();
+check('rollbacks are reported to the app', all.find((f) => f.id === beach.id).status === 'rolled_back' && byKind('meta_title').status === 'rolled_back');
+
+check('a rolled-back image is not proposed again', sync('reset-scan').message.indexOf('تصویر') === -1);
+check('a read-only key is refused with a clear message', /read و write/.test(sync('', ctx.roKey).message));
+check('a wrong key is refused with a clear message', /نامعتبر/.test(sync('', 'rf_' + 'x'.repeat(40)).message));
+sync('', ctx.key);
+console.log(`\n${passed} passed, ${failed.length} failed`);
+process.exit(failed.length ? 1 : 0);
