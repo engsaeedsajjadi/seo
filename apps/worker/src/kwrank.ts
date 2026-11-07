@@ -51,7 +51,7 @@ export function kwRankDevice(projectDevice?: string | null): KwRankDevice {
 export class KwRankClient {
   private token: string | null = null;
   /** Shape of the last keyword list, for the log: field names and device values, never content. */
-  lastListShape: { count: number; fields: string[]; devices: string[] } | null = null;
+  lastListShape: { count: number; fields: string[]; devices: string[]; joined: number } | null = null;
 
   constructor(
     private readonly clientId: string,
@@ -150,6 +150,7 @@ export class KwRankClient {
       count: rows.length,
       fields: rows[0] && typeof rows[0] === 'object' ? Object.keys(rows[0]).sort() : [],
       devices: [...new Set(rows.map((r) => String(r?.device_type)))],
+      joined: rows.filter((r) => /[,،]/.test(String(r?.keyword_name ?? ''))).length,
     };
     return rows.map((r) => ({
       id: Number(r.id),
@@ -168,10 +169,11 @@ export class KwRankClient {
 
   async addKeywords(domainId: number, keywords: string[], countryId: number, device: KwRankDevice): Promise<number> {
     let added = 0;
-    // Sent in batches so one request stays small.
-    for (let i = 0; i < keywords.length; i += 50) {
+    // One keyword per request: with several array items in one form, KWRank stored them
+    // as a single comma-joined keyword.
+    for (const keyword of keywords) {
       const form = new FormData();
-      keywords.slice(i, i + 50).forEach((k, n) => form.set(`keywords[${n}]`, k));
+      form.set('keywords[0]', keyword);
       form.set('country_id', String(countryId));
       form.set('device_type', device);
       const body = await this.request('POST', `/domain/${domainId}/keywords`, form);
@@ -198,6 +200,8 @@ export function matchKwRankKeywords(
   for (const r of remote) {
     const text = normalizePersianKeyword(r.keyword);
     anyDevice.add(text);
+    // A keyword stored joined ("a,b") still counts as present for each part, so it is not re-added.
+    for (const part of text.split(/[,،]/)) if (part.trim()) anyDevice.add(part.trim());
     if (r.device.toLowerCase() === device) sameDevice.set(text, r);
   }
   const matched: { keywordId: string; remote: KwRankKeyword }[] = [];

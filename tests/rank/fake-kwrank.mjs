@@ -41,8 +41,11 @@ http.createServer(async (req, res) => {
   if (m && req.method === 'GET') return json(res, 200, list('keywords_list', keywords.get(Number(m[1])) ?? []));
   if (m && req.method === 'POST') {
     const f = await form(req); const rows = keywords.get(Number(m[1])) ?? [];
-    const added = Object.keys(f).filter((k) => k.startsWith('keywords[')).map((k) => {
-      const row = { id: nextId++, keyword_name: f[k], device_type: f.device_type, country_id: Number(f.country_id), is_active: 1,
+    // Like the real service: several items in one form are stored as one comma-joined keyword.
+    const items = Object.keys(f).filter((k) => k.startsWith('keywords['));
+    const names = items.length > 1 ? [items.map((k) => f[k]).join(',')] : items.map((k) => f[k]);
+    const added = names.map((name) => {
+      const row = { id: nextId++, keyword_name: name, device_type: f.device_type, country_id: Number(f.country_id), is_active: 1,
         has_the_ranking_ever_been_checked: false, rank: null, link: null, country: 'ایران', rank_updated_at: null };
       rows.push(row); return { id: row.id, keyword_name: row.keyword_name };
     });

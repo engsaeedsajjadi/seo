@@ -72,7 +72,10 @@ console.log('✅ authorize once, domain found across pages, ranks parsed');
   const added = await client.addKeywords(90, ['تور کیش', 'هتل کیش'], 1, 'android');
   assert.strictEqual(added, 2);
   const post = calls.find((c) => c.url.pathname.endsWith('/domain/90/keywords'))!;
-  assert.deepStrictEqual(post.form, { 'keywords[0]': 'تور کیش', 'keywords[1]': 'هتل کیش', country_id: '1', device_type: 'android' });
+  const posts = calls.filter((c) => c.url.pathname.endsWith('/domain/90/keywords'));
+  assert.strictEqual(posts.length, 2, 'one keyword per request');
+  assert.deepStrictEqual(post.form, { 'keywords[0]': 'تور کیش', country_id: '1', device_type: 'android' });
+  assert.deepStrictEqual(posts[1].form, { 'keywords[0]': 'هتل کیش', country_id: '1', device_type: 'android' });
 }
 console.log('✅ domain and keywords are registered with the documented fields');
 
@@ -106,6 +109,8 @@ console.log('✅ expired token renewed; wrong credentials and inactive plan surf
   assert.deepStrictEqual(r.matched.map((m) => [m.keywordId, m.remote.id]), [['a', 1]]);
   assert.deepStrictEqual(r.missing.map((m) => m.id), [], 'a keyword KWRank already has is never added again');
   assert.deepStrictEqual(r.otherDevice.map((m) => m.id), ['b'], 'a mobile row does not answer a desktop project');
+  const joined = matchKwRankKeywords([{ id: 'x', term: 'رزرو هتل' }, { id: 'y', term: 'بلیط هواپیما' }], [{ ...remote[0], keyword: 'بلیط هواپیما,رزرو هتل' }], 'desktop');
+  assert.deepStrictEqual([joined.missing.length, joined.matched.length, joined.otherDevice.length], [0, 0, 2], 'a joined keyword is not re-added and gives no rank');
   const fresh = matchKwRankKeywords([{ id: 'c', term: 'کیش ارزان' }], remote, 'desktop');
   assert.deepStrictEqual(fresh.missing.map((m) => m.id), ['c']);
   const upper = matchKwRankKeywords([{ id: 'a', term: 'تور کیش' }], [{ ...remote[0], device: 'Desktop' }], 'desktop');
