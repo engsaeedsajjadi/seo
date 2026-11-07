@@ -938,10 +938,13 @@ export function createApp() {
 
       const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password) || !!config.providers.serpapi;
       const keywords = [];
+      // A keyword is tracked where the project is, unless the request says otherwise.
+      const country = (parsed.country || project.country || 'US').toUpperCase();
+      const language = (parsed.language || project.language || 'en').toLowerCase();
 
       for (const kw of parsed.keywords) {
         const normalized = kw.toLowerCase().trim();
-        const existing = await keywordRepository.findByNormalized(project.id, req.organizationId!, normalized, parsed.country || 'US');
+        const existing = await keywordRepository.findByNormalized(project.id, req.organizationId!, normalized, country);
         if (existing) continue;
 
         let enrichedData: any = {};
@@ -951,7 +954,7 @@ export function createApp() {
             const { createSearchProvider } = await import('./lib/providers.js');
             const provider = createSearchProvider();
             if (provider.isConfigured()) {
-              const results = await provider.getKeywords([kw], { country: parsed.country, language: parsed.language });
+              const results = await provider.getKeywords([kw], { country, language });
               if (results.length > 0) enrichedData = results[0];
             }
           } catch (e) {
@@ -964,8 +967,8 @@ export function createApp() {
           projectId: project.id,
           keyword: kw,
           normalizedKeyword: normalized,
-          country: parsed.country,
-          language: parsed.language,
+          country,
+          language,
           searchVolume: enrichedData.searchVolume || null,
           cpc: enrichedData.cpc || null,
           competition: enrichedData.competition || null,

@@ -174,7 +174,7 @@ export function jobFailureReason(error?: string | null): string {
   if (/404|no longer available|not found/.test(text)) return 'مدل انتخاب‌شده در این سرویس در دسترس نیست.';
   if (/location is not supported/.test(text)) return 'این سرویس از این منطقه در دسترس نیست.';
   if (/401|unauthori[sz]ed|invalid.*(key|api)|incorrect api key/.test(text)) return 'کلید سرویس نامعتبر است.';
-  if (/quota|insufficient|billing|credit/.test(text)) return 'اعتبار یا سهمیهٔ سرویس تمام شده است.';
+  if (/quota|insufficient|billing|credit|run out of searches/.test(text)) return 'اعتبار یا سهمیهٔ سرویس تمام شده است.';
   if (/403|forbidden|country|region|territory|unsupported/.test(text)) return 'این سرویس از این منطقه یا با این حساب در دسترس نیست.';
   if (/429|rate/.test(text)) return 'سرویس موقتاً محدود شده است. بعداً دوباره تلاش کنید.';
   if (/timeout|timed out|abort|fetch failed|econn|enotfound|network/.test(text)) return 'اتصال به سرویس برقرار نشد.';

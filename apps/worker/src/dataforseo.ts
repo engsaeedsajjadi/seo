@@ -343,6 +343,8 @@ export interface RankPersistenceInput {
   language: string;
   device: string;
   engine?: string;
+  /** Who supplied the position, e.g. dataforseo or serpapi. */
+  provider?: string;
   rawData?: any;
 }
 
@@ -354,26 +356,27 @@ export interface RankPersistenceInput {
  */
 export async function persistRankResult(queryFn: QueryFn, input: RankPersistenceInput): Promise<{ previousPosition: number | null }> {
   const engine = input.engine || 'google';
+  const provider = input.provider || 'dataforseo';
 
   const kwResult = await queryFn(`SELECT current_position FROM keywords WHERE id = $1`, [input.keywordId]);
   const previousPosition: number | null = kwResult.rows[0]?.current_position ?? null;
 
   await queryFn(
     `INSERT INTO keyword_rankings (organization_id, project_id, keyword_id, position, previous_position, url, search_engine, country, language, device, date, provider, raw_data)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_DATE, 'dataforseo', $11)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_DATE, $12, $11)
      ON CONFLICT (keyword_id, date, search_engine, country, device)
      DO UPDATE SET position = EXCLUDED.position, previous_position = EXCLUDED.previous_position,
                    url = EXCLUDED.url, provider = EXCLUDED.provider, raw_data = EXCLUDED.raw_data`,
     [
       input.organizationId, input.projectId, input.keywordId, input.position, previousPosition,
       input.url, engine, input.country, input.language, input.device,
-      input.rawData ? JSON.stringify(input.rawData) : null,
+      input.rawData ? JSON.stringify(input.rawData) : null, provider,
     ],
   );
 
   await queryFn(
-    `UPDATE keywords SET previous_position = $2, current_position = $3, last_checked_at = NOW(), provider = 'dataforseo', updated_at = NOW() WHERE id = $1`,
-    [input.keywordId, previousPosition, input.position],
+    `UPDATE keywords SET previous_position = $2, current_position = $3, last_checked_at = NOW(), provider = $4, updated_at = NOW() WHERE id = $1`,
+    [input.keywordId, previousPosition, input.position, provider],
   );
 
   return { previousPosition };

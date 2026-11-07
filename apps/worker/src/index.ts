@@ -54,6 +54,7 @@ import {
   FIX_PROMPT_VERSION,
   type AIProvider,
 } from './ai.js';
+import { SerpApiClient, SerpApiError, rankDepth } from './serpapi.js';
 
 // ============================================================
 // CONFIG — env-based, fail-fast
@@ -903,6 +904,10 @@ function createDataForSeoClient(): DataForSeoClient {
   return new DataForSeoClient(config.providers.dataforseo.login, config.providers.dataforseo.password);
 }
 
+function createSerpApiClient(): SerpApiClient {
+  return new SerpApiClient(config.providers.serpapi, process.env.SERPAPI_BASE_URL || 'https://serpapi.com');
+}
+
 // ============================================================
 // GOOGLE — real Search Console / GA4 sync wiring for GSC_SYNC /
 // GA4_SYNC (client + mappers + persistence live in ./google.ts,
@@ -975,6 +980,13 @@ function providerErrorToJobError(error: unknown, context: string): JobError {
     if (error.httpStatus === 401 || error.httpStatus === 403) {
       // Credentials were supplied but rejected by DataForSEO — retrying won't help.
       return new JobError(`DataForSEO authentication failed — ${error.message}`, 'NON_RETRYABLE', false);
+    }
+    return new JobError(`${context} failed — ${error.message}`, 'RETRYABLE', true);
+  }
+  if (error instanceof SerpApiError) {
+    // A rejected key or an exhausted plan will not fix itself on retry.
+    if (error.httpStatus === 401 || error.httpStatus === 403 || /invalid api key|run out of searches|plan|account/i.test(error.message)) {
+      return new JobError(`SerpApi account error — ${error.message}`, 'NON_RETRYABLE', false);
     }
     return new JobError(`${context} failed — ${error.message}`, 'RETRYABLE', true);
   }
@@ -1528,11 +1540,16 @@ class Worker {
   private async handleRankCheck(job: Job, signal: AbortSignal): Promise<any> {
     console.log(JSON.stringify({ level: 'info', msg: 'Rank check', job_id: job.id, project_id: job.projectId }));
 
-    // No credentials → graceful PROVIDER_NOT_CONFIGURED, no fake rankings (unchanged contract).
+    // DataForSEO first, else a SerpApi-format service. No credentials → PROVIDER_NOT_CONFIGURED, no fake rankings.
     const client = createDataForSeoClient();
-    if (!client.isConfigured()) {
-      throw new JobError('Rank check provider not configured — DataForSEO credentials missing (set DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD) — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
+    const serpApi = createSerpApiClient();
+    if (!client.isConfigured() && !serpApi.isConfigured()) {
+      throw new JobError('Rank check provider not configured — set DATAFORSEO_LOGIN/DATAFORSEO_PASSWORD or SERPAPI_KEY — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
     }
+    const providerName = client.isConfigured() ? 'dataforseo' : 'serpapi';
+    // DataForSEO bills per 100 positions, so it always fetches 100; SerpApi bills per page of 10.
+    const depth = providerName === 'dataforseo' ? 100 : rankDepth();
+    let searches = 0;
 
     if (signal.aborted) throw new JobError('Rank check aborted', 'TIMEOUT', true);
     if (!job.projectId) throw new JobError('Project missing for rank check — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
@@ -1561,7 +1578,7 @@ class Worker {
 
     if (keywordResult.rows.length === 0) {
       console.log(JSON.stringify({ level: 'info', msg: 'Rank check — no tracked keywords', job_id: job.id, project_id: project.id }));
-      return { keywordsChecked: 0, ranked: 0, notRanked: 0, provider: 'dataforseo', message: 'No tracked keywords for project — nothing to check' };
+      return { keywordsChecked: 0, ranked: 0, notRanked: 0, provider: providerName, message: 'No tracked keywords for project — nothing to check' };
     }
 
     let ranked = 0;
@@ -1572,9 +1589,16 @@ class Worker {
 
       let serp;
       try {
-        serp = await client.searchSerp(kw.term, { locationCode, languageCode, device });
+        if (providerName === 'dataforseo') {
+          serp = await client.searchSerp(kw.term, { locationCode, languageCode, device });
+          searches++;
+        } else {
+          const outcome = await serpApi.searchSerp(kw.term, { country, language: languageCode, device, depth, targetDomain });
+          searches += outcome.requests;
+          serp = outcome;
+        }
       } catch (error) {
-        throw providerErrorToJobError(error, 'DataForSEO SERP request');
+        throw providerErrorToJobError(error, providerName === 'dataforseo' ? 'DataForSEO SERP request' : 'SerpApi SERP request');
       }
 
       const hit = findDomainPosition(serp.results, targetDomain);
@@ -1589,11 +1613,14 @@ class Worker {
         language: languageCode,
         device,
         engine: 'google',
+        provider: providerName,
         rawData: {
           requestId: serp.requestId,
           totalResults: serp.totalResults,
           serpFeatures: serp.serpFeatures,
           locationCode,
+          provider: providerName,
+          depth,
           checkedAt: new Date().toISOString(),
         },
       });
@@ -1614,7 +1641,9 @@ class Worker {
       locationCode,
       languageCode,
       device,
-      provider: 'dataforseo',
+      depth,
+      searches,
+      provider: providerName,
     };
   }
 

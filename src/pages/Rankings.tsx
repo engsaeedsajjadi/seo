@@ -9,7 +9,7 @@ import { api } from '../lib/api';
 import type { RankingEntry } from '../lib/types';
 import { t } from '../i18n';
 import { Link } from 'react-router-dom';
-import { apiMessage, formatDateTime } from '../lib/labels';
+import { apiMessage, formatDateOnly } from '../lib/labels';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 export default function Rankings() {
@@ -47,18 +47,22 @@ export default function Rankings() {
     loadRankings();
   }, [state.currentProject, importRevision]);
 
-  const rankSourceReady = state.providerStatus.dataForSeo === 'connected' || state.providerStatus.googleSearchConsole === 'connected';
+  // A live rank service (DataForSEO or a SerpApi-format service) gives the exact Google position.
+  const liveRank = state.providerStatus.dataForSeo === 'connected' || state.providerStatus.serpapi === 'connected';
+  const rankSourceReady = liveRank || state.providerStatus.googleSearchConsole === 'connected';
 
   async function handleCheckNow() {
     if (!state.currentProject) return;
     setChecking(true);
     setCheckResult(null);
     try {
-      const result = state.providerStatus.dataForSeo === 'connected'
+      const result = liveRank
         ? await api.checkRankings(state.currentProject.id)
         : await api.syncGoogleProperty(state.currentProject.id, 'gsc');
       if (result.success) {
         setCheckResult(`بررسی رتبه در صف قرار گرفت. نتیجه به‌زودی نمایش داده می‌شود.`);
+        // The check runs in the background; reload a few times while it works.
+        for (const delay of [5000, 15000, 30000, 60000]) setTimeout(() => setImportRevision((r) => r + 1), delay);
       } else {
         if (result.error.code === 'PROVIDER_NOT_CONFIGURED') {
           setCheckResult(`سرویس بررسی رتبه هنوز فعال نشده است.`);
@@ -110,7 +114,8 @@ export default function Rankings() {
       position: latest.position,
       change: latest.position && previous?.position ? previous.position - latest.position : null,
       url: latest.url,
-      best: Math.min(...entries.map(e => e.position || 100).filter(p => p > 0)),
+      // Best position seen; null when the site was never found within the checked depth.
+      best: entries.some(e => e.position) ? Math.min(...entries.filter(e => e.position).map(e => e.position as number)) : null,
     };
   });
 
@@ -207,7 +212,7 @@ export default function Rankings() {
               <h3 className="text-sm font-semibold text-white">رتبهٔ کلمات کلیدی</h3>
               <span className="text-xs text-slate-400">
                 <Calendar className="w-3 h-3 inline mr-1" />
-                {rankings.length > 0 && `آخرین بررسی: ${formatDateTime(rankings[0].date)}`}
+                {rankings.length > 0 && `آخرین بررسی: ${formatDateOnly(rankings[0].date)}`}
               </span>
             </div>
             <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
@@ -231,14 +236,14 @@ export default function Rankings() {
                         row.position <= 10 ? 'text-brand-400' : 
                         row.position <= 20 ? 'text-accent-yellow' : 'text-slate-300'
                       }`}>
-                        {row.position ?? '—'}
+                        {row.position === null ? <span title="در نتایج بررسی‌شده پیدا نشد">—</span> : toPersianDigits(row.position)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right text-xs text-slate-400">
-                      {row.change !== null ? (row.change > 0 ? `+${row.change}` : row.change) : '—'}
+                      {row.change !== null && row.change !== 0 ? <span dir="ltr">{row.change > 0 ? `+${toPersianDigits(row.change)}` : `−${toPersianDigits(-row.change)}`}</span> : '—'}
                     </td>
-                    <td className="px-4 py-3 text-right text-xs text-slate-400">{row.url || '—'}</td>
-                    <td className="px-4 py-3 text-right text-xs text-slate-300">{row.best}</td>
+                    <td className="px-4 py-3 text-right text-xs text-slate-400"><span dir="ltr">{row.url || '—'}</span></td>
+                    <td className="px-4 py-3 text-right text-xs text-slate-300">{row.best === null ? '—' : toPersianDigits(row.best)}</td>
                   </tr>
                 ))}
               </tbody>
