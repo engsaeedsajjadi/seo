@@ -2202,7 +2202,7 @@ export function createApp() {
   app.get('/api/v1/openapi.json', (req, res) => {
     res.json({
       openapi: '3.0.3',
-      info: { title: 'RankForge API', version: '1.0.0', description: 'SEO automation API' },
+      info: { title: 'SeoYar API', version: '1.0.0', description: 'SEO automation API' },
       servers: [{ url: config.appUrl || 'http://localhost:3001', description: 'API server' }],
       paths: {
         '/api/v1/health': { get: { summary: 'Health check', responses: { '200': { description: 'Healthy' } } } },

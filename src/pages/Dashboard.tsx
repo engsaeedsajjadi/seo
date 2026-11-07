@@ -284,7 +284,7 @@ function EmptyState() {
       <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-brand-500/20 to-brand-700/20 border border-brand-600/30 flex items-center justify-center mb-6">
         <Globe className="w-10 h-10 text-brand-400" />
       </div>
-      <h2 className="text-2xl font-bold text-white mb-2 font-vazirmatn-bold">به رنک‌فورج خوش آمدید</h2>
+      <h2 className="text-2xl font-bold text-white mb-2 font-vazirmatn-bold">به سئویار خوش آمدید</h2>
       <p className="text-slate-400 max-w-md mb-6 font-vazirmatn-regular">
         اولین پروژه خود را ایجاد کنید تا نظارت بر عملکرد سئو وب‌سایت، ردیابی رتبه‌ها و خودکارسازی فرآیند سئو را شروع کنید.
       </p>

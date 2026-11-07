@@ -78,7 +78,7 @@ export const paymentService = {
       try {
         const { authority, url } = await requestPayment(cfg, {
           amountToman: amount,
-          description: `اشتراک ${params.planId} رنک‌فورج`,
+          description: `اشتراک ${params.planId} سئویار`,
           callbackUrl: `${config.appUrl.replace(/\/$/, '')}/api/v1/billing/zarinpal/callback`,
           email: params.email,
         });
@@ -198,7 +198,7 @@ export const paymentService = {
        RETURNING u.email, o.plan`,
     );
     for (const org of due.rows) {
-      await sendMail(org.email, 'اشتراک رنک‌فورج به‌زودی پایان می‌یابد',
+      await sendMail(org.email, 'اشتراک سئویار به‌زودی پایان می‌یابد',
         `اشتراک پلن ${org.plan} شما تا ${REMINDER_DAYS} روز دیگر پایان می‌یابد. برای ادامه، آن را تمدید کنید:\n${appUrl}/#/billing`);
     }
 
@@ -216,7 +216,7 @@ export const paymentService = {
     );
     for (const org of expired.rows) {
       await query(`INSERT INTO audit_logs (organization_id, action, resource_type, resource_id) VALUES ($1, 'billing.subscription_expired', 'organization', $1)`, [org.id]);
-      await sendMail(org.email, 'اشتراک رنک‌فورج پایان یافت',
+      await sendMail(org.email, 'اشتراک سئویار پایان یافت',
         `اشتراک شما پایان یافت و حساب به پلن رایگان برگشت. داده‌های شما حذف نشده‌اند. برای تمدید:\n${appUrl}/#/billing`);
     }
     return { reminded: due.rows.length, expired: expired.rows.length };

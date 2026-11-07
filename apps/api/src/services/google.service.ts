@@ -114,7 +114,7 @@ export const googleService = {
       throw new ApiError(
         400,
         'NO_REFRESH_TOKEN',
-        'Google did not return a refresh token — remove RankForge from your Google account permissions and reconnect'
+        'Google did not return a refresh token — remove SeoYar from your Google account permissions and reconnect'
       );
     }
     const email = await client.fetchUserEmail(tokens.accessToken).catch(() => undefined);

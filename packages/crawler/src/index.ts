@@ -169,7 +169,7 @@ export class Crawler {
       maxDepth: options.maxDepth ?? 3,
       concurrency: Math.min(options.concurrency ?? 5, 10),
       delay: options.delay ?? 1000,
-      userAgent: options.userAgent ?? 'RankForge/1.0 (+https://rankforge.io/bot)',
+      userAgent: options.userAgent ?? 'SeoYarBot/1.0',
       respectRobotsTxt: options.respectRobotsTxt ?? true,
       followSitemaps: options.followSitemaps ?? true,
       includeSubdomains: options.includeSubdomains ?? false,

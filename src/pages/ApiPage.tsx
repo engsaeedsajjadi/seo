@@ -288,13 +288,13 @@ export default function ApiPage() {
               <h3 className="text-sm font-semibold text-white">سرور MCP</h3>
             </div>
             <p className="text-xs text-slate-400 mb-4">
-              سرور MCP ابزارهای رنک‌فورج را در اختیار دستیارهای هوش مصنوعی می‌گذارد. هر درخواست تابع مجوزهای سازمان شماست.
+              سرور MCP ابزارهای سئویار را در اختیار دستیارهای هوش مصنوعی می‌گذارد. هر درخواست تابع مجوزهای سازمان شماست.
             </p>
             <div className="bg-surface rounded-lg p-4 font-mono text-xs text-slate-300 overflow-x-auto mb-4">
               <pre>{`# MCP Server Configuration
 {
   "mcpServers": {
-    "rankforge": {
+    "seoyar": {
       "url": "https://YOUR-MCP-HOST",
       "headers": {
         "Authorization": "Bearer rf_live_..."
@@ -335,7 +335,7 @@ export default function ApiPage() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-white">وب‌هوک‌های خروجی</h3>
               <div className="flex items-center gap-2">
-                <input value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} placeholder="https://hooks.example.com/rankforge" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500 w-64" />
+                <input value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} placeholder="https://hooks.example.com/seoyar" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500 w-64" />
                 <input dir="ltr" value={webhookEvents} onChange={e => setWebhookEvents(e.target.value)} placeholder="crawl.completed,rank.updated" className="px-3 py-1.5 bg-surface border border-surface-3/50 rounded-lg text-xs text-white placeholder-slate-500 w-48" />
                 <button onClick={handleCreateWebhook} disabled={webhookLoading} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-lg flex items-center gap-1 disabled:opacity-50">
                   {webhookLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : null} افزودن
@@ -345,7 +345,7 @@ export default function ApiPage() {
             {webhookError && <p className="text-xs text-accent-red mb-3">{webhookError}</p>}
             {webhookSuccess && <div className="bg-accent-green/10 border border-accent-green/30 rounded-lg p-3 mb-3 space-y-2"><p className="text-xs text-accent-green">وب‌هوک ساخته شد. این کلید مخفی فقط همین یک بار نمایش داده می‌شود؛ آن را در جای امنی نگه دارید.</p><code dir="ltr" className="block text-right text-xs text-white font-mono break-all">{webhookSuccess}</code></div>}
             <p className="text-xs text-slate-400 mb-4">
-              هنگام رخ‌دادن رویدادها اعلان دریافت کنید. هر ارسال در هدر X-RankForge-Signature با HMAC-SHA256 امضا می‌شود؛ کلید امضا، هش SHA-256 کلید مخفی شماست. ارسال ناموفق تا ۵ بار تکرار می‌شود.
+              هنگام رخ‌دادن رویدادها اعلان دریافت کنید. هر ارسال در هدر X-SeoYar-Signature با HMAC-SHA256 امضا می‌شود؛ کلید امضا، هش SHA-256 کلید مخفی شماست. ارسال ناموفق تا ۵ بار تکرار می‌شود.
             </p>
             {loadingWebhooks ? (
               <div className="flex justify-center py-4"><div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" /></div>

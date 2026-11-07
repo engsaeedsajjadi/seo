@@ -21,7 +21,7 @@ export const passwordRecoveryService={
       ...(smtp.username?{auth:{user:decodeURIComponent(smtp.username),pass:decodeURIComponent(smtp.password)}}:{}),connectionTimeout:10000,socketTimeout:15000});
     try {
       await transport.sendMail({from:process.env.MAIL_FROM,to:email,
-        subject:'بازیابی رمز عبور رنک‌فورج',
+        subject:'بازیابی رمز عبور سئویار',
         text:`برای تعیین رمز جدید، این لینک را باز کنید. اعتبار لینک یک ساعت است.\n${config.appUrl.replace(/\/$/,'')}/#/reset-password?token=${token}\nاگر این درخواست متعلق به شما نیست، آن را نادیده بگیرید.`,
       });
     } catch {

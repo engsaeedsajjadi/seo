@@ -145,7 +145,7 @@ function App() {
             </svg>
           </div>
           <p className="text-slate-400 text-sm font-vazirmatn-regular">{t('common.loading')}</p>
-          <p className="text-slate-500 text-xs mt-2 font-vazirmatn-light">در حال بارگذاری رنک‌فورج...</p>
+          <p className="text-slate-500 text-xs mt-2 font-vazirmatn-light">در حال بارگذاری سئویار...</p>
         </div>
       </div>
     );
@@ -162,7 +162,7 @@ function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <h1 className="text-3xl font-bold text-white mb-2 font-vazirmatn-bold">رنک‌فورج</h1>
+            <h1 className="text-3xl font-bold text-white mb-2 font-vazirmatn-bold">سئویار</h1>
             <p className="text-slate-400 font-vazirmatn-regular">پلتفرم جامع اتوماسیون سئو</p>
           </div>
 
@@ -174,7 +174,7 @@ function App() {
               <div>
                 <h3 className="text-lg font-semibold text-white mb-2 font-vazirmatn-bold">اتصال به بک‌اند برقرار نیست</h3>
                 <p className="text-sm text-slate-400 mb-4 font-vazirmatn-regular">
-                  رنک‌فورج نیاز به سرور API دارد. متغیر <code className="text-brand-400 bg-surface px-1.5 py-0.5 rounded text-xs ltr-content">VITE_API_URL</code> را تنظیم کنید.
+                  سئویار نیاز به سرور API دارد. متغیر <code className="text-brand-400 bg-surface px-1.5 py-0.5 rounded text-xs ltr-content">VITE_API_URL</code> را تنظیم کنید.
                 </p>
                 <div className="bg-surface/50 rounded-lg p-3">
                   <p className="text-xs text-slate-400 font-mono ltr-content">VITE_API_URL=https://api.your-rankforge.com</p>
@@ -201,7 +201,7 @@ function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <h1 className="text-3xl font-bold text-white mb-2 font-vazirmatn-bold">رنک‌فورج</h1>
+            <h1 className="text-3xl font-bold text-white mb-2 font-vazirmatn-bold">سئویار</h1>
             <p className="text-slate-400 font-vazirmatn-regular">{t('auth.loginSubtitle')}</p>
           </div>
 

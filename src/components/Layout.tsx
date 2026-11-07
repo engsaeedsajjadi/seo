@@ -134,7 +134,7 @@ export default function Layout() {
               <Zap className="w-4 h-4 text-white" />
             </div>
             {sidebarOpen && (
-              <span className="font-bold text-lg tracking-tight font-vazirmatn-bold">رنک‌فورج</span>
+              <span className="font-bold text-lg tracking-tight font-vazirmatn-bold">سئویار</span>
             )}
           </div>
         </div>

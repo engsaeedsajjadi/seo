@@ -214,7 +214,7 @@ export async function safeFetch(url: string, options: SafeFetchOptions = {}): Pr
     timeout = 30000,
     maxRedirects = 5,
     maxResponseSize = 10 * 1024 * 1024, // 10MB
-    userAgent = 'RankForge/1.0 (+https://rankforge.io/bot)',
+    userAgent = 'SeoYarBot/1.0',
   } = options;
 
   // Initial validation

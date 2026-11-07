@@ -254,8 +254,8 @@ export class OpenRouterProvider implements AIProvider {
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': process.env.APP_URL || 'https://rankforge.io',
-        'X-Title': 'RankForge',
+        'HTTP-Referer': process.env.APP_URL || 'http://localhost:3000',
+        'X-Title': 'SeoYar',
       },
       body: JSON.stringify({
         model,

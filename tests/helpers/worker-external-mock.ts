@@ -42,7 +42,7 @@ let hookCalls = 0;
   if (url.hostname === 'hooks.rankforge.test') {
     if (++hookCalls === 1) return new Response('busy', { status: 503 });
     const expected = `sha256=${createHmac('sha256', 'journey-secret-hash').update(body).digest('hex')}`;
-    return new Response('ok', { status: init?.headers?.['x-rankforge-signature'] === expected ? 200 : 401 });
+    return new Response('ok', { status: init?.headers?.['x-seoyar-signature'] === expected ? 200 : 401 });
   }
 
   if (url.hostname === 'api.dataforseo.com') {

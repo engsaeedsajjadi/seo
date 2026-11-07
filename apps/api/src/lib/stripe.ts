@@ -243,7 +243,7 @@ export class StripeClient {
     };
     if (params.email) body.email = params.email;
     if (params.name) body.name = params.name;
-    body.description = `RankForge organization ${params.organizationId}`;
+    body.description = `SeoYar organization ${params.organizationId}`;
     const customer = await this.request<{ id: string }>('/v1/customers', body);
     return { id: customer.id };
   }

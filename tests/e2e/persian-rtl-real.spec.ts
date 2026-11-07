@@ -167,7 +167,7 @@ test.describe('Persian RTL - Real Browser E2E', () => {
         'بارگذاری',
         'داده‌ای',
         'پروژه',
-        'رنک‌فورج',
+        'سئویار',
         'سئو',
       ];
       return persianPatterns.filter(p => text.includes(p));

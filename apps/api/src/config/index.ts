@@ -134,7 +134,7 @@ export const config = {
   crawler: {
     maxConcurrency: parseInt(getEnv('CRAWLER_MAX_CONCURRENCY', false, '10'), 10),
     defaultDelay: parseInt(getEnv('CRAWLER_DEFAULT_DELAY', false, '1000'), 10),
-    userAgent: getEnv('CRAWLER_USER_AGENT', false, 'RankForge/1.0 (+https://rankforge.io/bot)'),
+    userAgent: getEnv('CRAWLER_USER_AGENT', false, 'SeoYarBot/1.0'),
     timeout: parseInt(getEnv('CRAWLER_TIMEOUT', false, '30000'), 10),
   },
 

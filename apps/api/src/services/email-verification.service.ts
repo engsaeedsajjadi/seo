@@ -33,7 +33,7 @@ export const emailVerificationService = {
         await transport.sendMail({
           from: process.env.MAIL_FROM,
           to: user.rows[0].email,
-          subject: 'تأیید ایمیل رنک‌فورج',
+          subject: 'تأیید ایمیل سئویار',
           text: `برای تأیید ایمیل، این لینک را باز کنید. اعتبار لینک ۲۴ ساعت است.\n\n${config.appUrl}/#/verify-email?token=${token}`,
         });
       } catch {

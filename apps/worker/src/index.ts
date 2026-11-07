@@ -94,7 +94,7 @@ const config = {
     maxConcurrency: parseInt(process.env.CRAWLER_MAX_CONCURRENCY || '3', 10),
     timeout: parseInt(process.env.CRAWLER_TIMEOUT || '30000', 10),
     delay: parseInt(process.env.CRAWLER_DELAY || '1000', 10),
-    userAgent: process.env.CRAWLER_USER_AGENT || 'RankForge/1.0 (+https://rankforge.io/bot)',
+    userAgent: process.env.CRAWLER_USER_AGENT || 'SeoYarBot/1.0',
   },
   providers: {
     dataforseo: {
@@ -1208,7 +1208,7 @@ class Worker {
         connectionTimeout: 10000,
       });
       try {
-        await transport.sendMail({ from: process.env.MAIL_FROM, to, subject: `رنک‌فورج: ${subject}`, text: `${text}\n\n${process.env.APP_URL || ''}` });
+        await transport.sendMail({ from: process.env.MAIL_FROM, to, subject: `سئویار: ${subject}`, text: `${text}\n\n${process.env.APP_URL || ''}` });
       } finally {
         transport.close();
       }
@@ -2272,7 +2272,7 @@ class Worker {
         method: 'POST',
         redirect: 'manual',
         signal: AbortSignal.timeout(10000),
-        headers: { 'content-type': 'application/json', 'x-rankforge-event': delivery.event, 'x-rankforge-signature': `sha256=${signature}`, 'x-rankforge-delivery': delivery.id },
+        headers: { 'content-type': 'application/json', 'x-seoyar-event': delivery.event, 'x-seoyar-signature': `sha256=${signature}`, 'x-seoyar-delivery': delivery.id },
         body,
       });
       status = response.status;

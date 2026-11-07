@@ -11,15 +11,15 @@ export interface EmailTemplate {
 
 export const emailTemplates = {
   welcome: (name: string, orgName: string): EmailTemplate => ({
-    subject: `به رنک‌فورج خوش آمدید، ${name}!`,
+    subject: `به سئویار خوش آمدید، ${name}!`,
     html: `
       <div dir="rtl" lang="fa" style="font-family: Vazirmatn, Tahoma, sans-serif; direction: rtl; text-align: right; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #0f172a; color: #ffffff;">
         <div style="background: linear-gradient(to bottom right, #3b82f6, #1d4ed8); padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 20px;">
-          <h1 style="margin: 0; font-size: 24px; font-weight: bold;">رنک‌فورج</h1>
+          <h1 style="margin: 0; font-size: 24px; font-weight: bold;">سئویار</h1>
           <p style="margin: 5px 0 0 0; opacity: 0.9;">پلتفرم جامع اتوماسیون سئو</p>
         </div>
         <h2 style="color: #ffffff; font-size: 20px;">سلام ${name} عزیز!</h2>
-        <p style="color: #94a3b8; line-height: 1.8;">به رنک‌فورج خوش آمدید. حساب کاربری شما با موفقیت ایجاد شد و سازمان <strong style="color: #60a5fa;">${orgName}</strong> برای شما ساخته شد.</p>
+        <p style="color: #94a3b8; line-height: 1.8;">به سئویار خوش آمدید. حساب کاربری شما با موفقیت ایجاد شد و سازمان <strong style="color: #60a5fa;">${orgName}</strong> برای شما ساخته شد.</p>
         <p style="color: #94a3b8; line-height: 1.8;">برای شروع کار:</p>
         <ol style="color: #94a3b8; line-height: 1.8; padding-right: 20px;">
           <li>اولین پروژه خود را ایجاد کنید</li>
@@ -28,16 +28,16 @@ export const emailTemplates = {
           <li>کلمات کلیدی خود را اضافه و رتبه‌ها را ردیابی کنید</li>
         </ol>
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.APP_URL || 'https://rankforge.io'}" style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: 500;">ورود به داشبورد</a>
+          <a href="${process.env.APP_URL || 'http://localhost:3000'}" style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: 500;">ورود به داشبورد</a>
         </div>
         <p style="color: #64748b; font-size: 12px; text-align: center; margin-top: 30px;">این ایمیل به صورت خودکار ارسال شده است. لطفاً پاسخ ندهید.</p>
       </div>
     `,
-    text: `سلام ${name} عزیز!\n\nبه رنک‌فورج خوش آمدید. حساب کاربری شما با موفقیت ایجاد شد و سازمان ${orgName} برای شما ساخته شد.\n\nبرای شروع: اولین پروژه خود را ایجاد کنید و ممیزی سئو را اجرا کنید.\n\nورود به داشبورد: ${process.env.APP_URL || 'https://rankforge.io'}`,
+    text: `سلام ${name} عزیز!\n\nبه سئویار خوش آمدید. حساب کاربری شما با موفقیت ایجاد شد و سازمان ${orgName} برای شما ساخته شد.\n\nبرای شروع: اولین پروژه خود را ایجاد کنید و ممیزی سئو را اجرا کنید.\n\nورود به داشبورد: ${process.env.APP_URL || 'http://localhost:3000'}`,
   }),
 
   emailVerification: (name: string, code: string): EmailTemplate => ({
-    subject: 'کد تأیید ایمیل - رنک‌فورج',
+    subject: 'کد تأیید ایمیل - سئویار',
     html: `
       <div dir="rtl" lang="fa" style="font-family: Vazirmatn, Tahoma, sans-serif; direction: rtl; text-align: right; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #0f172a; color: #ffffff;">
         <h2 style="color: #ffffff;">تأیید ایمیل</h2>
@@ -52,7 +52,7 @@ export const emailTemplates = {
   }),
 
   passwordReset: (name: string, resetLink: string): EmailTemplate => ({
-    subject: 'بازنشانی رمز عبور - رنک‌فورج',
+    subject: 'بازنشانی رمز عبور - سئویار',
     html: `
       <div dir="rtl" lang="fa" style="font-family: Vazirmatn, Tahoma, sans-serif; direction: rtl; text-align: right; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #0f172a; color: #ffffff;">
         <h2 style="color: #ffffff;">بازنشانی رمز عبور</h2>
@@ -78,7 +78,7 @@ export const emailTemplates = {
       client: 'مشتری',
     };
     return {
-      subject: `دعوت به تیم ${orgName} - رنک‌فورج`,
+      subject: `دعوت به تیم ${orgName} - سئویار`,
       html: `
         <div dir="rtl" lang="fa" style="font-family: Vazirmatn, Tahoma, sans-serif; direction: rtl; text-align: right; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #0f172a; color: #ffffff;">
           <h2 style="color: #ffffff;">دعوت به تیم</h2>
@@ -95,7 +95,7 @@ export const emailTemplates = {
   },
 
   crawlCompleted: (projectName: string, pagesCount: number, issuesCount: number): EmailTemplate => ({
-    subject: `خزش ${projectName} تکمیل شد - رنک‌فورج`,
+    subject: `خزش ${projectName} تکمیل شد - سئویار`,
     html: `
       <div dir="rtl" lang="fa" style="font-family: Vazirmatn, Tahoma, sans-serif; direction: rtl; text-align: right; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #0f172a; color: #ffffff;">
         <h2 style="color: #ffffff;">خزش تکمیل شد</h2>
@@ -105,15 +105,15 @@ export const emailTemplates = {
           <p style="margin: 5px 0; color: #94a3b8;">⚠️ مشکلات یافت شده: <strong style="color: #f59e0b;">${issuesCount.toLocaleString('fa-IR')}</strong></p>
         </div>
         <div style="text-align: center; margin: 20px 0;">
-          <a href="${process.env.APP_URL || 'https://rankforge.io'}" style="background-color: #2563eb; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; display: inline-block;">مشاهده نتایج</a>
+          <a href="${process.env.APP_URL || 'http://localhost:3000'}" style="background-color: #2563eb; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; display: inline-block;">مشاهده نتایج</a>
         </div>
       </div>
     `,
-    text: `خزش پروژه ${projectName} تکمیل شد.\n\nصفحات خزش شده: ${pagesCount}\nمشکلات یافت شده: ${issuesCount}\n\nمشاهده نتایج: ${process.env.APP_URL || 'https://rankforge.io'}`,
+    text: `خزش پروژه ${projectName} تکمیل شد.\n\nصفحات خزش شده: ${pagesCount}\nمشکلات یافت شده: ${issuesCount}\n\nمشاهده نتایج: ${process.env.APP_URL || 'http://localhost:3000'}`,
   }),
 
   auditCompleted: (projectName: string, score: number, criticalIssues: number): EmailTemplate => ({
-    subject: `ممیزی ${projectName} تکمیل شد - امتیاز ${score} - رنک‌فورج`,
+    subject: `ممیزی ${projectName} تکمیل شد - امتیاز ${score} - سئویار`,
     html: `
       <div dir="rtl" lang="fa" style="font-family: Vazirmatn, Tahoma, sans-serif; direction: rtl; text-align: right; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #0f172a; color: #ffffff;">
         <h2 style="color: #ffffff;">ممیزی تکمیل شد</h2>
@@ -125,17 +125,17 @@ export const emailTemplates = {
         </div>
         <p style="color: #94a3b8;">مشکلات بحرانی: <strong style="color: #ef4444;">${criticalIssues.toLocaleString('fa-IR')}</strong></p>
         <div style="text-align: center; margin: 20px 0;">
-          <a href="${process.env.APP_URL || 'https://rankforge.io'}" style="background-color: #2563eb; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; display: inline-block;">مشاهده جزئیات ممیزی</a>
+          <a href="${process.env.APP_URL || 'http://localhost:3000'}" style="background-color: #2563eb; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; display: inline-block;">مشاهده جزئیات ممیزی</a>
         </div>
       </div>
     `,
-    text: `ممیزی پروژه ${projectName} تکمیل شد.\n\nامتیاز سئو: ${score} از ۱۰۰\nمشکلات بحرانی: ${criticalIssues}\n\nمشاهده جزئیات: ${process.env.APP_URL || 'https://rankforge.io'}`,
+    text: `ممیزی پروژه ${projectName} تکمیل شد.\n\nامتیاز سئو: ${score} از ۱۰۰\nمشکلات بحرانی: ${criticalIssues}\n\nمشاهده جزئیات: ${process.env.APP_URL || 'http://localhost:3000'}`,
   }),
 
   rankingAlert: (keyword: string, oldPosition: number, newPosition: number, projectName: string): EmailTemplate => {
     const improved = newPosition < oldPosition;
     return {
-      subject: `${improved ? '📈 بهبود' : '📉 افت'} رتبه "${keyword}" - رنک‌فورج`,
+      subject: `${improved ? '📈 بهبود' : '📉 افت'} رتبه "${keyword}" - سئویار`,
       html: `
         <div dir="rtl" lang="fa" style="font-family: Vazirmatn, Tahoma, sans-serif; direction: rtl; text-align: right; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #0f172a; color: #ffffff;">
           <h2 style="color: #ffffff;">${improved ? 'بهبود رتبه' : 'افت رتبه'}</h2>
@@ -151,7 +151,7 @@ export const emailTemplates = {
   },
 
   reportReady: (reportName: string, projectName: string, downloadLink: string): EmailTemplate => ({
-    subject: `گزارش ${reportName} آماده شد - رنک‌فورج`,
+    subject: `گزارش ${reportName} آماده شد - سئویار`,
     html: `
       <div dir="rtl" lang="fa" style="font-family: Vazirmatn, Tahoma, sans-serif; direction: rtl; text-align: right; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #0f172a; color: #ffffff;">
         <h2 style="color: #ffffff;">گزارش آماده شد</h2>
@@ -165,33 +165,33 @@ export const emailTemplates = {
   }),
 
   billingAlert: (amount: string, dueDate: string): EmailTemplate => ({
-    subject: 'صورتحساب جدید - رنک‌فورج',
+    subject: 'صورتحساب جدید - سئویار',
     html: `
       <div dir="rtl" lang="fa" style="font-family: Vazirmatn, Tahoma, sans-serif; direction: rtl; text-align: right; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #0f172a; color: #ffffff;">
         <h2 style="color: #ffffff;">صورتحساب جدید</h2>
         <p style="color: #94a3b8;">صورتحساب جدیدی به مبلغ <strong style="color: #ffffff;">${amount}</strong> برای شما صادر شد.</p>
         <p style="color: #94a3b8;">تاریخ سررسید: ${dueDate}</p>
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.APP_URL || 'https://rankforge.io'}/billing" style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: 500;">مشاهده صورتحساب</a>
+          <a href="${process.env.APP_URL || 'http://localhost:3000'}/billing" style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: 500;">مشاهده صورتحساب</a>
         </div>
       </div>
     `,
-    text: `صورتحساب جدید به مبلغ ${amount} صادر شد.\n\nتاریخ سررسید: ${dueDate}\n\nمشاهده: ${process.env.APP_URL || 'https://rankforge.io'}/billing`,
+    text: `صورتحساب جدید به مبلغ ${amount} صادر شد.\n\nتاریخ سررسید: ${dueDate}\n\nمشاهده: ${process.env.APP_URL || 'http://localhost:3000'}/billing`,
   }),
 
   lowCreditsWarning: (balance: number): EmailTemplate => ({
-    subject: 'هشدار: اعتبار رو به پایان است - رنک‌فورج',
+    subject: 'هشدار: اعتبار رو به پایان است - سئویار',
     html: `
       <div dir="rtl" lang="fa" style="font-family: Vazirmatn, Tahoma, sans-serif; direction: rtl; text-align: right; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #0f172a; color: #ffffff;">
         <h2 style="color: #f59e0b;">⚠️ اعتبار رو به پایان است</h2>
         <p style="color: #94a3b8;">اعتبار حساب شما رو به پایان است. موجودی فعلی: <strong style="color: #f59e0b;">${balance.toLocaleString('fa-IR')}</strong> اعتبار</p>
         <p style="color: #94a3b8;">برای ادامه استفاده از خدمات، لطفاً اعتبار خود را شارژ کنید یا پلن خود را ارتقا دهید.</p>
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.APP_URL || 'https://rankforge.io'}/billing" style="background-color: #f59e0b; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: 500;">خرید اعتبار</a>
+          <a href="${process.env.APP_URL || 'http://localhost:3000'}/billing" style="background-color: #f59e0b; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: 500;">خرید اعتبار</a>
         </div>
       </div>
     `,
-    text: `اعتبار حساب شما رو به پایان است. موجودی فعلی: ${balance} اعتبار\n\nبرای ادامه، اعتبار بخرید یا پلن خود را ارتقا دهید.\n\nخرید: ${process.env.APP_URL || 'https://rankforge.io'}/billing`,
+    text: `اعتبار حساب شما رو به پایان است. موجودی فعلی: ${balance} اعتبار\n\nبرای ادامه، اعتبار بخرید یا پلن خود را ارتقا دهید.\n\nخرید: ${process.env.APP_URL || 'http://localhost:3000'}/billing`,
   }),
 };
 

@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS projects (
   crawl_max_depth INTEGER DEFAULT 5 CHECK (crawl_max_depth >=1 AND crawl_max_depth <=10),
   crawl_max_pages INTEGER DEFAULT 500 CHECK (crawl_max_pages >=1 AND crawl_max_pages <=10000),
   crawl_concurrency INTEGER DEFAULT 5 CHECK (crawl_concurrency >=1 AND crawl_concurrency <=10),
-  crawl_user_agent TEXT DEFAULT 'RankForge/1.0',
+  crawl_user_agent TEXT DEFAULT 'SeoYarBot/1.0',
   crawl_respect_robots BOOLEAN DEFAULT TRUE,
   crawl_render_js BOOLEAN DEFAULT FALSE,
   seo_score INTEGER CHECK (seo_score IS NULL OR (seo_score >=0 AND seo_score <=100)),
