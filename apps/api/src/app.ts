@@ -936,7 +936,7 @@ export function createApp() {
         return res.status(403).json({ success: false, error: { code: 'LIMIT_REACHED', message: `Keyword limit reached for ${org?.plan} plan (${limit})` } });
       }
 
-      const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password) || !!config.providers.serpapi;
+      const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password) || !!config.providers.serpapi || !!config.providers.kwrank;
       const keywords = [];
       // A keyword is tracked where the project is, unless the request says otherwise.
       const country = (parsed.country || project.country || 'US').toUpperCase();
@@ -1295,6 +1295,7 @@ export function createApp() {
         s3: config.providers.s3.accessKey ? 'connected' : 'not_configured',
         dataforseo: config.providers.dataforseo.login ? 'connected' : 'not_configured',
         serpapi: config.providers.serpapi ? 'connected' : 'not_configured',
+        kwrank: config.providers.kwrank ? 'connected' : 'not_configured',
       };
       res.json({ success: true, data: status });
     } catch (error) {
@@ -1539,7 +1540,7 @@ export function createApp() {
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
 
       // Stored ranks may come from a file or Search Console, so reading them never needs a live provider.
-      const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password) || !!config.providers.serpapi;
+      const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password) || !!config.providers.serpapi || !!config.providers.kwrank;
       const { page, limit } = paginationSchema.parse(req.query);
       const { query } = await import('./db/client.js');
       const result = await query(
@@ -1566,7 +1567,7 @@ export function createApp() {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
 
-      const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password) || !!config.providers.serpapi;
+      const hasProvider = !!(config.providers.dataforseo.login && config.providers.dataforseo.password) || !!config.providers.serpapi || !!config.providers.kwrank;
       if (!hasProvider) {
         return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Rank provider not configured' } });
       }

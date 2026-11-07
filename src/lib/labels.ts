@@ -169,6 +169,7 @@ export function formatDateOnly(value?: string | number | Date | null): string {
 export function jobFailureReason(error?: string | null): string {
   const text = (error ?? '').toLowerCase();
   if (!text) return 'علت ثبت نشده است.';
+  if (/does not track google for country/.test(text)) return 'سرویس رتبه برای کشور این پروژه پشتیبانی نمی‌شود.';
   if (/sufficient permission/.test(text)) return 'این حساب گوگل به این سایت در سرچ کنسول دسترسی کافی ندارد. مالکیت سایت را در سرچ کنسول تأیید کنید.';
   if (/503|high demand|unavailable/.test(text)) return 'سرویس هوش مصنوعی الان شلوغ است. چند دقیقه دیگر دوباره تلاش کنید.';
   if (/404|no longer available|not found/.test(text)) return 'مدل انتخاب‌شده در این سرویس در دسترس نیست.';

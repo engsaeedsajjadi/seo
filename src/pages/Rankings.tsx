@@ -48,7 +48,7 @@ export default function Rankings() {
   }, [state.currentProject, importRevision]);
 
   // A live rank service (DataForSEO or a SerpApi-format service) gives the exact Google position.
-  const liveRank = state.providerStatus.dataForSeo === 'connected' || state.providerStatus.serpapi === 'connected';
+  const liveRank = state.providerStatus.dataForSeo === 'connected' || state.providerStatus.serpapi === 'connected' || state.providerStatus.kwrank === 'connected';
   const rankSourceReady = liveRank || state.providerStatus.googleSearchConsole === 'connected';
 
   async function handleCheckNow() {
@@ -161,6 +161,12 @@ export default function Rankings() {
           </button>}
         </div>
       </div>
+
+      {state.providerStatus.kwrank === 'connected' && state.providerStatus.dataForSeo !== 'connected' && state.providerStatus.serpapi !== 'connected' && (
+        <p className="text-xs text-slate-400">
+          رتبه‌ها از KWRank خوانده می‌شود. کلمهٔ کلیدی تازه به‌طور خودکار در KWRank ثبت می‌شود و رتبه‌اش بعد از اولین بررسی KWRank اینجا نمایش داده می‌شود.
+        </p>
+      )}
 
       {checkResult && (
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4 text-sm text-slate-300">

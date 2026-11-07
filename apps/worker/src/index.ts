@@ -55,6 +55,7 @@ import {
   type AIProvider,
 } from './ai.js';
 import { SerpApiClient, SerpApiError, rankDepth } from './serpapi.js';
+import { KwRankClient, KwRankError, KWRANK_COUNTRY_IDS, kwRankDevice, matchKwRankKeywords } from './kwrank.js';
 
 // ============================================================
 // CONFIG — env-based, fail-fast
@@ -904,6 +905,10 @@ function createDataForSeoClient(): DataForSeoClient {
   return new DataForSeoClient(config.providers.dataforseo.login, config.providers.dataforseo.password);
 }
 
+function createKwRankClient(): KwRankClient {
+  return new KwRankClient(process.env.KWRANK_CLIENT_ID || '', process.env.KWRANK_CLIENT_SECRET || '', process.env.KWRANK_BASE_URL || 'https://kwrank.ir/api/v1');
+}
+
 function createSerpApiClient(): SerpApiClient {
   return new SerpApiClient(config.providers.serpapi, process.env.SERPAPI_BASE_URL || 'https://serpapi.com');
 }
@@ -980,6 +985,14 @@ function providerErrorToJobError(error: unknown, context: string): JobError {
     if (error.httpStatus === 401 || error.httpStatus === 403) {
       // Credentials were supplied but rejected by DataForSEO — retrying won't help.
       return new JobError(`DataForSEO authentication failed — ${error.message}`, 'NON_RETRYABLE', false);
+    }
+    return new JobError(`${context} failed — ${error.message}`, 'RETRYABLE', true);
+  }
+  if (error instanceof JobError) return error;
+  if (error instanceof KwRankError) {
+    // Wrong credentials or no active API plan will not fix themselves on retry.
+    if (error.httpStatus === 401 || error.httpStatus === 403 || error.httpStatus === 402) {
+      return new JobError(`KWRank account error — ${error.message}`, 'NON_RETRYABLE', false);
     }
     return new JobError(`${context} failed — ${error.message}`, 'RETRYABLE', true);
   }
@@ -1543,10 +1556,11 @@ class Worker {
     // DataForSEO first, else a SerpApi-format service. No credentials → PROVIDER_NOT_CONFIGURED, no fake rankings.
     const client = createDataForSeoClient();
     const serpApi = createSerpApiClient();
-    if (!client.isConfigured() && !serpApi.isConfigured()) {
-      throw new JobError('Rank check provider not configured — set DATAFORSEO_LOGIN/DATAFORSEO_PASSWORD or SERPAPI_KEY — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
+    const kwRank = createKwRankClient();
+    if (!client.isConfigured() && !serpApi.isConfigured() && !kwRank.isConfigured()) {
+      throw new JobError('Rank check provider not configured — set DATAFORSEO_LOGIN/DATAFORSEO_PASSWORD, SERPAPI_KEY or KWRANK_CLIENT_ID/KWRANK_CLIENT_SECRET — PROVIDER_NOT_CONFIGURED', 'PROVIDER_NOT_CONFIGURED', false);
     }
-    const providerName = client.isConfigured() ? 'dataforseo' : 'serpapi';
+    const providerName = client.isConfigured() ? 'dataforseo' : serpApi.isConfigured() ? 'serpapi' : 'kwrank';
     // DataForSEO bills per 100 positions, so it always fetches 100; SerpApi bills per page of 10.
     const depth = providerName === 'dataforseo' ? 100 : rankDepth();
     let searches = 0;
@@ -1579,6 +1593,14 @@ class Worker {
     if (keywordResult.rows.length === 0) {
       console.log(JSON.stringify({ level: 'info', msg: 'Rank check — no tracked keywords', job_id: job.id, project_id: project.id }));
       return { keywordsChecked: 0, ranked: 0, notRanked: 0, provider: providerName, message: 'No tracked keywords for project — nothing to check' };
+    }
+
+    if (providerName === 'kwrank') {
+      try {
+        return await this.syncKwRank(kwRank, job, project, keywordResult.rows, country, languageCode, signal);
+      } catch (error) {
+        throw providerErrorToJobError(error, 'KWRank request');
+      }
     }
 
     let ranked = 0;
@@ -1644,6 +1666,51 @@ class Worker {
       depth,
       searches,
       provider: providerName,
+    };
+  }
+
+  /**
+   * KWRank checks positions on its own schedule: keep the domain and keywords registered there
+   * and store the latest position it has for each keyword. A keyword KWRank has not checked yet
+   * is left without a result rather than recorded as "not ranked".
+   */
+  private async syncKwRank(
+    kwRank: KwRankClient, job: Job, project: any, keywords: { id: string; term: string }[],
+    country: string, languageCode: string, signal: AbortSignal,
+  ): Promise<any> {
+    const countryId = KWRANK_COUNTRY_IDS[country];
+    if (!countryId) throw new JobError(`KWRank does not track Google for country ${country} — VALIDATION_ERROR`, 'VALIDATION_ERROR', false);
+    const device = kwRankDevice(project.device);
+    const storedDevice = device === 'desktop' ? 'desktop' : 'mobile';
+    const domain = await kwRank.ensureDomain(project.normalized_domain || project.domain);
+    let remote = await kwRank.listKeywords(domain.id);
+    let { matched, missing } = matchKwRankKeywords(keywords, remote, device);
+    let added = 0;
+    if (missing.length) {
+      if (signal.aborted) throw new JobError('Rank check aborted', 'TIMEOUT', true);
+      added = await kwRank.addKeywords(domain.id, missing.map((k) => k.term), countryId, device);
+      remote = await kwRank.listKeywords(domain.id);
+      ({ matched, missing } = matchKwRankKeywords(keywords, remote, device));
+    }
+    let ranked = 0;
+    let notRanked = 0;
+    let waiting = 0;
+    for (const { keywordId, remote: r } of matched) {
+      if (!r.checked) { waiting++; continue; }
+      await persistRankResult(query, {
+        organizationId: job.organizationId, projectId: project.id, keywordId,
+        position: r.rank, url: r.rank ? r.url : null, country, language: languageCode, device: storedDevice,
+        engine: 'google', provider: 'kwrank',
+        rawData: { kwrankDomainId: domain.id, kwrankKeywordId: r.id, rankUpdatedAt: r.rankUpdatedAt, depth: 100, checkedAt: new Date().toISOString() },
+      });
+      if (r.rank) ranked++;
+      else notRanked++;
+    }
+    console.log(JSON.stringify({ level: 'info', msg: 'KWRank sync completed', job_id: job.id, project_id: project.id,
+      domainId: domain.id, domainCreated: domain.created, added, ranked, notRanked, waiting, unmatched: missing.length }));
+    return {
+      keywordsChecked: ranked + notRanked, ranked, notRanked, waiting, added, unmatched: missing.length,
+      device: storedDevice, depth: 100, provider: 'kwrank', domainInactive: !domain.active,
     };
   }
 

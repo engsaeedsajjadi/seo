@@ -93,6 +93,8 @@ export const config = {
       password: getEnv('DATAFORSEO_PASSWORD', false, ''),
     },
     serpapi: getEnv('SERPAPI_KEY', false, ''),
+    // Only presence is checked here; the worker holds the credentials it uses.
+    kwrank: getEnv('KWRANK_CLIENT_ID', false, ''),
     openai: getEnv('OPENAI_API_KEY', false, ''),
     anthropic: getEnv('ANTHROPIC_API_KEY', false, ''),
     googleAi: getEnv('GOOGLE_AI_API_KEY', false, ''),
