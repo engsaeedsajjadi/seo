@@ -1684,13 +1684,14 @@ class Worker {
     const storedDevice = device === 'desktop' ? 'desktop' : 'mobile';
     const domain = await kwRank.ensureDomain(project.normalized_domain || project.domain);
     let remote = await kwRank.listKeywords(domain.id);
-    let { matched, missing } = matchKwRankKeywords(keywords, remote, device);
+    let { matched, missing, otherDevice } = matchKwRankKeywords(keywords, remote, device);
+    const shapeBefore = kwRank.lastListShape;
     let added = 0;
     if (missing.length) {
       if (signal.aborted) throw new JobError('Rank check aborted', 'TIMEOUT', true);
       added = await kwRank.addKeywords(domain.id, missing.map((k) => k.term), countryId, device);
       remote = await kwRank.listKeywords(domain.id);
-      ({ matched, missing } = matchKwRankKeywords(keywords, remote, device));
+      ({ matched, missing, otherDevice } = matchKwRankKeywords(keywords, remote, device));
     }
     let ranked = 0;
     let notRanked = 0;
@@ -1707,9 +1708,10 @@ class Worker {
       else notRanked++;
     }
     console.log(JSON.stringify({ level: 'info', msg: 'KWRank sync completed', job_id: job.id, project_id: project.id,
-      domainId: domain.id, domainCreated: domain.created, added, ranked, notRanked, waiting, unmatched: missing.length }));
+      domainId: domain.id, domainCreated: domain.created, added, ranked, notRanked, waiting, unmatched: missing.length,
+      otherDevice: otherDevice.length, wantedDevice: device, listBefore: shapeBefore, listAfter: kwRank.lastListShape }));
     return {
-      keywordsChecked: ranked + notRanked, ranked, notRanked, waiting, added, unmatched: missing.length,
+      keywordsChecked: ranked + notRanked, ranked, notRanked, waiting, added, unmatched: missing.length, otherDevice: otherDevice.length,
       device: storedDevice, depth: 100, provider: 'kwrank', domainInactive: !domain.active,
     };
   }

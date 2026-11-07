@@ -50,13 +50,15 @@ export function kwRankDevice(projectDevice?: string | null): KwRankDevice {
 
 export class KwRankClient {
   private token: string | null = null;
+  /** Shape of the last keyword list, for the log: field names and device values, never content. */
+  lastListShape: { count: number; fields: string[]; devices: string[] } | null = null;
 
   constructor(
     private readonly clientId: string,
     private readonly clientSecret: string,
     private readonly baseUrl = 'https://kwrank.ir/api/v1',
     private readonly fetchFn: FetchFn = fetch,
-    private readonly timeoutMs = 30000,
+    private readonly timeoutMs = 60000,
   ) {}
 
   isConfigured(): boolean {
@@ -144,6 +146,11 @@ export class KwRankClient {
 
   async listKeywords(domainId: number): Promise<KwRankKeyword[]> {
     const rows = await this.all(`/domain/${domainId}/keywords`, 'keywords_list', { keyword_type: 'all' });
+    this.lastListShape = {
+      count: rows.length,
+      fields: rows[0] && typeof rows[0] === 'object' ? Object.keys(rows[0]).sort() : [],
+      devices: [...new Set(rows.map((r) => String(r?.device_type)))],
+    };
     return rows.map((r) => ({
       id: Number(r.id),
       keyword: String(r.keyword_name ?? ''),
@@ -179,17 +186,29 @@ export function matchKwRankKeywords(
   projectKeywords: { id: string; term: string }[],
   remote: KwRankKeyword[],
   device: KwRankDevice,
-): { matched: { keywordId: string; remote: KwRankKeyword }[]; missing: { id: string; term: string }[] } {
-  const byText = new Map<string, KwRankKeyword>();
+): {
+  matched: { keywordId: string; remote: KwRankKeyword }[];
+  /** Not in KWRank at all: safe to add. */
+  missing: { id: string; term: string }[];
+  /** In KWRank, but only for another device: never added again, so a mismatch cannot pile up duplicates. */
+  otherDevice: { id: string; term: string }[];
+} {
+  const sameDevice = new Map<string, KwRankKeyword>();
+  const anyDevice = new Set<string>();
   for (const r of remote) {
-    if (r.device === device) byText.set(normalizePersianKeyword(r.keyword), r);
+    const text = normalizePersianKeyword(r.keyword);
+    anyDevice.add(text);
+    if (r.device.toLowerCase() === device) sameDevice.set(text, r);
   }
   const matched: { keywordId: string; remote: KwRankKeyword }[] = [];
   const missing: { id: string; term: string }[] = [];
+  const otherDevice: { id: string; term: string }[] = [];
   for (const k of projectKeywords) {
-    const hit = byText.get(normalizePersianKeyword(k.term));
+    const text = normalizePersianKeyword(k.term);
+    const hit = sameDevice.get(text);
     if (hit) matched.push({ keywordId: k.id, remote: hit });
+    else if (anyDevice.has(text)) otherDevice.push(k);
     else missing.push(k);
   }
-  return { matched, missing };
+  return { matched, missing, otherDevice };
 }

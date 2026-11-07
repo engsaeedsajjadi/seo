@@ -104,7 +104,12 @@ console.log('✅ expired token renewed; wrong credentials and inactive plan surf
   ];
   const r = matchKwRankKeywords([{ id: 'a', term: 'تور کیش' }, { id: 'b', term: 'هتل' }], remote, 'desktop');
   assert.deepStrictEqual(r.matched.map((m) => [m.keywordId, m.remote.id]), [['a', 1]]);
-  assert.deepStrictEqual(r.missing.map((m) => m.id), ['b'], 'a mobile row does not answer a desktop project');
+  assert.deepStrictEqual(r.missing.map((m) => m.id), [], 'a keyword KWRank already has is never added again');
+  assert.deepStrictEqual(r.otherDevice.map((m) => m.id), ['b'], 'a mobile row does not answer a desktop project');
+  const fresh = matchKwRankKeywords([{ id: 'c', term: 'کیش ارزان' }], remote, 'desktop');
+  assert.deepStrictEqual(fresh.missing.map((m) => m.id), ['c']);
+  const upper = matchKwRankKeywords([{ id: 'a', term: 'تور کیش' }], [{ ...remote[0], device: 'Desktop' }], 'desktop');
+  assert.strictEqual(upper.matched.length, 1, 'device names are compared without case');
   assert.strictEqual(kwRankDevice('mobile'), 'android');
   assert.strictEqual(kwRankDevice('both'), 'desktop');
 }
