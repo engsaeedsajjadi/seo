@@ -21,7 +21,7 @@ interface Client {
 
 export default function Agency() {
   const { state } = useAppState();
-  const isAgency = state.currentOrg?.plan === 'AGENCY' || state.currentOrg?.plan === 'ENTERPRISE';
+  const isAgency = ['AGENCY', 'ENTERPRISE', 'PRIVATE'].includes(state.currentOrg?.plan ?? '');
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
 

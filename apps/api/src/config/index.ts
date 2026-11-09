@@ -50,6 +50,8 @@ export function requireEnv(name: string): string {
 
 export const config = {
   nodeEnv: getEnv('NODE_ENV', false, 'development'),
+  /** private: one business serving its own customers — no paid plans, sign-up by invitation only. */
+  mode: (getEnv('SEOYAR_MODE', false, 'saas') === 'private' ? 'private' : 'saas') as 'private' | 'saas',
   port: parseInt(getEnv('PORT', false, '3001'), 10),
   appUrl: getEnv('APP_URL', false, 'http://localhost:3000'),
   corsOrigins: getEnv('CORS_ORIGINS', false, 'http://localhost:3000,http://localhost:5173').split(',').map(s => s.trim()),

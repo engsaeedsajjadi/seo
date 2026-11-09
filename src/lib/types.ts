@@ -5,7 +5,7 @@ export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'notice';
 export type AuditCategory = 'crawlability' | 'indexability' | 'metadata' | 'content' | 'links' | 'images' | 'performance' | 'security' | 'structured-data' | 'international' | 'local';
 export type JobType = 'SITE_CRAWL' | 'RANK_CHECK' | 'KEYWORD_REFRESH' | 'BACKLINK_REFRESH' | 'GSC_SYNC' | 'GA4_SYNC' | 'PAGESPEED_CHECK' | 'COMPETITOR_CHECK' | 'AI_VISIBILITY_CHECK' | 'REPORT_GENERATION' | 'ALERT_PROCESSING';
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'dead_letter';
-export type PlanTier = 'FREE' | 'STARTER' | 'PRO' | 'AGENCY' | 'ENTERPRISE';
+export type PlanTier = 'FREE' | 'STARTER' | 'PRO' | 'AGENCY' | 'ENTERPRISE' | 'PRIVATE';
 export type Role = 'owner' | 'admin' | 'manager' | 'seo_manager' | 'analyst' | 'editor' | 'client' | 'viewer';
 export type ProviderStatus = 'connected' | 'not_configured' | 'error' | 'rate_limited';
 
@@ -196,4 +196,6 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   PRO: { projects:10, keywords:500, crawledPages:10000, rankChecks:5000, aiOperations:500, reports:100, users:5, apiRequests:5000, competitors:10 },
   AGENCY: { projects:50, keywords:2500, crawledPages:50000, rankChecks:25000, aiOperations:2500, reports:500, users:20, apiRequests:25000, competitors:25 },
   ENTERPRISE: { projects:200, keywords:10000, crawledPages:200000, rankChecks:100000, aiOperations:10000, reports:2000, users:100, apiRequests:100000, competitors:100 },
+  // Private installation: no plan limits, only the monthly AI safety cap.
+  PRIVATE: { projects:-1, keywords:-1, crawledPages:-1, rankChecks:-1, aiOperations:1000, reports:-1, users:-1, apiRequests:-1, competitors:-1 },
 };

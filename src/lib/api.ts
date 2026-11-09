@@ -18,6 +18,9 @@ import type {
 // TYPED API ERRORS
 // ============================================================
 
+export interface Invitation { id: string; email: string; role: string; expiresAt: string; createdAt: string }
+export interface AppConfig { mode: 'private' | 'saas'; billing: boolean; signup: 'open' | 'first-user' | 'invite-only' }
+
 export enum ApiErrorCode {
   // Network errors
   NETWORK_ERROR = 'NETWORK_ERROR',
@@ -431,8 +434,24 @@ export class ApiClient {
     return result.success ? { success: true, data: result.data.map(m => ({...m, role: m.role.toLowerCase() as OrganizationMember['role'], joinedAt: m.createdAt})) } : result;
   }
 
-  async addMember(email: string, role: string): Promise<ApiResult<unknown>> {
+  async addMember(email: string, role: string): Promise<ApiResult<{ invited?: boolean; inviteUrl?: string; emailed?: boolean }>> {
     return this.request('/api/v1/organizations/current/members', { method: 'POST', body: JSON.stringify({ email, role }) });
+  }
+
+  async getInvitations(): Promise<ApiResult<Invitation[]>> {
+    return this.request('/api/v1/organizations/current/invitations');
+  }
+
+  async revokeInvitation(id: string): Promise<ApiResult<null>> {
+    return this.request(`/api/v1/organizations/current/invitations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  async getInvitation(token: string): Promise<ApiResult<{ email: string; role: string; organizationName: string }>> {
+    return this.request(`/api/v1/auth/invitations/${encodeURIComponent(token)}`);
+  }
+
+  async getAppConfig(): Promise<ApiResult<AppConfig>> {
+    return this.request('/api/v1/config');
   }
 
   async verifyEmail(token: string): Promise<ApiResult<unknown>> {
@@ -489,10 +508,10 @@ export class ApiClient {
     return result;
   }
 
-  async signup(email: string, password: string, name: string): Promise<ApiResult<AuthSession>> {
+  async signup(email: string, password: string, name: string, inviteToken?: string): Promise<ApiResult<AuthSession>> {
     const result = await this.request<AuthSession>('/api/v1/auth/signup', {
       method: 'POST',
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify(inviteToken ? { password, name, inviteToken } : { email, password, name }),
     });
     if (result.success && result.data.token) {
       setAuthToken(result.data.token);

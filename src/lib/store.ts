@@ -128,6 +128,7 @@ export function getPlanName(plan: PlanTier): string {
     PRO: 'حرفه‌ای',
     AGENCY: 'آژانس',
     ENTERPRISE: 'سازمانی',
+    PRIVATE: 'اختصاصی',
   };
   return names[plan];
 }
@@ -139,6 +140,7 @@ export function getPlanNameEn(plan: PlanTier): string {
     PRO: 'Professional',
     AGENCY: 'Agency',
     ENTERPRISE: 'Enterprise',
+    PRIVATE: 'Private',
   };
   return names[plan];
 }

@@ -20,6 +20,7 @@ import Automation from './pages/Automation';
 import Alerts from './pages/Alerts';
 import Integrations from './pages/Integrations';
 import Billing from './pages/Billing';
+import { useAppConfig, resetAppConfig } from './lib/app-config';
 import Team from './pages/Team';
 import Agency from './pages/Agency';
 import ApiPage from './pages/ApiPage';
@@ -239,7 +240,7 @@ function App() {
                 <Route path="settings" element={<SettingsPage />} />
               </Route>
               <Route path="/integrations" element={<Integrations />} />
-              <Route path="/billing" element={<Billing />} />
+              <Route path="/billing" element={<BillingRoute />} />
               <Route path="/team" element={<Team />} />
               <Route path="/agency" element={<Agency />} />
               <Route path="/api" element={<ApiPage />} />
@@ -255,7 +256,81 @@ function App() {
 }
 
 // Auth form with login / signup tabs - Persian
+/** A private installation has no subscriptions, so the billing page sends people home. */
+function BillingRoute() {
+  const appConfig = useAppConfig();
+  if (!appConfig) return null;
+  return appConfig.billing ? <Billing /> : <Navigate to="/" replace />;
+}
+
+const INVITE_ROLE_LABELS: Record<string, string> = {
+  Admin: 'مدیر سازمان', Manager: 'مدیر پروژه', SEO_Manager: 'مدیر سئو', Analyst: 'تحلیلگر', Editor: 'ویراستار', Client: 'مشتری', Viewer: 'مشاهده‌گر',
+};
+
+/** Account creation from an invitation link (#/invite/<token>): the email is fixed by the invitation. */
+function InviteForm({ token, onSuccess }: { token: string; onSuccess: () => void }) {
+  const [invite, setInvite] = useState<{ email: string; role: string; organizationName: string } | null>(null);
+  const [state, setState] = useState<'loading' | 'ready' | 'invalid'>('loading');
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void api.getInvitation(token).then((r) => {
+      if (!alive) return;
+      if (r.success) { setInvite(r.data); setState('ready'); } else setState('invalid');
+    });
+    return () => { alive = false; };
+  }, [token]);
+  const leave = () => { window.location.hash = '#/'; };
+  if (state === 'loading') return <p role="status" className="text-sm text-slate-400">در حال بررسی دعوت‌نامه…</p>;
+  if (state === 'invalid' || !invite) {
+    return (
+      <div dir="rtl" className="space-y-4">
+        <p role="alert" className="text-sm text-accent-red">این لینک دعوت معتبر نیست یا منقضی شده است. از مدیر سئویار بخواهید دوباره دعوتتان کند.</p>
+        <button type="button" onClick={leave} className="text-brand-400 text-sm">رفتن به صفحهٔ ورود</button>
+      </div>
+    );
+  }
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!name.trim()) return setError(t('auth.nameRequired'));
+    if (password.length < 8) return setError(t('auth.passwordTooShort'));
+    setBusy(true);
+    const r = await api.signup(invite!.email, password, name.trim(), token);
+    setBusy(false);
+    if (r.success) { window.location.hash = '#/'; onSuccess(); }
+    else setError(r.error.code === 'CONFLICT' ? 'برای این ایمیل از قبل حساب وجود دارد. وارد شوید و از مدیر بخواهید شما را به تیم اضافه کند.' : 'ساخت حساب انجام نشد. دوباره تلاش کنید.');
+  }
+  const input = 'w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-600/50';
+  return (
+    <form dir="rtl" onSubmit={submit} className="space-y-4">
+      <p className="text-sm text-slate-300">شما به <strong className="text-white">{invite.organizationName}</strong> با نقش «{INVITE_ROLE_LABELS[invite.role] ?? invite.role}» دعوت شده‌اید. برای ساخت حساب نام و رمز عبور را وارد کنید.</p>
+      {error && <p role="alert" className="text-xs text-accent-red">{error}</p>}
+      <div>
+        <label htmlFor="invite-email" className="text-xs font-medium text-slate-300 mb-1.5 block">{t('auth.email')}</label>
+        <input id="invite-email" type="email" value={invite.email} readOnly dir="ltr" className={`${input} opacity-70`} />
+      </div>
+      <div>
+        <label htmlFor="invite-name" className="text-xs font-medium text-slate-300 mb-1.5 block">{t('auth.fullName')}</label>
+        <input id="invite-name" type="text" value={name} onChange={(e) => setName(e.target.value)} required className={input} />
+      </div>
+      <div>
+        <label htmlFor="invite-password" className="text-xs font-medium text-slate-300 mb-1.5 block">{t('auth.password')}</label>
+        <input id="invite-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} dir="ltr" className={input} />
+      </div>
+      <button type="submit" disabled={busy} className="w-full px-4 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg">
+        {busy ? t('common.loading') : 'ساخت حساب و ورود'}
+      </button>
+    </form>
+  );
+}
+
 function AuthForm({ onSuccess }: { onSuccess: () => void }) {
+  const appConfig = useAppConfig();
+  const inviteToken = /^#\/invite\/([A-Za-z0-9_-]{20,100})/.exec(window.location.hash)?.[1];
   const [recovering,setRecovering]=useState(false);
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [name, setName] = useState('');
@@ -286,6 +361,7 @@ function AuthForm({ onSuccess }: { onSuccess: () => void }) {
     setLoading(false);
 
     if (result.success) {
+      if (mode === 'signup') resetAppConfig();
       onSuccess();
     } else {
       setError(result.error.message);
@@ -297,13 +373,18 @@ function AuthForm({ onSuccess }: { onSuccess: () => void }) {
     setError(null);
   };
 
+  if (inviteToken) return <InviteForm token={inviteToken} onSuccess={onSuccess} />;
   if (recovering) return <PasswordRecovery onBack={()=>setRecovering(false)} />;
+  // Private mode: only the first person (the owner) may sign up; everyone else is invited.
+  const signupOpen = appConfig !== null && appConfig.signup !== 'invite-only';
+  const firstOwner = appConfig?.signup === 'first-user';
+  if (!signupOpen && mode === 'signup') setMode('login');
 
   return (
     <div dir="rtl">
       <button type="button" onClick={()=>setRecovering(true)} className="text-brand-400 text-sm mb-4">رمز عبور را فراموش کرده‌اید؟</button>
-      {/* Tabs */}
-      <div className="flex gap-1 mb-6 p-1 bg-surface rounded-lg">
+      {/* Tabs: only when there is something to switch to */}
+      {signupOpen && <div className="flex gap-1 mb-6 p-1 bg-surface rounded-lg">
         <button
           type="button"
           onClick={() => switchMode('login')}
@@ -313,19 +394,19 @@ function AuthForm({ onSuccess }: { onSuccess: () => void }) {
         >
           {t('auth.login')}
         </button>
-        <button
+        {signupOpen && <button
           type="button"
           onClick={() => switchMode('signup')}
           className={`flex-1 px-4 py-2 rounded-md text-sm font-medium font-vazirmatn-medium transition-colors ${
             mode === 'signup' ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-white'
           }`}
         >
-          {t('auth.signup')}
-        </button>
-      </div>
+          {firstOwner ? 'ساخت حساب مدیر' : t('auth.signup')}
+        </button>}
+      </div>}
 
       <p className="text-xs text-slate-500 mb-4 font-vazirmatn-light">
-        {mode === 'login' ? t('auth.loginSubtitle') : t('auth.signupSubtitle')}
+        {mode === 'login' ? t('auth.loginSubtitle') : firstOwner ? 'اولین حساب، حساب مالک سئویار است. بعد از آن ثبت‌نام بسته می‌شود و همکاران را از صفحهٔ تیم دعوت می‌کنید.' : t('auth.signupSubtitle')}
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -388,13 +469,13 @@ function AuthForm({ onSuccess }: { onSuccess: () => void }) {
         </button>
         <div className="text-center">
           <p className="text-xs text-slate-500 font-vazirmatn-light">
-            {mode === 'login' ? (
+            {mode === 'login' ? (signupOpen ? (
               <>{t('auth.noAccount')}{' '}
                 <button type="button" onClick={() => switchMode('signup')} className="text-brand-400 hover:text-brand-300">
                   {t('auth.createAccount')}
                 </button>
               </>
-            ) : (
+            ) : appConfig ? 'ثبت‌نام عمومی بسته است. برای دسترسی، از مدیر سئویار دعوت‌نامه بگیرید.' : null) : (
               <>{t('auth.alreadyHaveAccount')}{' '}
                 <button type="button" onClick={() => switchMode('login')} className="text-brand-400 hover:text-brand-300">
                   {t('auth.login')}

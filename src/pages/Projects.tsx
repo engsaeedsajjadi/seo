@@ -18,7 +18,7 @@ export default function Projects() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const planLimits = PLAN_LIMITS[state.currentOrg?.plan || 'FREE'];
+  const planLimits = PLAN_LIMITS[state.currentOrg?.plan || 'FREE'] ?? PLAN_LIMITS.FREE;
   const projectCount = state.projects.length;
 
   return (
@@ -27,7 +27,9 @@ export default function Projects() {
         <div>
           <h1 className="text-2xl font-bold text-white font-vazirmatn-bold">{t('projects.title')}</h1>
           <p className="text-sm text-slate-400 mt-1 font-vazirmatn-regular">
-            {toPersianDigits(projectCount)} از {planLimits.projects === -1 ? '∞' : toPersianDigits(planLimits.projects)} پروژه استفاده شده ({getPlanName(state.currentOrg?.plan || 'FREE')} )
+            {planLimits.projects === -1
+              ? `${toPersianDigits(projectCount)} پروژه`
+              : `${toPersianDigits(projectCount)} از ${toPersianDigits(planLimits.projects)} پروژه استفاده شده (${getPlanName(state.currentOrg?.plan || 'FREE')})`}
           </p>
         </div>
         <button

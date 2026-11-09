@@ -23,7 +23,9 @@ export default function SiteAudit() {
   const [expandedRule, setExpandedRule] = useState<string | null>(null);
   const [showRunCrawl, setShowRunCrawl] = useState(false);
   const monthlyPages = PLAN_LIMITS[(state.currentOrg?.plan ?? 'FREE') as keyof typeof PLAN_LIMITS]?.crawledPages ?? 300;
-  const [crawlOptions, setCrawlOptions] = useState({ maxDepth: 5, maxPages: Math.min(500, monthlyPages) });
+  // -1 means no monthly limit (private installation); one crawl still stops at 1000 pages.
+  const unlimitedPages = monthlyPages === -1;
+  const [crawlOptions, setCrawlOptions] = useState({ maxDepth: 5, maxPages: unlimitedPages ? 500 : Math.min(500, monthlyPages) });
   const [crawlLoading, setCrawlLoading] = useState(false);
   const [crawlError, setCrawlError] = useState<string | null>(null);
   const [crawlSuccess, setCrawlSuccess] = useState<string | null>(null);
@@ -104,7 +106,7 @@ export default function SiteAudit() {
         setShowRunCrawl(false);
       } else {
         setCrawlError(result.error.code === 'LIMIT_REACHED'
-          ? `سقف ${toPersianDigits(monthlyPages)} صفحهٔ این ماه پلن شما تمام شده است. اول ماه بعد دوباره باز می‌شود، یا می‌توانید پلن را ارتقا دهید.`
+          ? (unlimitedPages ? 'سقف استفادهٔ این ماه پر شده است.' : `سقف ${toPersianDigits(monthlyPages)} صفحهٔ این ماه پلن شما تمام شده است. اول ماه بعد دوباره باز می‌شود، یا می‌توانید پلن را ارتقا دهید.`)
           : apiMessage(result.error.message));
       }
     } catch (e) {
@@ -354,7 +356,7 @@ export default function SiteAudit() {
                 <input type="number" value={crawlOptions.maxDepth} onChange={e => setCrawlOptions(o => ({ ...o, maxDepth: parseInt(e.target.value) || 1 }))} min={1} max={10} className="w-full mt-1 px-3 py-2 bg-surface border border-surface-3/50 rounded-lg text-sm text-white" />
               </div>
               <div>
-                <label className="text-xs text-slate-400">حداکثر صفحات (سقف ماهانهٔ پلن: {toPersianDigits(monthlyPages)})</label>
+                <label className="text-xs text-slate-400">{unlimitedPages ? `حداکثر صفحات (تا ${toPersianDigits(1000)} صفحه در هر خزش)` : `حداکثر صفحات (سقف ماهانهٔ پلن: ${toPersianDigits(monthlyPages)})`}</label>
                 <input type="number" value={crawlOptions.maxPages} onChange={e => setCrawlOptions(o => ({ ...o, maxPages: parseInt(e.target.value) || 1 }))} min={1} max={1000} className="w-full mt-1 px-3 py-2 bg-surface border border-surface-3/50 rounded-lg text-sm text-white" />
               </div>
             </div>

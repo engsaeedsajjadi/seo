@@ -3,10 +3,12 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { authenticatedFetch, api } from '../lib/api';
 import { useAppState } from '../lib/store';
+import { useAppConfig } from '../lib/app-config';
 
 export default function SettingsPage() {
   const { state, actions } = useAppState();
   const client=state.currentOrg?.role==='client';
+  const appConfig=useAppConfig();
   const [name,setName] = useState('');
   const [busy,setBusy] = useState(false);
   const [message,setMessage] = useState('');
@@ -38,7 +40,7 @@ export default function SettingsPage() {
     {!client && <nav className="flex flex-wrap gap-4" aria-label="تنظیمات بیشتر">
       <Link to="/team" className="text-brand-400">مدیریت تیم</Link>
       <Link to="/api" className="text-brand-400">کلیدهای API و وب‌هوک‌ها</Link>
-      <Link to="/billing" className="text-brand-400">اشتراک و صورتحساب</Link>
+      {appConfig?.billing && <Link to="/billing" className="text-brand-400">اشتراک و صورتحساب</Link>}
       <Link to="/integrations" className="text-brand-400">اتصال سرویس‌ها</Link>
     </nav>}
     

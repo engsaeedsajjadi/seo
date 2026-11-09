@@ -19,6 +19,7 @@ import { isPlatformAdmin, platformService } from './services/platform.service.js
 import { paymentService } from './services/payment.service.js';
 import { passwordRecoveryService } from './services/password-recovery.service.js';
 import { teamService } from './services/team.service.js';
+import { invitationService } from './services/invitation.service.js';
 import { sessionService } from './services/session.service.js';
 import { checkDatabaseHealth } from './db/client.js';
 import { authMiddleware, AuthRequest, ApiError } from './middleware/auth.js';
@@ -326,10 +327,49 @@ export function createApp() {
   // AUTH ROUTES
   // ============================================================
 
+  /** Whether anyone may sign up: always in SaaS mode; in private mode only the first person (the owner). */
+  async function signupState(): Promise<'open' | 'first-user' | 'invite-only'> {
+    if (config.mode !== 'private') return 'open';
+    const users = await runAsSystem(() => query('SELECT EXISTS (SELECT 1 FROM users WHERE deleted_at IS NULL) AS any'));
+    return users.rows[0]?.any ? 'invite-only' : 'first-user';
+  }
+
+  // Public: what the sign-in page should offer.
+  app.get('/api/v1/config', async (_req, res, next) => {
+    try {
+      res.json({ success: true, data: { mode: config.mode, billing: config.mode !== 'private', signup: await signupState() } });
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/auth/invitations/:token', authLimiter, async (req, res, next) => {
+    try {
+      const token = z.string().min(20).max(100).parse(req.params.token);
+      const found = await invitationService.describe(token);
+      if (!found) return res.status(404).json({ success: false, error: { code: 'INVITATION_INVALID', message: 'Invitation is invalid or expired' } });
+      res.json({ success: true, data: found });
+    } catch (error) { next(error); }
+  });
+
   app.post('/api/v1/auth/signup', authLimiter, requireTrustedOrigin, async (req, res, next) => {
     try {
+      const inviteToken = z.string().min(20).max(100).optional().parse(req.body?.inviteToken);
+      if (inviteToken) {
+        const body = z.object({ password: signupSchema.shape.password, name: signupSchema.shape.name }).parse(req.body);
+        const accepted = await invitationService.accept(inviteToken, body.password, body.name);
+        res.cookie(refreshCookie, accepted.refreshToken, cookieOptions);
+        res.setHeader('Cache-Control','no-store');
+        return res.status(201).json({ success: true, data: {
+          user: { id: accepted.user.id, email: accepted.user.email, name: accepted.user.name, organizationId: accepted.organization.id },
+          organization: organizationSummary(accepted.organization),
+          token: accepted.token,
+        } });
+      }
       const { email, password, name } = signupSchema.parse(req.body);
-      const result = await authService.signup(email, password, name, req.ip, req.headers['user-agent']);
+      const state = await signupState();
+      if (state === 'invite-only') {
+        return res.status(403).json({ success: false, error: { code: 'SIGNUP_CLOSED', message: 'Sign-up is by invitation only' } });
+      }
+      const result = await authService.signup(email, password, name, req.ip, req.headers['user-agent'], state === 'first-user' ? 'PRIVATE' : 'FREE');
       await emailVerificationService.send(result.user.id);
       res.cookie(refreshCookie, result.refreshToken, cookieOptions);
       res.setHeader('Cache-Control','no-store');
@@ -538,8 +578,30 @@ export function createApp() {
   app.post('/api/v1/organizations/current/members', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       const body = z.object({email:z.string().email(),role:z.enum(['Admin','Manager','SEO_Manager','Analyst','Editor','Client','Viewer'])}).parse(req.body);
+      if (config.mode === 'private') {
+        // Nobody can sign up on their own, so a person without an account gets an invitation link.
+        const known = await runAsSystem(() => query('SELECT 1 FROM users WHERE lower(email)=$1 AND deleted_at IS NULL', [body.email.toLowerCase()]));
+        if (!known.rows.length) {
+          const invitation = await invitationService.create(req.organizationId!, req.userId!, req.user.role, body.email, body.role);
+          return res.status(201).json({ success: true, data: invitation });
+        }
+      }
       const member = await teamService.add(req.organizationId!, req.user.role, body.email, body.role);
       res.status(201).json({success:true,data:member});
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/organizations/current/invitations', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      if (!['Owner','Admin'].includes(req.user.role)) throw new ApiError(403,'FORBIDDEN','Admin required');
+      res.json({ success: true, data: await invitationService.list(req.organizationId!) });
+    } catch (error) { next(error); }
+  });
+
+  app.delete('/api/v1/organizations/current/invitations/:id', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      await invitationService.revoke(req.organizationId!, req.user.role, z.string().uuid().parse(req.params.id));
+      res.json({ success: true, data: null });
     } catch (error) { next(error); }
   });
 
@@ -631,7 +693,7 @@ export function createApp() {
 
       const org = await organizationRepository.findById(req.organizationId!);
       const count = await projectRepository.countByOrganization(req.organizationId!);
-      const plan = await query('SELECT limits FROM plans WHERE id=$1 AND is_active=true',[org?.plan]);
+      const plan = await query('SELECT limits FROM plans WHERE id=$1',[org?.plan]);
       const limit = Number(plan.rows[0]?.limits?.projects);
       if (!Number.isFinite(limit)) throw new ApiError(503,'SERVICE_UNAVAILABLE','Plan configuration unavailable');
       if (limit >= 0 && count >= limit) {
@@ -757,7 +819,8 @@ export function createApp() {
 
       // Matches the price charged in rf_worker_charge_job.
       const wallet = await creditRepository.getWallet(req.organizationId!);
-      if (!wallet || wallet.balance < 5) {
+      const unbilled = (await organizationRepository.findById(req.organizationId!))?.plan === 'PRIVATE';
+      if (!unbilled && (!wallet || wallet.balance < 5)) {
         return res.status(402).json({ success: false, error: { code: 'INSUFFICIENT_CREDITS', message: 'Insufficient credits for crawl' } });
       }
 
@@ -930,9 +993,9 @@ export function createApp() {
 
       const count = await keywordRepository.countByOrganization(req.organizationId!);
       const org = await organizationRepository.findById(req.organizationId!);
-      const planLimits: Record<string, number> = { FREE: 10, STARTER: 100, PRO: 500, AGENCY: 2500, ENTERPRISE: 10000 };
-      const limit = planLimits[org?.plan || 'FREE'] || 10;
-      if (count + parsed.keywords.length > limit) {
+      const planRow = await query('SELECT limits FROM plans WHERE id=$1', [org?.plan || 'FREE']);
+      const limit = Number(planRow.rows[0]?.limits?.keywords ?? 10);
+      if (limit >= 0 && count + parsed.keywords.length > limit) {
         return res.status(403).json({ success: false, error: { code: 'LIMIT_REACHED', message: `Keyword limit reached for ${org?.plan} plan (${limit})` } });
       }
 
@@ -1068,6 +1131,12 @@ export function createApp() {
   // ============================================================
   // BILLING & CREDITS
   // ============================================================
+
+  // No subscriptions in private mode: every billing route answers as if it did not exist.
+  app.use('/api/v1/billing', (_req, res, next) => {
+    if (config.mode !== 'private') return next();
+    res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Billing is not available' } });
+  });
 
   app.get('/api/v1/billing/plans', async (req, res, next) => {
     try {
@@ -2615,7 +2684,7 @@ export function createApp() {
       const org = await organizationRepository.findById(req.organizationId!);
       if (!org) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Organization not found' } });
 
-      const isAgency = ['AGENCY', 'ENTERPRISE'].includes(org.plan);
+      const isAgency = ['AGENCY', 'ENTERPRISE', 'PRIVATE'].includes(org.plan);
       if (!isAgency) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'White-label requires AGENCY or ENTERPRISE plan' } });
       }
@@ -2631,7 +2700,7 @@ export function createApp() {
       const org = await organizationRepository.findById(req.organizationId!);
       if (!org) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Organization not found' } });
 
-      const isAgency = ['AGENCY', 'ENTERPRISE'].includes(org.plan);
+      const isAgency = ['AGENCY', 'ENTERPRISE', 'PRIVATE'].includes(org.plan);
       if (!isAgency) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'White-label requires AGENCY or ENTERPRISE plan' } });
       }

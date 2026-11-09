@@ -55,6 +55,8 @@ services:
       WORKER_DATABASE_PASSWORD: ${WORKER_DATABASE_PASSWORD:?Set WORKER_DATABASE_PASSWORD in .env before starting the stack}
       API_DATABASE_PASSWORD: ${API_DATABASE_PASSWORD:?Set API_DATABASE_PASSWORD in .env before starting the stack}
       NODE_ENV: production
+      # private: one business serving its own customers — no paid plans, sign-up by invitation.
+      SEOYAR_MODE: ${SEOYAR_MODE:-private}
       DATABASE_URL: postgresql://${POSTGRES_USER:-rankforge}:${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env before starting the stack}@postgres:5432/${POSTGRES_DB:-rankforge}
       # The migration runner loads the app config module, whose production
       # fail-fast requires these to be present (same values as the API).
@@ -75,6 +77,8 @@ services:
       dockerfile: Dockerfile
     environment:
       NODE_ENV: production
+      # private: one business serving its own customers — no paid plans, sign-up by invitation.
+      SEOYAR_MODE: ${SEOYAR_MODE:-private}
       PORT: 3001
       DATABASE_URL: postgresql://rankforge_api_system_login:${API_DATABASE_PASSWORD:?Set API_DATABASE_PASSWORD in .env before starting the stack}@postgres:5432/${POSTGRES_DB:-rankforge}
       ZARINPAL_MERCHANT_ID: ${ZARINPAL_MERCHANT_ID:-}

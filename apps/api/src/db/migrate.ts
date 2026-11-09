@@ -16,7 +16,7 @@ const requiredTables = [
   'crawl_pages', 'crawl_issues', 'audit_findings', 'keywords', 'keyword_snapshots', 'keyword_rankings',
   'competitors', 'backlinks', 'jobs', 'job_attempts', 'integrations', 'gsc_metrics', 'ga4_metrics',
   'pagespeed_results', 'geo_runs', 'content_briefs', 'ai_usage', 'reports', 'alerts', 'site_fixes',
-  'credit_wallets', 'credit_transactions', 'usage_records', 'invoices', 'api_keys', 'webhooks',
+  'organization_invitations', 'credit_wallets', 'credit_transactions', 'usage_records', 'invoices', 'api_keys', 'webhooks',
   'webhook_deliveries', 'audit_logs', 'feature_flags', '_migrations',
 ];
 
@@ -26,7 +26,7 @@ const rlsTables = [
   'competitors', 'backlinks', 'jobs', 'job_attempts', 'alerts', 'reports', 'integrations',
   'credit_wallets', 'credit_transactions', 'usage_records', 'invoices', 'api_keys',
   'audit_logs', 'gsc_metrics', 'ga4_metrics', 'pagespeed_results', 'geo_runs', 'content_briefs',
-  'ai_usage', 'feature_flags', 'site_fixes',
+  'ai_usage', 'feature_flags', 'site_fixes', 'organization_invitations',
 ];
 
 async function verifyDatabase() {
@@ -217,6 +217,12 @@ export async function runMigrations() {
     }
 
     await ensureServiceLogins();
+
+    // One business using the app for its own customers: no paid plans, see 021_private_mode.sql.
+    if ((process.env.SEOYAR_MODE || 'saas') === 'private') {
+      const moved = await query(`UPDATE organizations SET plan = 'PRIVATE' WHERE plan IS DISTINCT FROM 'PRIVATE'`);
+      console.log(`🔧 Private mode: ${moved.rowCount ?? 0} organization(s) moved to the PRIVATE plan`);
+    }
 
     console.log('🔧 Verifying database — strict...');
     await verifyDatabase();

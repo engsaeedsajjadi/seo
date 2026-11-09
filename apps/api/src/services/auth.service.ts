@@ -16,7 +16,7 @@ function generateSlug(name: string): string {
 }
 
 export const authService = {
-  async signup(email: string, password: string, name: string, ipAddress?: string, userAgent?: string) {
+  async signup(email: string, password: string, name: string, ipAddress?: string, userAgent?: string, plan = 'FREE') {
     return transaction(async () => {
       const existing = await userRepository.findByEmail(email);
       if (existing) {
@@ -34,7 +34,7 @@ export const authService = {
         name: `سازمان ${name}`,
         slug: generateSlug(name),
         ownerId: user.id,
-        plan: 'FREE',
+        plan,
     });
 
     await organizationRepository.addMember(org.id, user.id, 'Owner');

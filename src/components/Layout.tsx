@@ -67,6 +67,7 @@ const navSections = [
 
 import { Outlet } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useAppConfig } from '../lib/app-config';
 
 // Sidebar items that live under a project (/projects/:id/...) — linking to the
 // bare path used to bounce back to the dashboard via the catch-all route.
@@ -84,6 +85,7 @@ export default function Layout() {
   const [showProviderPanel, setShowProviderPanel] = useState(false);
   const location = useLocation();
   const { state } = useAppState();
+  const appConfig = useAppConfig();
 
   const toggleSection = (title: string) => {
     setExpandedSections(prev => ({ ...prev, [title]: !prev[title] }));
@@ -157,7 +159,7 @@ export default function Layout() {
               )}
               {(expandedSections[section.title] || !sidebarOpen) && (
                 <div className="space-y-0.5">
-                  {section.items.filter(item=>state.currentOrg?.role!=='client' || !['/billing','/team','/agency','/api','/integrations','/automation'].includes(item.path)).map(item => {
+                  {section.items.filter(item=>(state.currentOrg?.role!=='client' || !['/billing','/team','/agency','/api','/integrations','/automation'].includes(item.path)) && (item.path!=='/billing' || appConfig?.billing)).map(item => {
                     const to = resolvePath(item.path);
                     return (
                       <Link
