@@ -56,9 +56,14 @@ export function useAppState() {
 
 export function getProviderLabel(key: string): string {
   const labels: Record<string, string> = {
-    dataForSeo: 'DataForSEO',
-    openai: 'OpenAI',
-    anthropic: 'Anthropic',
+    dataForSeo: 'DataForSEO (رتبه)',
+    kwrank: 'KWRank (رتبه در گوگل)',
+    serpapi: 'SerpApi (رتبه)',
+    google: 'Gemini (هوش مصنوعی)',
+    openrouter: 'OpenRouter (هوش مصنوعی)',
+    perplexity: 'Perplexity (هوش مصنوعی)',
+    openai: 'OpenAI (هوش مصنوعی)',
+    anthropic: 'Anthropic (هوش مصنوعی)',
     googleSearchConsole: 'سرچ کنسول گوگل',
     googleAnalytics: 'آنالیتیکس گوگل',
     stripe: 'درگاه پرداخت',

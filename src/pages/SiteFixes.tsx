@@ -541,7 +541,7 @@ function LocalBusinessForm({ projectId, country, current, onSaved, onError }: {
   );
   return (
     <details className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-      <summary className="cursor-pointer text-sm font-semibold text-white flex items-center gap-2"><MapPin className="w-4 h-4 text-brand-400" /> اطلاعات کسب‌وکار برای سئوی محلی</summary>
+      <summary className="cursor-pointer text-sm font-semibold text-white flex items-center gap-2"><MapPin className="w-4 h-4 text-brand-400" /> اطلاعات کسب‌وکار برای سئوی محلی <span className="text-xs font-normal text-slate-400">— برای پر کردن فرم کلیک کنید</span></summary>
       <p className="text-xs text-slate-400 mt-2">این اطلاعات به‌صورت Schema از نوع LocalBusiness در صفحهٔ اصلی سایت قرار می‌گیرد تا گوگل نام، تلفن و نشانی کسب‌وکار را بشناسد. همان اطلاعاتی را بنویسید که روی سایت و در نقشه‌ها آمده است.</p>
       <form onSubmit={submit} className="mt-4 grid gap-3 sm:grid-cols-2">
         <div>

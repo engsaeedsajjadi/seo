@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { VerifyEmailBanner } from './EmailVerification';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Globe, Search, BarChart3, Target, Link2, FileText,
   Bot, Brain, Radio, Bell, Settings, CreditCard, Users, Building2,
@@ -89,6 +89,7 @@ export default function Layout() {
   );
   const [showProviderPanel, setShowProviderPanel] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const { state } = useAppState();
   const appConfig = useAppConfig();
   const [helpOn, toggleHelp] = useMenuHelp();
@@ -101,6 +102,8 @@ export default function Layout() {
   };
   useEffect(() => { if (!helpOn) setTip(null); }, [helpOn]);
 
+  // Payment, storage and the duplicate DataForSEO key say nothing useful to the person using the app.
+  const shownProviders = Object.entries(state.providerStatus).filter(([key]) => !['stripe', 's3', 'dataforseo', 'sentry', 'posthog'].includes(key));
   const toggleSection = (title: string) => {
     setExpandedSections(prev => ({ ...prev, [title]: !prev[title] }));
   };
@@ -254,9 +257,25 @@ export default function Layout() {
             <button type="button" onClick={() => setSidebarOpen(true)} aria-label={t('common.openMenu')} className="lg:hidden p-2 -ms-1 rounded-lg text-slate-300 hover:bg-surface-3/50 flex-shrink-0">
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="text-sm font-medium text-slate-300 font-vazirmatn-medium truncate">
-              {state.currentProject ? state.currentProject.domain : 'پروژه‌ای انتخاب نشده'}
-            </h1>
+            {state.projects.length > 1 && state.currentProject ? (
+              <select
+                aria-label="سایت فعال"
+                title="عوض کردن سایت"
+                value={state.currentProject.id}
+                onChange={(e) => {
+                  // Stay on the same page, for the other site.
+                  const page = location.pathname.match(/^\/projects\/[^/]+\/(.+)$/)?.[1];
+                  navigate(page ? `/projects/${e.target.value}/${page}` : `/projects/${e.target.value}/audit`);
+                }}
+                className="min-w-0 max-w-[14rem] bg-surface-3/30 border border-surface-3/50 rounded-lg px-2 py-1.5 text-sm text-slate-200 truncate"
+              >
+                {state.projects.map((p) => <option key={p.id} value={p.id}>{p.domain}</option>)}
+              </select>
+            ) : (
+              <h1 className="text-sm font-medium text-slate-300 font-vazirmatn-medium truncate">
+                {state.currentProject ? state.currentProject.domain : <Link to="/projects" className="text-brand-400">یک سایت انتخاب کنید ←</Link>}
+              </h1>
+            )}
             {state.currentProject && (
               <span className="hidden md:inline px-2 py-0.5 rounded text-xs bg-surface-3/50 text-slate-400 font-vazirmatn-light whitespace-nowrap">
                 {COUNTRY_LABELS[state.currentProject.country] || state.currentProject.country} · {LANGUAGE_LABELS[state.currentProject.language] || state.currentProject.language}
@@ -271,19 +290,8 @@ export default function Layout() {
               aria-label={t('common.integrations')}
               className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-3/30 hover:bg-surface-3/50 text-sm"
             >
-              <div className="flex gap-1">
-                {Object.entries(state.providerStatus).slice(0, 4).map(([key, status]) => (
-                  <div
-                    key={key}
-                    className={`w-2 h-2 rounded-full ${
-                      status === 'connected' ? 'bg-accent-green' :
-                      status === 'error' ? 'bg-accent-red' :
-                      'bg-accent-yellow'
-                    }`}
-                  />
-                ))}
-              </div>
-              <span className="text-slate-400 text-xs font-vazirmatn-regular">سرویس‌ها</span>
+              <div className={`w-2 h-2 rounded-full ${shownProviders.map(([, v]) => v).includes('error') ? 'bg-accent-red' : shownProviders.map(([, v]) => v).filter((v) => v === 'connected').length > 0 ? 'bg-accent-green' : 'bg-accent-yellow'}`} />
+              <span className="text-slate-400 text-xs font-vazirmatn-regular">{toPersianDigits(shownProviders.map(([, v]) => v).filter((v) => v === 'connected').length)} سرویس وصل</span>
             </button>
 
             {/* Alerts */}
@@ -328,7 +336,7 @@ export default function Layout() {
           <div className="absolute left-6 top-14 z-50 w-80 bg-surface-2 border border-surface-3/50 rounded-xl shadow-2xl p-4" dir="rtl">
             <h3 className="text-sm font-semibold text-white mb-3 font-vazirmatn-bold">وضعیت سرویس‌ها</h3>
             <div className="space-y-2">
-              {Object.entries(state.providerStatus).map(([key, status]) => (
+              {shownProviders.map(([key, status]) => (
                 <div key={key} className="flex items-center justify-between py-1.5">
                   <span className="text-xs text-slate-300 font-vazirmatn-regular">{getProviderLabel(key)}</span>
                   <div className="flex items-center gap-2">

@@ -119,7 +119,7 @@ export default function Automation() {
                   <td className="px-4 py-2.5 text-sm text-white">{JOB_TYPE_LABELS[job.type] || job.type}</td>
                   <td className="px-4 py-2.5">
                     <JobStatusBadge status={job.status} />
-                    {isFailed(job.status) && <p className="text-[11px] text-red-400 mt-1">{jobFailureReason(job.error)}</p>}
+                    {isFailed(job.status) && <p className="text-[11px] text-red-400 mt-1">{jobFailureReason(job.error, job.type)}</p>}
                   </td>
                   <td className="px-4 py-2.5 text-right text-xs text-slate-400">
                     {formatDateTime(job.startedAt)}

@@ -197,9 +197,10 @@ export function formatDateOnly(value?: string | number | Date | null): string {
 }
 
 /** Plain reason for a failed background job. Raw provider errors are not shown to customers. */
-export function jobFailureReason(error?: string | null): string {
+export function jobFailureReason(error?: string | null, type?: string): string {
   const text = (error ?? '').toLowerCase();
   if (!text) return 'علت ثبت نشده است.';
+  if (type === 'SITE_CRAWL' && /timeout|timed out|abort|fetch failed|econn|enotfound|network|dns/.test(text)) return 'سایت جواب نداد. نشانی سایت را بررسی کنید و مطمئن شوید سایت باز می‌شود.';
   if (/does not track google for country/.test(text)) return 'سرویس رتبه برای کشور این پروژه پشتیبانی نمی‌شود.';
   if (/sufficient permission/.test(text)) return 'این حساب گوگل به این سایت در سرچ کنسول دسترسی کافی ندارد. مالکیت سایت را در سرچ کنسول تأیید کنید.';
   if (/503|high demand|unavailable/.test(text)) return 'سرویس هوش مصنوعی الان شلوغ است. چند دقیقه دیگر دوباره تلاش کنید.';
@@ -209,7 +210,7 @@ export function jobFailureReason(error?: string | null): string {
   if (/quota|insufficient|billing|credit|run out of searches/.test(text)) return 'اعتبار یا سهمیهٔ سرویس تمام شده است.';
   if (/403|forbidden|country|region|territory|unsupported/.test(text)) return 'این سرویس از این منطقه یا با این حساب در دسترس نیست.';
   if (/429|rate/.test(text)) return 'سرویس موقتاً محدود شده است. بعداً دوباره تلاش کنید.';
-  if (/timeout|timed out|abort|fetch failed|econn|enotfound|network/.test(text)) return 'اتصال به سرویس برقرار نشد.';
+  if (/timeout|timed out|abort|fetch failed|econn|enotfound|network/.test(text)) return 'اتصال به سرویس برقرار نشد. اینترنت سرور یا در دسترس بودن سرویس را بررسی کنید.';
   return 'سرویس خطا داد. دوباره تلاش کنید یا با پشتیبانی تماس بگیرید.';
 }
 

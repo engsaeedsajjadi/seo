@@ -7,6 +7,15 @@ import { useAppState } from '../lib/store';
 import type { OrganizationMember } from '../lib/types';
 import { toPersianDigits } from '../lib/persian';
 
+const ROLE_HELP: Record<string,string> = {
+  Viewer:'فقط می‌بیند؛ چیزی را تغییر نمی‌دهد.',
+  Client:'مشتری شما: فقط سایت‌هایی را می‌بیند که پایین همین صفحه به او دسترسی بدهید.',
+  Editor:'محتوا و طرح مقاله می‌سازد و ویرایش می‌کند.',
+  Analyst:'کلمات کلیدی، رتبه و گزارش‌ها را مدیریت می‌کند.',
+  SEO_Manager:'همهٔ کارهای سئو را انجام می‌دهد، از جمله بررسی سایت و تأیید اصلاح‌ها.',
+  Manager:'پروژه‌ها را می‌سازد و مدیریت می‌کند.',
+  Admin:'همه‌کار، از جمله دعوت اعضا و تنظیمات.',
+};
 const roles = [
   ['Viewer','مشاهده‌گر'],['Client','مشتری'],['Editor','ویراستار'],['Analyst','تحلیلگر'],
   ['SEO_Manager','مدیر سئو'],['Manager','مدیر پروژه'],['Admin','مدیر سازمان'],
@@ -85,10 +94,12 @@ export default function Team() {
       </label>
       <button disabled={busy} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg px-4 py-2.5 disabled:opacity-50">{busy?'در حال ثبت…':appConfig?.mode === 'private' ? 'دعوت یا افزودن' : 'افزودن عضو'}</button>
     </form>
+    <p className="text-xs text-slate-400 -mt-2"><span className="text-slate-300">این نقش:</span> {ROLE_HELP[role]}</p>
     <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5 text-slate-300 grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <h2 className="sm:col-span-2 text-sm font-semibold text-white">دسترسی پروژه برای مشتری</h2>
+      <h2 className="sm:col-span-2 text-sm font-semibold text-white">دسترسی مشتری به سایت‌ها</h2>
+      <p className="sm:col-span-2 text-xs text-slate-400">عضوی که نقش «مشتری» دارد هیچ سایتی را نمی‌بیند تا اینجا به او دسترسی بدهید. اول او را با نقش «مشتری» دعوت کنید.</p>
       <label className="text-sm">مشتری<select aria-label="انتخاب مشتری" value={client} onChange={e=>setClient(e.target.value)} className="block w-full mt-1.5 bg-surface border border-surface-3/50 rounded-lg px-3 py-2.5 text-sm text-white">
-        <option value="">انتخاب کنید</option>{members.filter(m=>m.role==='client').map(m=><option key={m.userId} value={m.userId}>{m.name}</option>)}
+        <option value="">{members.some(m=>m.role==='client')?'انتخاب کنید':'هنوز عضوی با نقش مشتری ندارید'}</option>{members.filter(m=>m.role==='client').map(m=><option key={m.userId} value={m.userId}>{m.name}</option>)}
       </select></label>
       <label className="text-sm">پروژه<select aria-label="انتخاب پروژه" value={project} onChange={e=>setProject(e.target.value)} className="block w-full mt-1.5 bg-surface border border-surface-3/50 rounded-lg px-3 py-2.5 text-sm text-white">
         <option value="">انتخاب کنید</option>{state.projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}

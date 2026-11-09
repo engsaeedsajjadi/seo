@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   Globe, Search, BarChart3, Shield, AlertTriangle, TrendingUp,
   TrendingDown, ArrowRight, Zap, Clock, Activity, CheckCircle2,
-  XCircle
+  XCircle, Circle, X
 } from 'lucide-react';
 import { useAppState, getProviderLabel } from '../lib/store';
 import { api } from '../lib/api';
@@ -25,6 +25,8 @@ export default function Dashboard() {
   const [auditFindings, setAuditFindings] = useState<AuditFinding[]>([]);
   const [recentJobs, setRecentJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [keywordCount, setKeywordCount] = useState<number | null>(null);
+  const [guideHidden, setGuideHidden] = useState(() => { try { return localStorage.getItem('seoyar_start_guide') === 'off'; } catch { return false; } });
 
   const hasProject = state.currentProject !== null;
 
@@ -42,6 +44,8 @@ export default function Dashboard() {
         ]);
         if (findingsResult.success) setAuditFindings(findingsResult.data);
         if (jobsResult.success) setRecentJobs(jobsResult.data.slice(0, 5));
+        const keywordsResult = await api.getKeywords(state.currentProject.id);
+        if (keywordsResult.success) setKeywordCount(keywordsResult.data.length);
       } catch (error) {
         console.error('Failed to load dashboard data:', error);
       } finally {
@@ -74,6 +78,15 @@ export default function Dashboard() {
     const statuses = g.keys.map((k) => (state.providerStatus as Record<string, string>)[k]);
     return { label: g.label, status: statuses.includes('connected') ? 'connected' : statuses.includes('error') ? 'error' : 'not_configured' };
   });
+  const startSteps = [
+    { done: !!state.currentProject?.lastCrawlAt, title: 'سایت را بررسی کنید', desc: 'برنامه صفحه‌های سایت را می‌خواند و مشکل‌های سئو را فهرست می‌کند.', to: projectPath('audit'), action: 'بررسی سایت' },
+    { done: (keywordCount ?? 0) > 0, title: 'کلمات کلیدی را اضافه کنید', desc: 'عبارت‌هایی که می‌خواهید با آن‌ها در گوگل دیده شوید.', to: projectPath('keywords'), action: 'افزودن کلمه' },
+    { done: serviceGroups.some(g => (g.label === 'سرچ کنسول گوگل' || g.label === 'رتبهٔ گوگل') && g.status === 'connected'), title: 'منبع رتبه را وصل کنید', desc: 'سرچ کنسول گوگل یا سرویس رتبه، تا جایگاه کلمه‌ها دیده شود.', to: '/integrations', action: 'اتصال سرویس‌ها' },
+    { done: false, optional: true, title: 'افزونهٔ وردپرس را نصب کنید', desc: 'تا اصلاح‌هایی که تأیید می‌کنید خودکار روی سایت اعمال شود.', to: projectPath('fixes'), action: 'اصلاح خودکار سایت' },
+    { done: false, optional: true, title: 'گزارش بسازید', desc: 'خلاصهٔ وضعیت سایت برای خودتان یا مشتری.', to: projectPath('reports'), action: 'گزارش‌ها' },
+  ];
+  const requiredLeft = startSteps.filter(s => !s.optional && !s.done).length;
+  const hideGuide = () => { setGuideHidden(true); try { localStorage.setItem('seoyar_start_guide', 'off'); } catch { /* stays hidden for this visit */ } };
   const countBySeverity = (severity: string) => auditFindings.filter(f => f.severity === severity).length;
 
   return (
@@ -103,6 +116,30 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+
+      {!guideHidden && requiredLeft > 0 && (
+        <section aria-label="قدم‌های شروع" className="bg-surface-2 border border-brand-600/30 rounded-xl p-5">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <h2 className="text-sm font-semibold text-white font-vazirmatn-bold">قدم‌های شروع کار با این سایت</h2>
+              <p className="text-xs text-slate-400 mt-1">به همین ترتیب جلو بروید. {toPersianDigits(requiredLeft)} قدم اصلی مانده است.</p>
+            </div>
+            <button type="button" onClick={hideGuide} aria-label="بستن قدم‌های شروع" title="دیگر نشان نده" className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-surface-3/50"><X className="w-4 h-4" /></button>
+          </div>
+          <ol className="space-y-2">
+            {startSteps.map((step, i) => (
+              <li key={step.title} className="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-surface/50">
+                {step.done ? <CheckCircle2 className="w-5 h-5 text-accent-green shrink-0" aria-label="انجام شده" /> : <Circle className="w-5 h-5 text-slate-500 shrink-0" aria-label="انجام نشده" />}
+                <div className="flex-1 min-w-[12rem]">
+                  <p className={`text-sm font-medium ${step.done ? 'text-slate-400 line-through' : 'text-white'}`}>{toPersianDigits(i + 1)}. {step.title}{step.optional && <span className="text-[11px] font-normal text-slate-500"> (اختیاری)</span>}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{step.desc}</p>
+                </div>
+                {!step.done && <Link to={step.to} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-brand-600/20 text-brand-300 hover:bg-brand-600/30 whitespace-nowrap">{step.action} ←</Link>}
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       {/* SEO Score Card */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -202,7 +239,7 @@ export default function Dashboard() {
                   <p className="text-[10px] text-slate-500 font-vazirmatn-light">
                     {job.status === 'running' && 'در حال اجرا...'}
                     {job.status === 'completed' && `تکمیل شده ${job.completedAt ? formatRelativePersianTime(job.completedAt) : ''}`}
-                    {(job.status === 'failed' || job.status === 'dead_letter') && `انجام نشد: ${jobFailureReason(job.error)}`}
+                    {(job.status === 'failed' || job.status === 'dead_letter') && `انجام نشد: ${jobFailureReason(job.error, job.type)}`}
                     {job.status === 'pending' && 'در صف'}
                   </p>
                 </div>

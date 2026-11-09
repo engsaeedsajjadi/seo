@@ -40,7 +40,7 @@ export default function Reports(){
   if(!projectId)return <p>ابتدا از صفحهٔ پروژه‌ها یک سایت را انتخاب کنید.</p>;
   return <section dir="rtl" className="space-y-6 text-slate-300">
     <h1 className="text-2xl font-bold text-white">گزارش‌های سئو</h1>
-    <p>گزارش از داده‌های ذخیره‌شدهٔ همین پروژه تهیه می‌شود. برای تحویل به مشتری «صفحهٔ قابل چاپ» را انتخاب کنید؛ می‌توانید آن را از مرورگر به PDF تبدیل کنید.</p>
+    <p className="text-sm text-slate-400">گزارش از داده‌های ذخیره‌شدهٔ همین پروژه تهیه می‌شود. برای تحویل به مشتری «صفحهٔ قابل چاپ» را انتخاب کنید؛ می‌توانید آن را از مرورگر به PDF تبدیل کنید.</p>
     {error&&<p role="alert" className="text-red-400">{error}</p>}{notice&&<p role="status" className="text-green-400">{notice}</p>}
     <form onSubmit={generate} className="flex flex-wrap items-end gap-3 bg-surface-2 border border-surface-3/50 rounded-xl p-5">
       <label>قالب خروجی<select value={format} onChange={e=>setFormat(e.target.value)} className="block bg-surface border border-surface-3/50 px-3 py-2 rounded-lg mt-2 text-sm text-white">
@@ -49,7 +49,7 @@ export default function Reports(){
       <button disabled={busy} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg disabled:opacity-50">ساخت گزارش</button>
       <button type="button" onClick={()=>void load()} disabled={busy} className="px-4 py-2.5 text-sm text-slate-300 hover:text-white">تازه‌سازی</button>
     </form>
-    {loading?<p role="status">در حال دریافت گزارش‌ها…</p>:reports.length===0?<p>هنوز گزارشی ساخته نشده است.</p>:
+    {loading?<p role="status">در حال دریافت گزارش‌ها…</p>:reports.length===0?<p className="text-sm text-slate-400 bg-surface-2 border border-surface-3/50 rounded-xl p-8 text-center">هنوز گزارشی ساخته نشده است. قالب را انتخاب کنید و «ساخت گزارش» را بزنید.</p>:
       <div className="overflow-x-auto"><table className="w-full bg-surface-2 rounded-xl text-right">
         <thead><tr><th className="p-3">عنوان</th><th>قالب</th><th>وضعیت</th><th>تاریخ</th><th>دریافت</th></tr></thead>
         <tbody>{reports.map(report=><tr key={report.id} className="border-t border-surface-3">

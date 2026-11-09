@@ -132,12 +132,11 @@ export default function Rankings() {
 
   return (
     <div className="space-y-6">
-      {importPanel}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">پیگیری رتبه</h1>
+          <h1 className="text-2xl font-bold text-white">رتبه در گوگل</h1>
           <p className="text-sm text-slate-400 mt-1">
-            رتبه‌های <span className="text-brand-400">{state.currentProject?.domain}</span> 
+            جایگاه کلمات کلیدی شما در نتایج گوگل — سایت <span className="text-brand-400">{state.currentProject?.domain}</span> 
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -178,7 +177,7 @@ export default function Rankings() {
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-12 text-center">
           <BarChart3 className="w-12 h-12 text-slate-500 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-white mb-2">هنوز رتبه‌ای ثبت نشده است</h3>
-          <p className="text-sm text-slate-400 mb-4 max-w-lg mx-auto">{rankSourceReady ? 'کلمات کلیدی را اضافه کنید و بررسی رتبه را اجرا کنید.' : 'برای دیدن رتبه‌ها، سرچ کنسول گوگل را وصل کنید یا خروجی CSV آن را از کادر بالا وارد کنید.'}</p>
+          <p className="text-sm text-slate-400 mb-4 max-w-lg mx-auto">{rankSourceReady ? 'اول در صفحهٔ «کلمات کلیدی» چند کلمه اضافه کنید، بعد «بررسی رتبه» را بزنید.' : 'برای دیدن رتبه‌ها یکی از این سه راه لازم است: مدیر برنامه سرویس رتبه (KWRank) را فعال کند، سرچ کنسول گوگل را وصل کنید، یا خروجی CSV سرچ کنسول را از کادر پایین صفحه وارد کنید.'}</p>
           {rankSourceReady ? <button onClick={handleCheckNow} disabled={checking} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2 disabled:opacity-50">
             {checking ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
             بررسی رتبه
@@ -257,6 +256,7 @@ export default function Rankings() {
           </div>
         </>
       )}
+      {importPanel}
     </div>
   );
 }
