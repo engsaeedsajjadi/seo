@@ -44,6 +44,12 @@ export interface KwRankKeyword {
 /** KWRank country ids, from its countries-and-cities endpoint. */
 export const KWRANK_COUNTRY_IDS: Record<string, number> = { IR: 1, GB: 3, US: 5, DE: 7, AU: 8 };
 
+/**
+ * Keyword Planner competition comes as low/medium/high; it is stored on the keywords table's
+ * competition column (0–1) at the middle of each band, and shown again as the label.
+ */
+export const KWRANK_COMPETITION: Record<string, number> = { low: 0.17, medium: 0.5, high: 0.83 };
+
 export function kwRankDevice(projectDevice?: string | null): KwRankDevice {
   return projectDevice === 'mobile' ? 'android' : 'desktop';
 }

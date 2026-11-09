@@ -27,10 +27,17 @@ http.createServer(async (req, res) => {
       k.rank = k.keyword_name === 'تور کیش' ? 4 : null;
       k.link = k.rank ? 'https://www.kw-demo.rankforge.test/tours/kish' : null;
       k.rank_updated_at = '2026-11-07';
+      k.average_monthly_searches = k.keyword_name === 'تور کیش' ? 12100 : 880;
+      k.competition = k.keyword_name === 'تور کیش' ? 'high' : 'low';
     }
     return json(res, 200, { ok: true });
   }
   if (req.headers.authorization !== `Bearer ${TOKEN}`) return json(res, 401, { result: false, message: 'Unauthenticated.' });
+  if (p === '/keyword-suggester' && req.method === 'POST') {
+    const f = await form(req);
+    const seed = String(f.keyword || '');
+    return json(res, 200, { result: true, suggested_keywords: [`${seed} ارزان`, `قیمت ${seed}`, `${seed} ارزان`, 'تور کیش', ''], message: 'Data saved successfully.', status: 200 });
+  }
   if (p === '/domains' && req.method === 'GET') return json(res, 200, list('domains_list', domains));
   if (p === '/domains' && req.method === 'POST') {
     const f = await form(req); const id = nextId++;

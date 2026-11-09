@@ -103,6 +103,8 @@ services:
       DATAFORSEO_PASSWORD: ${DATAFORSEO_PASSWORD:-}
       SERPAPI_KEY: ${SERPAPI_KEY:-}
       KWRANK_CLIENT_ID: ${KWRANK_CLIENT_ID:-}
+      # Keyword research is called from the API while the user waits.
+      KWRANK_CLIENT_SECRET: ${KWRANK_CLIENT_SECRET:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY:-}

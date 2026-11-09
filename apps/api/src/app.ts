@@ -20,6 +20,7 @@ import { paymentService } from './services/payment.service.js';
 import { passwordRecoveryService } from './services/password-recovery.service.js';
 import { teamService } from './services/team.service.js';
 import { invitationService } from './services/invitation.service.js';
+import { kwRankSuggestConfigured, suggestKeywords, KwRankApiError } from './lib/kwrank.js';
 import { sessionService } from './services/session.service.js';
 import { checkDatabaseHealth } from './db/client.js';
 import { authMiddleware, AuthRequest, ApiError } from './middleware/auth.js';
@@ -980,6 +981,37 @@ export function createApp() {
     } catch (error) {
       next(error);
     }
+  });
+
+  // Keyword research: related searches from KWRank, marked when the project already tracks them.
+  // Each call also counts against the KWRank account, so one organization gets 30 an hour.
+  const researchCalls = new Map<string, number[]>();
+  app.post('/api/v1/projects/:projectId/keywords/research', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const { keyword } = z.object({ keyword: z.string().trim().min(2).max(100) }).parse(req.body || {});
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      if (!kwRankSuggestConfigured()) {
+        return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'Keyword research provider not configured' } });
+      }
+      const now = Date.now();
+      const recent = (researchCalls.get(req.organizationId!) ?? []).filter((t) => now - t < 3600_000);
+      if (recent.length >= 30) {
+        return res.status(429).json({ success: false, error: { code: 'RATE_LIMITED', message: 'Too many keyword research requests' } });
+      }
+      researchCalls.set(req.organizationId!, [...recent, now]);
+      let suggestions: string[];
+      try {
+        suggestions = await suggestKeywords(keyword);
+      } catch (error) {
+        console.error('[KWRank] keyword research failed:', error instanceof Error ? error.message : error);
+        const status = error instanceof KwRankApiError ? error.httpStatus : undefined;
+        return res.status(502).json({ success: false, error: { code: status === 401 || status === 403 ? 'PROVIDER_ACCOUNT' : 'PROVIDER_ERROR', message: 'Keyword research service failed' } });
+      }
+      const tracked = await query('SELECT normalized_keyword FROM keywords WHERE project_id = $1 AND organization_id = $2', [project.id, req.organizationId!]);
+      const have = new Set(tracked.rows.map((r: any) => r.normalized_keyword));
+      res.json({ success: true, data: { keyword, suggestions: suggestions.slice(0, 100).map((k) => ({ keyword: k, tracked: have.has(k.toLowerCase().trim()) })) } });
+    } catch (error) { next(error); }
   });
 
   app.post('/api/v1/projects/:projectId/keywords', authMiddleware, async (req: AuthRequest, res, next) => {

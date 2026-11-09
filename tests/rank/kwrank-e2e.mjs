@@ -32,6 +32,15 @@ check('the exact position is stored', kish?.position === 4 && kish?.url === 'htt
 check('the source is KWRank', kish?.provider === 'kwrank', kish);
 check('outside the top 100 has no position', hotel && hotel.position === null, hotel);
 
+const tracked = (await call('GET', `/projects/${pid}/keywords`)).data ?? [];
+const kishRow = tracked.find((k) => k.keyword === 'تور کیش');
+check('monthly searches come from KWRank', kishRow?.searchVolume === 12100, kishRow);
+check('competition is stored on the 0–1 scale', Number(kishRow?.competition) > 0.67 && Number(tracked.find((k) => k.keyword === 'هتل کیش')?.competition) < 0.34, tracked.map((k) => [k.keyword, k.competition]));
+const research = await call('POST', `/projects/${pid}/keywords/research`, { keyword: 'کیش' });
+const sug = research.data?.suggestions ?? [];
+check('keyword research returns related searches without duplicates or blanks', research.status === 200 && sug.length === 3 && sug.every((s) => s.keyword), research);
+check('research marks keywords the project already tracks', sug.find((s) => s.keyword === 'تور کیش')?.tracked === true && sug.find((s) => s.keyword === 'کیش ارزان')?.tracked === false, sug);
+check('research needs a real word', (await call('POST', `/projects/${pid}/keywords/research`, { keyword: 'x' })).status === 400);
 await call('POST', `/projects/${pid}/keywords`, { keywords: ['کیش ارزان'] });
 ({ job } = await runCheck(pid));
 check('a new keyword is added without duplicating the others', job?.result?.added === 1 && job.result?.ranked === 1 && job.result?.waiting === 1, job?.result);

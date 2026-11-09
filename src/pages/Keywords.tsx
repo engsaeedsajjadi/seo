@@ -3,7 +3,7 @@ import {
   Search, Plus, Download, ArrowUpDown, AlertCircle, ExternalLink, RefreshCw
 } from 'lucide-react';
 import { useAppState, formatNumber } from '../lib/store';
-import { api } from '../lib/api';
+import { api, authenticatedFetch } from '../lib/api';
 import { downloadCsv } from '../lib/csv';
 import type { Keyword } from '../lib/types';
 import { t } from '../i18n';
@@ -169,6 +169,13 @@ export default function Keywords() {
         </div>
       </div>
 
+      <KeywordResearch
+        projectId={state.currentProject!.id}
+        onAdded={(added) => { setKeywords((prev) => [...prev, ...added]); setAddSuccess(`${toPersianDigits(added.length)} کلمهٔ کلیدی اضافه شد. حجم جست‌وجو و رتبه بعد از اولین بررسی رتبه نمایش داده می‌شود.`); }}
+        country={addCountry}
+        language={addLanguage}
+      />
+
       {addSuccess && (
         <div className="bg-accent-green/20 border border-accent-green/30 rounded-xl p-4 text-sm text-accent-green">
           {addSuccess}
@@ -230,7 +237,7 @@ export default function Keywords() {
                 <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">هدف</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">حجم جست‌وجو</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">CPC</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">KD</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">سختی / رقابت</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">رتبه</th>
               </tr>
             </thead>
@@ -251,10 +258,10 @@ export default function Keywords() {
                     {keyword.cpc !== null ? `$${keyword.cpc.toFixed(2)}` : '—'}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {keyword.difficulty !== null ? <DifficultyBadge kd={keyword.difficulty} /> : '—'}
+                    {keyword.difficulty !== null ? <DifficultyBadge kd={keyword.difficulty} /> : competitionLabel((keyword as { competition?: number | null }).competition)}
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-medium text-white">
-                    {keyword.currentPosition ?? '—'}
+                    {keyword.currentPosition != null ? toPersianDigits(keyword.currentPosition) : '—'}
                   </td>
                 </tr>
               ))}
@@ -337,4 +344,98 @@ function IntentBadge({ intent }: { intent: string }) {
 function DifficultyBadge({ kd }: { kd: number }) {
   const color = kd >= 70 ? 'text-red-400' : kd >= 40 ? 'text-yellow-400' : 'text-green-400';
   return <span className={`text-sm font-medium ${color}`}>{kd}</span>;
+}
+
+/** Keyword Planner competition, stored as 0–1 (see the worker's KWRank sync). */
+function competitionLabel(value?: number | null) {
+  if (value === null || value === undefined) return '—';
+  const v = Number(value);
+  const [label, tone] = v < 0.34 ? ['رقابت کم', 'text-accent-green'] : v < 0.67 ? ['رقابت متوسط', 'text-accent-yellow'] : ['رقابت زیاد', 'text-accent-red'];
+  return <span className={`text-xs ${tone}`}>{label}</span>;
+}
+
+const RESEARCH_ERRORS: Record<string, string> = {
+  PROVIDER_NOT_CONFIGURED: 'سرویس تحقیق کلمهٔ کلیدی (KWRank) تنظیم نشده است.',
+  PROVIDER_ACCOUNT: 'حساب KWRank کلمه را نپذیرفت. اعتبار یا پلن API حساب را بررسی کنید.',
+  PROVIDER_ERROR: 'سرویس KWRank جواب نداد. چند دقیقه دیگر دوباره تلاش کنید.',
+  RATE_LIMITED: 'در یک ساعت گذشته جست‌وجوی زیادی انجام شده است. کمی بعد دوباره تلاش کنید.',
+  VALIDATION_ERROR: 'کلمه باید بین ۲ تا ۱۰۰ حرف باشد.',
+};
+
+/** Related searches from KWRank; chosen ones are added to the project and tracked from then on. */
+function KeywordResearch({ projectId, onAdded, country, language }: {
+  projectId: string; onAdded: (added: Keyword[]) => void; country: string; language: string;
+}) {
+  const [seed, setSeed] = useState('');
+  const [results, setResults] = useState<Array<{ keyword: string; tracked: boolean }> | null>(null);
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function search(e: React.FormEvent) {
+    e.preventDefault();
+    if (seed.trim().length < 2) return;
+    setBusy(true); setError(null); setResults(null); setChosen(new Set());
+    try {
+      const res = await authenticatedFetch(`${import.meta.env.VITE_API_URL || ''}/api/v1/projects/${encodeURIComponent(projectId)}/keywords/research`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keyword: seed.trim() }),
+      });
+      const json = await res.json();
+      if (json.success) setResults(json.data.suggestions);
+      else setError(RESEARCH_ERRORS[json.error?.code] ?? 'جست‌وجو انجام نشد. دوباره تلاش کنید.');
+    } catch {
+      setError('ارتباط با سرور برقرار نشد.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function add() {
+    if (chosen.size === 0) return;
+    setBusy(true); setError(null);
+    const result = await api.addKeywords(projectId, [...chosen], { country, language });
+    setBusy(false);
+    if (result.success) {
+      onAdded(result.data);
+      setResults((r) => r?.map((x) => (chosen.has(x.keyword) ? { ...x, tracked: true } : x)) ?? null);
+      setChosen(new Set());
+    } else {
+      setError(result.error.code === 'LIMIT_REACHED' ? 'سقف کلمات کلیدی پر شده است.' : 'افزودن انجام نشد. دوباره تلاش کنید.');
+    }
+  }
+  const toggle = (k: string) => setChosen((c) => { const n = new Set(c); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  return (
+    <section aria-labelledby="research-title" className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
+      <h2 id="research-title" className="text-sm font-semibold text-white">پیدا کردن کلمات کلیدی جدید</h2>
+      <p className="text-xs text-slate-400 mt-1">یک کلمهٔ پایه بنویسید تا جست‌وجوهای مرتبطی که کاربران در گوگل انجام می‌دهند پیدا شود. کلمه‌های انتخاب‌شده به پروژه اضافه می‌شوند و حجم جست‌وجوی ماهانه، میزان رقابت و رتبه‌شان بعد از اولین بررسی رتبه می‌آید.</p>
+      <form onSubmit={search} className="mt-3 flex flex-wrap gap-2">
+        <label htmlFor="research-seed" className="sr-only">کلمهٔ پایه</label>
+        <input id="research-seed" value={seed} onChange={(e) => setSeed(e.target.value)} minLength={2} maxLength={100} placeholder="مثلاً بازسازی آشپزخانه"
+          className="flex-1 min-w-[200px] px-3 py-2 bg-surface border border-surface-3/50 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-600/50" />
+        <button type="submit" disabled={busy || seed.trim().length < 2} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg disabled:opacity-50 flex items-center gap-2">
+          {busy && !results ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} جست‌وجو
+        </button>
+      </form>
+      {error && <p role="alert" className="mt-3 text-xs text-accent-red">{error}</p>}
+      {results && (results.length === 0 ? <p className="mt-3 text-xs text-slate-400">پیشنهادی پیدا نشد. کلمهٔ کلی‌تری امتحان کنید.</p> : (
+        <div className="mt-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <p className="text-xs text-slate-400">{toPersianDigits(results.length)} پیشنهاد · {toPersianDigits(chosen.size)} انتخاب‌شده</p>
+            <button type="button" onClick={add} disabled={busy || chosen.size === 0} className="px-3 py-1.5 bg-accent-green/90 hover:bg-accent-green text-white text-xs rounded-lg disabled:opacity-40 flex items-center gap-1.5">
+              <Plus className="w-3.5 h-3.5" /> افزودن به پروژه
+            </button>
+          </div>
+          <ul className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 max-h-80 overflow-y-auto">
+            {results.map((r) => (
+              <li key={r.keyword}>
+                <label className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${r.tracked ? 'text-slate-500' : 'text-slate-200 hover:bg-surface-3/40 cursor-pointer'}`}>
+                  <input type="checkbox" disabled={r.tracked} checked={r.tracked || chosen.has(r.keyword)} onChange={() => toggle(r.keyword)} />
+                  <span className="flex-1">{r.keyword}</span>
+                  {r.tracked && <span className="text-[10px] text-slate-500">در پروژه</span>}
+                </label>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </section>
+  );
 }

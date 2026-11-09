@@ -19,6 +19,9 @@ export interface Keyword {
   difficulty?: number | null;
   intent?: string | null;
   provider?: string;
+  currentPosition?: number | null;
+  previousPosition?: number | null;
+  lastCheckedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,6 +31,7 @@ export const keywordRepository = {
     const result = await query(
       `SELECT id, organization_id as "organizationId", project_id as "projectId", keyword, normalized_keyword as "normalizedKeyword",
               country, language, search_volume as "searchVolume", cpc, competition, difficulty, intent, provider,
+              current_position as "currentPosition", previous_position as "previousPosition", last_checked_at as "lastCheckedAt",
               created_at as "createdAt", updated_at as "updatedAt"
        FROM keywords WHERE id = $1 AND organization_id = $2`,
       [id, organizationId]
@@ -55,6 +59,7 @@ export const keywordRepository = {
     const result = await query(
       `SELECT id, organization_id as "organizationId", project_id as "projectId", keyword, normalized_keyword as "normalizedKeyword",
               country, language, search_volume as "searchVolume", cpc, competition, difficulty, intent, provider,
+              current_position as "currentPosition", previous_position as "previousPosition", last_checked_at as "lastCheckedAt",
               created_at as "createdAt", updated_at as "updatedAt"
        FROM keywords ${where}
        ORDER BY created_at DESC

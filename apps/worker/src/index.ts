@@ -57,7 +57,7 @@ import {
 import { SerpApiClient, SerpApiError, rankDepth } from './serpapi.js';
 import { runLocalIntlAudit } from './local-intl-audit.js';
 import { proposeRedirects } from './redirects.js';
-import { KwRankClient, KwRankError, KWRANK_COUNTRY_IDS, kwRankDevice, matchKwRankKeywords } from './kwrank.js';
+import { KwRankClient, KwRankError, KWRANK_COUNTRY_IDS, KWRANK_COMPETITION, kwRankDevice, matchKwRankKeywords } from './kwrank.js';
 
 // ============================================================
 // CONFIG — env-based, fail-fast
@@ -1707,7 +1707,19 @@ class Worker {
     let ranked = 0;
     let notRanked = 0;
     let waiting = 0;
+    let volumes = 0;
     for (const { keywordId, remote: r } of matched) {
+      // Monthly searches come from Google Keyword Planner through KWRank, often before the first rank check.
+      const competition = KWRANK_COMPETITION[r.competition ?? ''] ?? null;
+      if (r.averageMonthlySearches !== null || competition !== null) {
+        // The worker may write these columns but not read them, so only known values are set.
+        const sets: string[] = [];
+        const values: unknown[] = [keywordId];
+        if (r.averageMonthlySearches !== null) { values.push(r.averageMonthlySearches); sets.push(`search_volume = $${values.length}`, `volume = $${values.length}`); }
+        if (competition !== null) { values.push(competition); sets.push(`competition = $${values.length}`); }
+        await query(`UPDATE keywords SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $1`, values);
+        volumes++;
+      }
       if (!r.checked) { waiting++; continue; }
       await persistRankResult(query, {
         organizationId: job.organizationId, projectId: project.id, keywordId,
@@ -1722,7 +1734,7 @@ class Worker {
       domainId: domain.id, domainCreated: domain.created, added, ranked, notRanked, waiting, unmatched: missing.length,
       otherDevice: otherDevice.length, wantedDevice: device, listBefore: shapeBefore, listAfter: kwRank.lastListShape }));
     return {
-      keywordsChecked: ranked + notRanked, ranked, notRanked, waiting, added, unmatched: missing.length, otherDevice: otherDevice.length,
+      keywordsChecked: ranked + notRanked, ranked, notRanked, waiting, added, volumes, unmatched: missing.length, otherDevice: otherDevice.length,
       device: storedDevice, depth: 100, provider: 'kwrank', domainInactive: !domain.active,
     };
   }
