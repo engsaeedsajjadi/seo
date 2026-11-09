@@ -50,14 +50,16 @@ export default function SiteAudit() {
       return;
     }
     try {
-      const result = await api.getAuditFindings(projectId);
+      // The score lives on the project; a crawl that finished elsewhere (schedule, API) changes it.
+      const [result, fresh] = await Promise.all([api.getAuditFindings(projectId), api.getProject(projectId)]);
       if (result.success) setFindings(result.data);
+      if (fresh.success) setCurrentProject(fresh.data);
     } catch (error) {
       console.error('Failed to load audit findings:', error);
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, setCurrentProject]);
 
   useEffect(() => { void loadFindings(); }, [loadFindings]);
 
