@@ -56,6 +56,7 @@ import {
 } from './ai.js';
 import { SerpApiClient, SerpApiError, rankDepth } from './serpapi.js';
 import { runLocalIntlAudit } from './local-intl-audit.js';
+import { proposeRedirects } from './redirects.js';
 import { KwRankClient, KwRankError, KWRANK_COUNTRY_IDS, kwRankDevice, matchKwRankKeywords } from './kwrank.js';
 
 // ============================================================
@@ -2212,7 +2213,6 @@ class Worker {
     if (!job.projectId) throw new JobError('Project missing for fix suggestions — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
     const aiProviders = createWorkerAiProviders();
     let provider = pickAiProvider(aiProviders, job.payload?.provider);
-    if (!provider) throw new JobError(AI_NOT_CONFIGURED_MESSAGE, 'PROVIDER_NOT_CONFIGURED', false);
 
     const project = (await query(
       `SELECT id, domain, normalized_domain, language FROM projects WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
@@ -2238,8 +2238,31 @@ class Worker {
        AND status IN ('proposed', 'approved', 'applied', 'rollback_requested')`,
       [project.id, job.organizationId]
     )).rows;
-    const candidates = selectFixCandidates(pages, new Set(open.map((r: any) => `${r.kind}|${r.page_url}`)));
-    if (candidates.length === 0) return { created: 0, candidates: 0 };
+    const openKeys = new Set<string>(open.map((r: any) => `${r.kind}|${r.page_url}`));
+
+    // Redirects need no AI: broken internal addresses from the same crawl.
+    const broken = (await query(
+      `SELECT DISTINCT url FROM crawl_pages WHERE crawl_run_id = $1 AND organization_id = $2 AND status_code IN (404, 410) ORDER BY url LIMIT 200`,
+      [run.id, job.organizationId]
+    )).rows.map((r: any) => r.url as string);
+    let redirects = 0;
+    for (const r of proposeRedirects(broken.filter((u) => !openKeys.has(`redirect|${u}`)), pages.map((p: any) => p.url), project.normalized_domain || project.domain)) {
+      try {
+        await query(
+          `INSERT INTO site_fixes (organization_id, project_id, kind, page_url, current_value, proposed_value, source)
+           SELECT $1, $2, 'redirect', $3, '', $4, 'rule'
+           WHERE NOT EXISTS (SELECT 1 FROM site_fixes WHERE project_id = $2 AND organization_id = $1 AND kind = 'redirect'
+             AND page_url = $3 AND status IN ('rejected', 'rolled_back'))`,
+          [job.organizationId, project.id, r.from, r.to]
+        );
+        redirects++;
+      } catch (error: any) {
+        if (error?.code !== '23505') throw error;
+      }
+    }
+
+    const candidates = selectFixCandidates(pages, openKeys);
+    if (candidates.length === 0 || !provider) return { created: redirects, redirects, candidates: candidates.length, ai: !!provider };
     if (signal.aborted) throw new JobError('Fix suggestions aborted', 'TIMEOUT', true);
 
     let ai;
@@ -2274,8 +2297,8 @@ class Worker {
       inputTokens: ai.inputTokens, outputTokens: ai.outputTokens, estimatedCostUsd: ai.estimatedCostUsd,
       operation: 'fix_suggestions', idempotencyKey: `fixes_${job.id}`, referenceType: 'project', referenceId: project.id,
     });
-    console.log(JSON.stringify({ level: 'info', msg: 'Fix suggestions created', job_id: job.id, created, candidates: candidates.length, prompt: FIX_PROMPT_VERSION }));
-    return { created, candidates: candidates.length };
+    console.log(JSON.stringify({ level: 'info', msg: 'Fix suggestions created', job_id: job.id, created, redirects, candidates: candidates.length, prompt: FIX_PROMPT_VERSION }));
+    return { created: created + redirects, redirects, candidates: candidates.length, ai: true };
   }
 
   private async handleContentBrief(job: Job, signal: AbortSignal): Promise<any> {

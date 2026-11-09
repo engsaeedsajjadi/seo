@@ -1917,7 +1917,55 @@ export function createApp() {
   // Customers approve every change; the plugin only applies approved fixes and reports back.
   const FIX_COLUMNS = `id, kind, page_url AS "pageUrl", target, current_value AS "currentValue", proposed_value AS "proposedValue",
     status, source, previous_value AS "previousValue", error, applied_at AS "appliedAt", created_at AS "createdAt", updated_at AS "updatedAt"`;
-  const FIX_LENGTH: Record<string, number> = { meta_title: 65, meta_description: 165, image_alt: 150 };
+  const FIX_LENGTH: Record<string, number> = { meta_title: 65, meta_description: 165, image_alt: 150, redirect: 2048, local_business_schema: 4000 };
+
+  // schema.org types offered for a local business; GeneralContractor and HomeAndConstructionBusiness fit
+  // interior design, renovation and building companies.
+  const LOCAL_BUSINESS_TYPES = ['LocalBusiness', 'GeneralContractor', 'HomeAndConstructionBusiness', 'ProfessionalService',
+    'Store', 'TravelAgency', 'RealEstateAgent', 'Restaurant', 'MedicalBusiness', 'AutomotiveBusiness', 'LegalService'] as const;
+  const plainText = (max: number) => z.string().trim().max(max).refine((v) => !/[<>]/.test(v), 'No markup');
+  const localBusinessSchema = z.object({
+    type: z.enum(LOCAL_BUSINESS_TYPES),
+    name: plainText(120).pipe(z.string().min(2)),
+    telephone: z.string().trim().min(5).max(40).regex(/^[+0-9۰-۹()\-\s]+$/),
+    streetAddress: plainText(200).pipe(z.string().min(3)),
+    city: plainText(80).pipe(z.string().min(2)),
+    region: plainText(80).optional(),
+    postalCode: z.string().trim().max(20).regex(/^[0-9۰-۹\-\s]*$/).optional(),
+    country: z.string().trim().length(2).toUpperCase(),
+    url: z.string().url().max(300).optional(),
+    openingHours: plainText(200).optional(),
+    priceRange: plainText(20).optional(),
+  });
+
+  /** The JSON-LD the plugin prints; built here so the plugin never interprets free text. */
+  function localBusinessJsonLd(input: z.infer<typeof localBusinessSchema>, siteUrl: string): string {
+    return JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': input.type,
+      name: input.name,
+      url: input.url || siteUrl,
+      telephone: input.telephone,
+      address: {
+        '@type': 'PostalAddress',
+        streetAddress: input.streetAddress,
+        addressLocality: input.city,
+        ...(input.region ? { addressRegion: input.region } : {}),
+        ...(input.postalCode ? { postalCode: input.postalCode } : {}),
+        addressCountry: input.country,
+      },
+      ...(input.openingHours ? { openingHours: input.openingHours } : {}),
+      ...(input.priceRange ? { priceRange: input.priceRange } : {}),
+    });
+  }
+
+  /** A redirect may only point inside the project's own site. */
+  function sameSite(url: string, domain: string): boolean {
+    try {
+      const u = new URL(url);
+      return ['http:', 'https:'].includes(u.protocol) && u.host.replace(/^www\./, '').toLowerCase() === domain.replace(/^www\./, '').toLowerCase();
+    } catch { return false; }
+  }
   const PLUGIN_VERSION_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+$/;
 
   function rejectApiKey(req: AuthRequest) {
@@ -1943,9 +1991,7 @@ export function createApp() {
       rejectApiKey(req);
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
-      if (!(config.providers.openai || config.providers.anthropic || config.providers.googleAi)) {
-        return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'AI provider not configured' } });
-      }
+      // Without AI only redirects are proposed; titles and descriptions need it.
       const crawl = await query(`SELECT 1 FROM crawl_runs WHERE project_id = $1 AND organization_id = $2 AND status = 'completed' LIMIT 1`,
         [project.id, req.organizationId!]);
       if (!crawl.rows.length) return res.status(400).json({ success: false, error: { code: 'CRAWL_REQUIRED', message: 'Run a crawl first' } });
@@ -1953,7 +1999,9 @@ export function createApp() {
       if (running.items.some((job) => job.status === 'pending' || job.status === 'running')) {
         return res.status(409).json({ success: false, error: { code: 'ALREADY_RUNNING', message: 'Suggestions are already being written' } });
       }
-      await remainingMonthlyQuota(req.organizationId!, 'aiOperations', USED_AI_OPERATIONS);
+      if (config.providers.openai || config.providers.anthropic || config.providers.googleAi) {
+        await remainingMonthlyQuota(req.organizationId!, 'aiOperations', USED_AI_OPERATIONS);
+      }
       const job = await jobRepository.create({
         organizationId: req.organizationId!, projectId: project.id, type: 'FIX_SUGGESTIONS',
         payload: { projectId: project.id }, idempotencyKey: `fixes_${project.id}_${Date.now()}`,
@@ -1962,14 +2010,41 @@ export function createApp() {
     } catch (error) { next(error); }
   });
 
+  // Business details become a LocalBusiness schema proposal for the home page. A newer proposal
+  // replaces the open one; an applied schema stays on the site until the new one is approved.
+  app.post('/api/v1/projects/:projectId/fixes/local-business', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      rejectApiKey(req);
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      const input = localBusinessSchema.parse(req.body || {});
+      const home = `https://${project.domain.replace(/\/+$/, '')}/`;
+      const value = localBusinessJsonLd(input, home);
+      const open = (await query(`SELECT id, status, proposed_value FROM site_fixes WHERE project_id = $1 AND organization_id = $2
+        AND kind = 'local_business_schema' AND status IN ('proposed', 'approved', 'applied', 'rollback_requested')`,
+        [project.id, req.organizationId!])).rows[0];
+      if (open?.status === 'approved' || open?.status === 'rollback_requested') {
+        return res.status(409).json({ success: false, error: { code: 'FIX_CONFLICT', message: 'The plugin has not finished the last change yet' } });
+      }
+      const saved = open
+        ? await query(`UPDATE site_fixes SET proposed_value = $4, status = 'proposed', error = NULL,
+            current_value = CASE WHEN status = 'applied' THEN proposed_value ELSE current_value END, updated_at = NOW()
+            WHERE id = $1 AND project_id = $2 AND organization_id = $3 RETURNING ${FIX_COLUMNS}`, [open.id, project.id, req.organizationId!, value])
+        : await query(`INSERT INTO site_fixes (organization_id, project_id, kind, page_url, current_value, proposed_value, source)
+            VALUES ($1, $2, 'local_business_schema', $3, '', $4, 'rule') RETURNING ${FIX_COLUMNS}`, [req.organizationId!, project.id, home, value]);
+      res.status(open ? 200 : 201).json({ success: true, data: saved.rows[0] });
+    } catch (error) { next(error); }
+  });
+
   app.patch('/api/v1/projects/:projectId/fixes/:fixId', authMiddleware, async (req: AuthRequest, res, next) => {
     try {
       rejectApiKey(req);
       const body = z.object({
         action: z.enum(['approve', 'reject', 'rollback', 'reopen']),
-        proposedValue: z.string().trim().min(1).max(500).optional(),
+        proposedValue: z.string().trim().min(1).max(2048).optional(),
       }).parse(req.body || {});
-      const fix = (await query(`SELECT id, kind, status FROM site_fixes WHERE id = $1 AND project_id = $2 AND organization_id = $3`,
+      const fix = (await query(`SELECT f.id, f.kind, f.status, p.domain FROM site_fixes f JOIN projects p ON p.id = f.project_id
+        WHERE f.id = $1 AND f.project_id = $2 AND f.organization_id = $3`,
         [req.params.fixId, req.params.projectId, req.organizationId!])).rows[0];
       if (!fix) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Fix not found' } });
       const allowed: Record<string, { from: string[]; to: string }> = {
@@ -1982,7 +2057,9 @@ export function createApp() {
       if (!rule.from.includes(fix.status)) {
         return res.status(409).json({ success: false, error: { code: 'INVALID_STATE', message: `Cannot ${body.action} a fix that is ${fix.status}` } });
       }
-      if (body.proposedValue !== undefined && (body.action !== 'approve' || body.proposedValue.length > FIX_LENGTH[fix.kind] || /[<>]/.test(body.proposedValue))) {
+      const valueOk = (v: string) => fix.kind === 'redirect' ? sameSite(v, fix.domain)
+        : fix.kind !== 'local_business_schema' && v.length <= FIX_LENGTH[fix.kind] && !/[<>]/.test(v);
+      if (body.proposedValue !== undefined && (body.action !== 'approve' || !valueOk(body.proposedValue))) {
         return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid value' } });
       }
       const updated = await query(
@@ -2019,7 +2096,7 @@ export function createApp() {
       const body = z.object({ results: z.array(z.object({
         id: z.string().uuid(),
         status: z.enum(['applied', 'failed', 'rolled_back']),
-        previousValue: z.string().max(1000).nullable().optional(),
+        previousValue: z.string().max(4000).nullable().optional(),
         error: z.string().max(500).optional(),
       })).max(100) }).parse(req.body || {});
       let updated = 0;

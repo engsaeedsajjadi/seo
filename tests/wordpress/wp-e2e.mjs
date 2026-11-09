@@ -11,7 +11,7 @@ const fixes = async () => (await call('GET', `/projects/${ctx.pid}/fixes`)).fixe
 
 let r = sync('reset-scan');
 check('nothing is applied before approval', /^0 تغییر/.test(r.message), r);
-check('the plugin check-in shows in the app', (await call('GET', `/projects/${ctx.pid}/fixes`)).plugin?.version === '1.0.0');
+check('the plugin check-in shows in the app', (await call('GET', `/projects/${ctx.pid}/fixes`)).plugin?.version === '1.1.0');
 let images = (await fixes()).filter((f) => f.kind === 'image_alt');
 check('images without alt are proposed from the plugin', images.length === 2, images);
 const beach = images.find((f) => /beach-sunset/.test(f.target));
@@ -48,6 +48,32 @@ all = await fixes();
 check('rollbacks are reported to the app', all.find((f) => f.id === beach.id).status === 'rolled_back' && byKind('meta_title').status === 'rolled_back');
 
 check('a rolled-back image is not proposed again', sync('reset-scan').message.indexOf('تصویر') === -1);
+// Redirect and LocalBusiness schema.
+const DB = process.env.DATABASE_URL || 'postgresql://rankforge:devpass@localhost:5432/rankforge';
+execFileSync('psql', ['-q', DB, '-c', `INSERT INTO site_fixes (organization_id, project_id, kind, page_url, current_value, proposed_value, source)
+  VALUES ('${ctx.org}', '${ctx.pid}', 'redirect', 'http://localhost:8088/old-tours/', '', 'http://localhost:8088/tours/', 'rule')`]);
+const lb = await call('POST', `/projects/${ctx.pid}/fixes/local-business`, { type: 'GeneralContractor', name: 'سازه‌گستر کیش', telephone: '+98 76 4444 1234', streetAddress: 'بلوار ساحلی ۱۰', city: 'کیش', country: 'IR' });
+check('business details are accepted', !!lb?.id, lb);
+for (const f of (await fixes()).filter((f) => f.status === 'proposed' && (f.kind === 'redirect' || f.kind === 'local_business_schema'))) await call('PATCH', `/projects/${ctx.pid}/fixes/${f.id}`, { action: 'approve' });
+const before404 = await fetch('http://127.0.0.1:8088/old-tours/', { redirect: 'manual' });
+check('the broken address is a 404 before the redirect', before404.status === 404, before404.status);
+r = sync();
+check('redirect and schema are applied', /^2 تغییر انجام شد، 0 ناموفق/.test(r.message), r.message);
+const moved = await fetch('http://127.0.0.1:8088/old-tours/', { redirect: 'manual' });
+check('the broken address now answers 301 to the right page', moved.status === 301 && moved.headers.get('location') === 'http://localhost:8088/tours/', { status: moved.status, location: moved.headers.get('location') });
+check('a working page is not redirected', (await fetch('http://127.0.0.1:8088/tours/', { redirect: 'manual' })).status === 200);
+const home = await (await fetch('http://127.0.0.1:8088/')).text();
+const ld = /<script type="application\/ld\+json">(.*?)<\/script>/s.exec(home)?.[1];
+const schema = (() => { try { return JSON.parse(ld ?? ''); } catch { return null; } })();
+check('the home page carries the LocalBusiness schema', schema?.['@type'] === 'GeneralContractor' && schema?.name === 'سازه‌گستر کیش' && schema?.address?.addressLocality === 'کیش', ld?.slice(0, 200));
+check('the schema is not on other pages', !(await page()).includes('GeneralContractor'));
+all = await fixes();
+for (const f of all.filter((f) => (f.kind === 'redirect' || f.kind === 'local_business_schema') && f.status === 'applied')) await call('PATCH', `/projects/${ctx.pid}/fixes/${f.id}`, { action: 'rollback' });
+r = sync();
+check('rolling back removes the redirect', (await fetch('http://127.0.0.1:8088/old-tours/', { redirect: 'manual' })).status === 404);
+check('rolling back removes the schema', !(await (await fetch('http://127.0.0.1:8088/')).text()).includes('application/ld+json'));
+check('both rollbacks are reported', (await fixes()).filter((f) => (f.kind === 'redirect' || f.kind === 'local_business_schema') && f.status === 'rolled_back').length === 2);
+
 check('a read-only key is refused with a clear message', /read و write/.test(sync('', ctx.roKey).message));
 check('a wrong key is refused with a clear message', /نامعتبر/.test(sync('', 'rf_' + 'x'.repeat(40)).message));
 sync('', ctx.key);

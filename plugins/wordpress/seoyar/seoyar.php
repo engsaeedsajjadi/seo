@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       سئویار
  * Plugin URI:        https://github.com/engsaeedsajjadi/seo
- * Description:       اصلاح‌هایی را که در سئویار تأیید کرده‌اید روی سایت اعمال می‌کند: عنوان صفحه، توضیحات متا و متن جایگزین تصاویر. هر تغییر قابل بازگشت است.
- * Version:           1.0.0
+ * Description:       اصلاح‌هایی را که در سئویار تأیید کرده‌اید روی سایت اعمال می‌کند: عنوان صفحه، توضیحات متا، متن جایگزین تصاویر، اطلاعات کسب‌وکار محلی (Schema) و ریدایرکت ۳۰۱. هر تغییر قابل بازگشت است.
+ * Version:           1.1.0
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            SeoYar
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('SEOYAR_VERSION', '1.0.0');
+define('SEOYAR_VERSION', '1.1.0');
 define('SEOYAR_CRON_HOOK', 'seoyar_sync_event');
 
 // ---------------------------------------------------------------- settings
@@ -257,9 +257,15 @@ function seoyar_handle_fix($fix)
     $id = isset($fix['id']) ? (string) $fix['id'] : '';
     $kind = isset($fix['kind']) ? (string) $fix['kind'] : '';
     $rollback = isset($fix['status']) && $fix['status'] === 'rollback_requested';
-    $value = $rollback ? (string) (isset($fix['previousValue']) ? $fix['previousValue'] : '') : sanitize_text_field((string) (isset($fix['value']) ? $fix['value'] : ''));
+    $raw = $rollback ? (string) (isset($fix['previousValue']) ? $fix['previousValue'] : '') : (string) (isset($fix['value']) ? $fix['value'] : '');
+    // Addresses and JSON are validated by their own handlers; text fields lose any markup here.
+    $value = in_array($kind, array('redirect', 'local_business_schema'), true) ? $raw : sanitize_text_field($raw);
     try {
-        if ($kind === 'image_alt') {
+        if ($kind === 'redirect') {
+            $previous = seoyar_apply_redirect((string) $fix['pageUrl'], $value);
+        } elseif ($kind === 'local_business_schema') {
+            $previous = seoyar_apply_local_business($value);
+        } elseif ($kind === 'image_alt') {
             $previous = seoyar_apply_image_alt((string) $fix['target'], (string) $fix['pageUrl'], sanitize_text_field($value), $rollback ? (string) $fix['value'] : null);
         } elseif ($kind === 'meta_title' || $kind === 'meta_description') {
             $previous = seoyar_apply_meta((string) $fix['pageUrl'], $kind, sanitize_text_field($value));
@@ -268,11 +274,104 @@ function seoyar_handle_fix($fix)
         }
         return $rollback
             ? array('id' => $id, 'status' => 'rolled_back')
-            : array('id' => $id, 'status' => 'applied', 'previousValue' => mb_substr((string) $previous, 0, 1000));
+            : array('id' => $id, 'status' => 'applied', 'previousValue' => mb_substr((string) $previous, 0, 4000));
     } catch (Exception $e) {
         return array('id' => $id, 'status' => 'failed', 'error' => mb_substr($e->getMessage(), 0, 500));
     }
 }
+
+// ---------------------------------------------------------------- redirects
+
+/** Path of an address on this site, decoded and without a trailing slash, as the lookup key. */
+function seoyar_redirect_key($url)
+{
+    $path = (string) wp_parse_url($url, PHP_URL_PATH);
+    $path = '/' . trim(rawurldecode($path), '/');
+    $query = (string) wp_parse_url($url, PHP_URL_QUERY);
+    return $query === '' ? $path : $path . '?' . $query;
+}
+
+function seoyar_same_site($url)
+{
+    $host = strtolower((string) wp_parse_url($url, PHP_URL_HOST));
+    $home = strtolower((string) wp_parse_url(home_url('/'), PHP_URL_HOST));
+    return $host !== '' && preg_replace('/^www\./', '', $host) === preg_replace('/^www\./', '', $home);
+}
+
+/** Adds, changes or (with an empty target) removes a 301; returns the target it replaced. */
+function seoyar_apply_redirect($from, $to)
+{
+    if (!seoyar_same_site($from)) {
+        throw new Exception('نشانی مبدأ متعلق به این سایت نیست.');
+    }
+    $scheme = strtolower((string) wp_parse_url($to, PHP_URL_SCHEME));
+    if ($to !== '' && (!in_array($scheme, array('http', 'https'), true) || !seoyar_same_site($to))) {
+        throw new Exception('ریدایرکت فقط به صفحه‌ای از همین سایت مجاز است.');
+    }
+    $key = seoyar_redirect_key($from);
+    if ($to !== '' && $key === seoyar_redirect_key($to)) {
+        throw new Exception('مبدأ و مقصد ریدایرکت یکی است.');
+    }
+    $redirects = get_option('seoyar_redirects', array());
+    $redirects = is_array($redirects) ? $redirects : array();
+    $previous = isset($redirects[$key]) ? (string) $redirects[$key] : '';
+    if ($to === '') {
+        unset($redirects[$key]);
+    } else {
+        $redirects[$key] = esc_url_raw($to);
+    }
+    update_option('seoyar_redirects', $redirects, true);
+    return $previous;
+}
+
+// Only addresses that would otherwise be "not found" are redirected, so a page that comes back
+// is shown again instead of being sent elsewhere.
+add_action('template_redirect', function () {
+    if (!is_404()) {
+        return;
+    }
+    $redirects = get_option('seoyar_redirects', array());
+    if (!is_array($redirects) || !$redirects) {
+        return;
+    }
+    $request = isset($_SERVER['REQUEST_URI']) ? (string) wp_unslash($_SERVER['REQUEST_URI']) : '';
+    $key = seoyar_redirect_key(home_url($request));
+    $plain = seoyar_redirect_key(home_url((string) strtok($request, '?')));
+    $target = isset($redirects[$key]) ? $redirects[$key] : (isset($redirects[$plain]) ? $redirects[$plain] : '');
+    if ($target !== '' && seoyar_same_site($target)) {
+        wp_safe_redirect($target, 301, 'SeoYar');
+        exit;
+    }
+}, 1);
+
+// ---------------------------------------------------------------- local business schema
+
+/** Stores the LocalBusiness JSON-LD built by SeoYar (an empty value removes it); returns the old one. */
+function seoyar_apply_local_business($json)
+{
+    $previous = (string) get_option('seoyar_local_business', '');
+    if ($json === '') {
+        delete_option('seoyar_local_business');
+        return $previous;
+    }
+    $data = json_decode($json, true);
+    if (!is_array($data) || empty($data['@type']) || empty($data['name']) || strpos($json, '<') !== false) {
+        throw new Exception('اطلاعات کسب‌وکار معتبر نیست.');
+    }
+    update_option('seoyar_local_business', wp_json_encode($data), true);
+    return $previous;
+}
+
+add_action('wp_head', function () {
+    if (!is_front_page()) {
+        return;
+    }
+    $data = json_decode((string) get_option('seoyar_local_business', ''), true);
+    if (is_array($data)) {
+        // wp_json_encode escapes "/" and the flags keep "<" out of the script element.
+        echo '<script type="application/ld+json">' . wp_json_encode($data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) . "</script>\n";
+    }
+}, 2);
 
 /** The post behind a public address, or 'home' for a home page that lists posts. */
 function seoyar_find_post($url)

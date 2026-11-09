@@ -232,6 +232,23 @@ try {
   const image = { pageUrl: 'https://fixture.rankforge.test/tours', src: 'https://fixture.rankforge.test/a.jpg', proposedValue: 'City tour bus' };
   check('the plugin proposes image alt text', (await call('POST', `/projects/${pid}/wp/images`, pluginKey, { images: [image] })).data?.created === 1);
   check('the same image is proposed once', (await call('POST', `/projects/${pid}/wp/images`, pluginKey, { images: [image] })).data?.created === 0);
+  const redirectFix = ((await call('GET', `/projects/${pid}/fixes`, T)).data?.fixes ?? []).find((f: any) => f.kind === 'redirect');
+  check('a broken internal address gets a redirect proposal', redirectFix?.pageUrl === 'https://fixture.rankforge.test/broken-link' && /^https:\/\/fixture\.rankforge\.test(\/|$)/.test(redirectFix?.proposedValue ?? ''), redirectFix);
+  check('a redirect to another site is refused', (await call('PATCH', `/projects/${pid}/fixes/${redirectFix?.id}`, T, { action: 'approve', proposedValue: 'https://evil.example/' })).status === 400);
+  check('a redirect inside the site can be approved', (await call('PATCH', `/projects/${pid}/fixes/${redirectFix?.id}`, T, { action: 'approve', proposedValue: 'https://fixture.rankforge.test/about' })).data?.status === 'approved');
+  const business = { type: 'GeneralContractor', name: 'Fixture Builders', telephone: '+98 21 8888 1234', streetAddress: 'Valiasr 10', city: 'Tehran', country: 'ir' };
+  check('business details need a phone', (await call('POST', `/projects/${pid}/fixes/local-business`, T, { ...business, telephone: undefined })).status === 400);
+  check('business details refuse markup', (await call('POST', `/projects/${pid}/fixes/local-business`, T, { ...business, name: '<b>x</b>' })).status === 400);
+  check('the plugin key cannot set business details', (await call('POST', `/projects/${pid}/fixes/local-business`, pluginKey, business)).status === 403);
+  const lb = await call('POST', `/projects/${pid}/fixes/local-business`, T, business);
+  const lbValue = (() => { try { return JSON.parse(lb.data?.proposedValue ?? ''); } catch { return null; } })();
+  check('business details become a LocalBusiness proposal', lb.status === 201 && lbValue?.['@type'] === 'GeneralContractor' && lbValue?.address?.addressCountry === 'IR' && lbValue?.url === 'https://fixture.rankforge.test/', lb.json);
+  const lb2 = await call('POST', `/projects/${pid}/fixes/local-business`, T, { ...business, name: 'Fixture Builders Co' });
+  check('new details replace the open proposal', lb2.status === 200 && lb2.data?.id === lb.data?.id && JSON.parse(lb2.data.proposedValue).name === 'Fixture Builders Co', lb2.json);
+  check('the schema cannot be edited as raw text', (await call('PATCH', `/projects/${pid}/fixes/${lb.data?.id}`, T, { action: 'approve', proposedValue: '{"@type":"X"}' })).status === 400);
+  check('the schema can be approved', (await call('PATCH', `/projects/${pid}/fixes/${lb.data?.id}`, T, { action: 'approve' })).data?.status === 'approved');
+  const pendingKinds = ((await call('GET', `/projects/${pid}/wp/pending`, pluginKey)).data?.fixes ?? []).map((f: any) => f.kind);
+  check('the plugin receives the redirect and the schema', pendingKinds.includes('redirect') && pendingKinds.includes('local_business_schema'), pendingKinds);
 
   console.log('--- Quotas');
   const orgId = a.data.user.organizationId as string;

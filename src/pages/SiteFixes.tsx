@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Wand2, Download, Copy, Check, CheckCircle2, XCircle, Undo2, RotateCcw, RefreshCw,
-  AlertCircle, Plug, Sparkles, FileText, Image as ImageIcon, Type,
+  AlertCircle, Plug, Sparkles, FileText, Image as ImageIcon, Type, MapPin, CornerDownLeft,
 } from 'lucide-react';
 import { authenticatedFetch } from '../lib/api';
 import { useAppState } from '../lib/store';
@@ -11,7 +11,7 @@ import { toPersianDigits } from '../lib/persian';
 
 interface SiteFix {
   id: string;
-  kind: 'meta_title' | 'meta_description' | 'image_alt';
+  kind: 'meta_title' | 'meta_description' | 'image_alt' | 'local_business_schema' | 'redirect';
   pageUrl: string;
   target: string | null;
   currentValue: string | null;
@@ -28,12 +28,43 @@ interface PluginInfo { seenAt: string | null; version: string | null }
 
 const API = `${import.meta.env.VITE_API_URL || ''}/api/v1`;
 // Same limits as the API.
-const LIMITS: Record<SiteFix['kind'], number> = { meta_title: 65, meta_description: 165, image_alt: 150 };
+const LIMITS: Record<SiteFix['kind'], number> = { meta_title: 65, meta_description: 165, image_alt: 150, redirect: 2048, local_business_schema: 4000 };
 const KIND: Record<SiteFix['kind'], { label: string; icon: typeof Type }> = {
   meta_title: { label: 'عنوان صفحه', icon: Type },
   meta_description: { label: 'توضیحات متا', icon: FileText },
   image_alt: { label: 'متن جایگزین تصویر', icon: ImageIcon },
+  redirect: { label: 'ریدایرکت ۳۰۱ برای صفحهٔ خراب', icon: CornerDownLeft },
+  local_business_schema: { label: 'اطلاعات کسب‌وکار محلی (Schema)', icon: MapPin },
 };
+
+function sameHost(a: string, b: string): boolean {
+  try {
+    const x = new URL(a);
+    const y = new URL(b);
+    return ['http:', 'https:'].includes(x.protocol) && x.host.replace(/^www\./, '') === y.host.replace(/^www\./, '');
+  } catch { return false; }
+}
+
+/** Whether a value can be approved: redirects must stay on the same site; schema comes only from the form. */
+function valueValid(fix: SiteFix, value: string): boolean {
+  const v = value.trim();
+  if (fix.kind === 'redirect') return sameHost(v, fix.pageUrl) && v !== fix.pageUrl;
+  if (fix.kind === 'local_business_schema') return v === fix.proposedValue;
+  return v.length >= 1 && v.length <= LIMITS[fix.kind] && !/[<>]/.test(v);
+}
+
+/** One readable line for a LocalBusiness JSON-LD value. */
+function schemaSummary(json: string | null): string {
+  if (!json) return '';
+  try {
+    const d = JSON.parse(json);
+    return [d.name, d.telephone, [d.address?.streetAddress, d.address?.addressLocality].filter(Boolean).join('، ')].filter(Boolean).join(' · ');
+  } catch { return json; }
+}
+
+function displayValue(fix: SiteFix, value: string | null): string {
+  return fix.kind === 'local_business_schema' ? schemaSummary(value) : (value ?? '');
+}
 const STATUS: Record<SiteFix['status'], { label: string; tone: string }> = {
   proposed: { label: 'منتظر تأیید شما', tone: 'bg-brand-500/15 text-brand-300' },
   approved: { label: 'در صف اعمال روی سایت', tone: 'bg-accent-yellow/15 text-accent-yellow' },
@@ -174,8 +205,7 @@ export default function SiteFixes() {
 
   async function approveAll() {
     for (const fix of fixes.filter((f) => f.status === 'proposed')) {
-      const value = (drafts[fix.id] ?? fix.proposedValue).trim();
-      if (value.length < 1 || value.length > LIMITS[fix.kind] || /[<>]/.test(value)) continue;
+      if (!valueValid(fix, drafts[fix.id] ?? fix.proposedValue)) continue;
       await act(fix, 'approve');
     }
   }
@@ -210,15 +240,14 @@ export default function SiteFixes() {
         <div>
           <h1 className="text-2xl font-bold text-white">اصلاح خودکار سایت</h1>
           <p className="text-sm text-slate-400 mt-1 max-w-2xl">
-            عنوان صفحه‌ها، توضیحات متا و متن جایگزین تصاویر را بررسی و تأیید کنید تا افزونهٔ وردپرس سئویار آن‌ها را روی سایت بنویسد.
+            عنوان صفحه‌ها، توضیحات متا، متن جایگزین تصاویر، اطلاعات کسب‌وکار و ریدایرکت صفحه‌های خراب را بررسی و تأیید کنید تا افزونهٔ وردپرس سئویار آن‌ها را روی سایت بنویسد.
             هیچ تغییری بدون تأیید شما انجام نمی‌شود و هر تغییر قابل بازگشت است.
           </p>
         </div>
         <button
           type="button"
           onClick={suggest}
-          disabled={busy.suggest || writing || !aiReady}
-          title={aiReady ? undefined : 'سرویس هوش مصنوعی هنوز فعال نشده است'}
+          disabled={busy.suggest || writing}
           className="px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50"
         >
           {busy.suggest || writing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
@@ -227,8 +256,16 @@ export default function SiteFixes() {
       </div>
 
       {!aiReady && (
-        <p className="text-xs text-slate-400 -mt-3">پیشنهاد خودکار عنوان و توضیحات به سرویس هوش مصنوعی نیاز دارد که هنوز فعال نشده است. تصاویر بدون متن جایگزین را افزونه بدون هوش مصنوعی پیدا می‌کند.</p>
+        <p className="text-xs text-slate-400 -mt-3">سرویس هوش مصنوعی فعال نیست؛ فعلاً فقط ریدایرکت صفحه‌های خراب پیشنهاد می‌شود. تصاویر بدون متن جایگزین را افزونه پیدا می‌کند.</p>
       )}
+
+      <LocalBusinessForm
+        projectId={project.id}
+        country={(project as { country?: string }).country || 'IR'}
+        current={fixes.find((f) => f.kind === 'local_business_schema' && ['proposed', 'applied'].includes(f.status))}
+        onSaved={(fix) => { setFixes((list) => [fix, ...list.filter((f) => f.id !== fix.id)]); setTab('review'); setMessage({ tone: 'ok', text: 'اطلاعات کسب‌وکار ثبت شد. آن را در «منتظر تأیید» تأیید کنید تا روی صفحهٔ اصلی سایت قرار بگیرد.' }); }}
+        onError={(text) => setMessage({ tone: 'error', text })}
+      />
 
       <PluginCard connection={connection} plugin={plugin} projectId={project.id} apiUrl={apiUrl} copied={copied} onCopy={copyProjectId} />
 
@@ -347,12 +384,14 @@ function FixCard({ fix, draft, busy, onDraft, onAction }: {
   const kind = KIND[fix.kind];
   const KindIcon = kind.icon;
   const status = STATUS[fix.status];
-  const editable = fix.status === 'proposed' || fix.status === 'failed' || fix.status === 'rejected';
+  // The business schema is edited through its form, not as raw JSON.
+  const editable = fix.kind !== 'local_business_schema' && (fix.status === 'proposed' || fix.status === 'failed' || fix.status === 'rejected');
   const value = draft ?? fix.proposedValue;
   const limit = LIMITS[fix.kind];
   const tooLong = value.trim().length > limit;
-  const invalid = value.trim().length === 0 || tooLong || /[<>]/.test(value);
-  const before = fix.status === 'applied' || fix.status === 'rolled_back' ? fix.previousValue : fix.currentValue;
+  const invalid = !valueValid(fix, value);
+  const before = displayValue(fix, fix.status === 'applied' || fix.status === 'rolled_back' ? fix.previousValue : fix.currentValue)
+    || (fix.kind === 'redirect' ? 'صفحهٔ «پیدا نشد» (خطای ۴۰۴)' : '');
   const fieldId = `fix-${fix.id}`;
   return (
     <li className="bg-surface-2 border border-surface-3/50 rounded-xl p-4 sm:p-5">
@@ -378,8 +417,9 @@ function FixCard({ fix, draft, busy, onDraft, onAction }: {
         </div>
         <div>
           <label htmlFor={fieldId} className="text-xs text-slate-400 mb-1 flex items-center justify-between">
-            <span>{fix.status === 'applied' ? 'نوشته‌شده روی سایت' : 'پیشنهاد'}</span>
-            {editable && <span className={tooLong ? 'text-accent-red' : ''}>{toPersianDigits(value.trim().length)} / {toPersianDigits(limit)}</span>}
+            <span>{fix.kind === 'redirect' ? 'انتقال به' : fix.status === 'applied' ? 'نوشته‌شده روی سایت' : 'پیشنهاد'}</span>
+            {editable && fix.kind !== 'redirect' && <span className={tooLong ? 'text-accent-red' : ''}>{toPersianDigits(value.trim().length)} / {toPersianDigits(limit)}</span>}
+            {editable && fix.kind === 'redirect' && invalid && <span className="text-accent-red">فقط صفحه‌ای از همین سایت</span>}
           </label>
           {editable ? (
             <textarea
@@ -387,10 +427,11 @@ function FixCard({ fix, draft, busy, onDraft, onAction }: {
               value={value}
               onChange={(e) => onDraft(e.target.value)}
               rows={fix.kind === 'meta_description' ? 3 : 2}
+              dir={fix.kind === 'redirect' ? 'ltr' : undefined}
               className={`w-full px-3 py-2 bg-surface border rounded-lg text-sm text-white focus:outline-none ${tooLong ? 'border-accent-red/60' : 'border-surface-3/50 focus:border-brand-600/50'}`}
             />
           ) : (
-            <p id={fieldId} className="text-sm text-white bg-surface rounded-lg px-3 py-2 min-h-[2.5rem]">{fix.proposedValue}</p>
+            <p id={fieldId} dir={fix.kind === 'redirect' ? 'ltr' : undefined} className="text-sm text-white bg-surface rounded-lg px-3 py-2 min-h-[2.5rem] break-words">{displayValue(fix, fix.proposedValue)}</p>
           )}
         </div>
       </div>
@@ -443,5 +484,86 @@ function EmptyState({ tab, hasAny }: { tab: string; hasAny: boolean }) {
       <Wand2 className="w-10 h-10 text-slate-500 mx-auto mb-3" />
       <p className="text-sm text-slate-400 max-w-md mx-auto">{text[tab]}</p>
     </div>
+  );
+}
+
+const BUSINESS_TYPES: Array<[string, string]> = [
+  ['GeneralContractor', 'پیمانکار ساختمانی / بازسازی'],
+  ['HomeAndConstructionBusiness', 'خدمات ساختمان و منزل / طراحی داخلی'],
+  ['ProfessionalService', 'خدمات حرفه‌ای'],
+  ['Store', 'فروشگاه'],
+  ['TravelAgency', 'آژانس مسافرتی'],
+  ['RealEstateAgent', 'مشاور املاک'],
+  ['Restaurant', 'رستوران'],
+  ['MedicalBusiness', 'خدمات پزشکی'],
+  ['AutomotiveBusiness', 'خدمات خودرو'],
+  ['LegalService', 'خدمات حقوقی'],
+  ['LocalBusiness', 'سایر کسب‌وکارهای محلی'],
+];
+
+/** Business details for the LocalBusiness schema; prefilled from the current proposal or the applied one. */
+function LocalBusinessForm({ projectId, country, current, onSaved, onError }: {
+  projectId: string; country: string; current?: SiteFix; onSaved: (fix: SiteFix) => void; onError: (text: string) => void;
+}) {
+  const parsed = useMemo(() => { try { return current ? JSON.parse(current.proposedValue) : null; } catch { return null; } }, [current]);
+  const [form, setForm] = useState({ type: 'GeneralContractor', name: '', telephone: '', streetAddress: '', city: '', region: '', postalCode: '', country, openingHours: '' });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!parsed) return;
+    setForm((f) => ({ ...f, type: parsed['@type'] ?? f.type, name: parsed.name ?? '', telephone: parsed.telephone ?? '',
+      streetAddress: parsed.address?.streetAddress ?? '', city: parsed.address?.addressLocality ?? '', region: parsed.address?.addressRegion ?? '',
+      postalCode: parsed.address?.postalCode ?? '', country: parsed.address?.addressCountry ?? f.country, openingHours: parsed.openingHours ?? '' }));
+  }, [parsed]);
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const body = Object.fromEntries(Object.entries(form).filter(([, v]) => v.trim() !== ''));
+      const res = await authenticatedFetch(`${API}/projects/${encodeURIComponent(projectId)}/fixes/local-business`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (json.success) onSaved(json.data);
+      else onError(json.error?.code === 'VALIDATION_ERROR' ? 'اطلاعات کامل یا معتبر نیست: نام، تلفن، نشانی و شهر لازم است و از علامت‌های < و > استفاده نکنید.' : ERRORS[json.error?.code] ?? apiMessage(json.error?.message));
+    } catch {
+      onError('ارتباط با سرور برقرار نشد.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  const input = 'w-full px-3 py-2 bg-surface border border-surface-3/50 rounded-lg text-sm text-white focus:outline-none focus:border-brand-600/50';
+  const field = (key: keyof typeof form, label: string, extra: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
+    <div>
+      <label htmlFor={`lb-${key}`} className="text-xs text-slate-400 mb-1 block">{label}</label>
+      <input id={`lb-${key}`} value={form[key]} onChange={set(key)} className={input} {...extra} />
+    </div>
+  );
+  return (
+    <details className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
+      <summary className="cursor-pointer text-sm font-semibold text-white flex items-center gap-2"><MapPin className="w-4 h-4 text-brand-400" /> اطلاعات کسب‌وکار برای سئوی محلی</summary>
+      <p className="text-xs text-slate-400 mt-2">این اطلاعات به‌صورت Schema از نوع LocalBusiness در صفحهٔ اصلی سایت قرار می‌گیرد تا گوگل نام، تلفن و نشانی کسب‌وکار را بشناسد. همان اطلاعاتی را بنویسید که روی سایت و در نقشه‌ها آمده است.</p>
+      <form onSubmit={submit} className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div>
+          <label htmlFor="lb-type" className="text-xs text-slate-400 mb-1 block">نوع کسب‌وکار</label>
+          <select id="lb-type" value={form.type} onChange={set('type')} className={input}>
+            {BUSINESS_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </div>
+        {field('name', 'نام کسب‌وکار', { required: true, minLength: 2, maxLength: 120 })}
+        {field('telephone', 'تلفن', { required: true, dir: 'ltr', inputMode: 'tel', maxLength: 40 })}
+        {field('city', 'شهر', { required: true, maxLength: 80 })}
+        {field('streetAddress', 'نشانی', { required: true, maxLength: 200 })}
+        {field('region', 'استان (اختیاری)', { maxLength: 80 })}
+        {field('postalCode', 'کد پستی (اختیاری)', { dir: 'ltr', maxLength: 20 })}
+        {field('openingHours', 'ساعت کاری (اختیاری، مثل Sa-Th 09:00-18:00)', { dir: 'ltr', maxLength: 200 })}
+        {field('country', 'کد کشور', { required: true, dir: 'ltr', minLength: 2, maxLength: 2 })}
+        <div className="sm:col-span-2">
+          <button type="submit" disabled={busy} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg disabled:opacity-50">
+            {busy ? 'در حال ثبت…' : current ? 'به‌روزرسانی پیشنهاد' : 'ثبت برای تأیید'}
+          </button>
+        </div>
+      </form>
+    </details>
   );
 }
