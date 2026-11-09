@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { useAppState } from '../lib/store';
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
+import { useAppConfig } from '../lib/app-config';
 import { t } from '../i18n';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
@@ -22,6 +23,7 @@ interface Client {
 export default function Agency() {
   const { state } = useAppState();
   const isAgency = ['AGENCY', 'ENTERPRISE', 'PRIVATE'].includes(state.currentOrg?.plan ?? '');
+  const appConfig = useAppConfig();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -50,18 +52,18 @@ export default function Agency() {
     return (
       <div className="space-y-6" dir="rtl">
         <div>
-          <h1 className="text-2xl font-bold text-white">حالت آژانس</h1>
-          <p className="text-sm text-slate-400 mt-1">مدیریت مشتریان، گزارش‌های برند اختصاصی و دسترسی تیم</p>
+          <h1 className="text-2xl font-bold text-white">برند و مشتریان</h1>
+          <p className="text-sm text-slate-400 mt-1">برای هر مشتری حساب جدا بسازید و گزارش‌ها را با نام و نشان خودتان تحویل دهید</p>
         </div>
         <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-8 text-center">
           <Building2 className="w-12 h-12 text-accent-yellow mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-white mb-2">نیازمند پلن آژانس</h3>
+          <h3 className="text-lg font-semibold text-white mb-2">این بخش برای حساب شما فعال نیست</h3>
           <p className="text-sm text-slate-400 max-w-md mx-auto mb-4">
-            مدیریت مشتریان، گزارش با برند اختصاصی و پرتال مشتری در پلن‌های آژانس و سازمانی در دسترس است.
+            ساخت حساب برای مشتریان و گزارش با نشان تجاری خودتان فقط در اشتراک آژانس در دسترس است.
           </p>
-          <a href="#/billing" className="inline-flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg">
-            ارتقا به پلن آژانس
-          </a>
+          {appConfig?.billing && <a href="#/billing" className="inline-flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg">
+            دیدن اشتراک‌ها
+          </a>}
         </div>
       </div>
     );
@@ -82,7 +84,7 @@ export default function Agency() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">داشبورد آژانس</h1>
+          <h1 className="text-2xl font-bold text-white">برند و مشتریان</h1>
           <p className="text-sm text-slate-400 mt-1">مشتریان و پروژه‌های سئوی آن‌ها را مدیریت کنید</p>
         </div>
         <Link to="/team" className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2">
@@ -94,12 +96,12 @@ export default function Agency() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
           <p className="text-xs text-slate-400">مشتریان فعال</p>
-          <p className="text-2xl font-bold text-white mt-1">{clients.length}</p>
+          <p className="text-2xl font-bold text-white mt-1">{toPersianDigits(clients.length)}</p>
           <p className="text-[10px] text-slate-500 mt-1">{clients.length === 0 ? 'هنوز مشتری‌ای ندارید' : ''}</p>
         </div>
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
           <p className="text-xs text-slate-400">کل پروژه‌ها</p>
-          <p className="text-2xl font-bold text-white mt-1">{state.projects.length}</p>
+          <p className="text-2xl font-bold text-white mt-1">{toPersianDigits(state.projects.length)}</p>
         </div>
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
           <p className="text-xs text-slate-400">گزارش‌های تهیه‌شده</p>
@@ -122,10 +124,9 @@ export default function Agency() {
             <Building2 className="w-12 h-12 text-slate-500 mx-auto mb-3" />
             <p className="text-sm text-slate-300 font-medium">هنوز مشتری‌ای ندارید</p>
             <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-              با افزودن مشتری، فهرست آن‌ها اینجا نمایش داده می‌شود.
-              No mock or placeholder data is shown — this is intentional per production rules.
+              هر مشتری یک حساب جدا دارد و فقط سایت خودش را می‌بیند.
             </p>
-            <p className="text-[10px] text-slate-600 mt-3">با افزودن مشتری، فهرست آن‌ها اینجا نمایش داده می‌شود.</p>
+            <p className="text-[10px] text-slate-600 mt-3">با دکمهٔ «افزودن مشتری» شروع کنید.</p>
           </div>
         ) : (
           <div className="divide-y divide-surface-3/20">
@@ -137,7 +138,7 @@ export default function Agency() {
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-white">{client.name}</p>
-                    <p className="text-xs text-slate-400">{client.domain} · {client.projects} project{client.projects > 1 ? 's' : ''}</p>
+                    <p className="text-xs text-slate-400">{client.domain} · {toPersianDigits(client.projects)} پروژه</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-6">

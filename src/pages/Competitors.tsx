@@ -147,7 +147,7 @@ export default function Competitors() {
                 <tr key={c.id} className="border-b border-surface-3/20 hover:bg-surface-3/20">
                   <td className="px-4 py-3 text-sm text-white font-medium flex items-center gap-2"><Globe className="w-4 h-4 text-slate-500" />{c.domain}</td>
                   <td className="px-4 py-3 text-sm text-slate-400">{formatDateOnly(c.createdAt ?? c.created_at)}</td>
-                  <td className="px-4 py-3 text-right text-xs text-slate-400">دادهٔ هم‌پوشانی پس از فعال‌شدن سرویس‌دهنده نمایش داده می‌شود</td>
+                  <td className="px-4 py-3 text-right text-xs text-slate-400">مقایسهٔ کلمه‌های مشترک هنوز در دسترس نیست</td>
                 </tr>
               ))}
             </tbody>

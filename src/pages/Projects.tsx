@@ -29,7 +29,7 @@ export default function Projects() {
           <p className="text-sm text-slate-400 mt-1 font-vazirmatn-regular">
             {planLimits.projects === -1
               ? `${toPersianDigits(projectCount)} پروژه`
-              : `${toPersianDigits(projectCount)} از ${toPersianDigits(planLimits.projects)} پروژه استفاده شده (${getPlanName(state.currentOrg?.plan || 'FREE')})`}
+              : `${toPersianDigits(projectCount)} از ${toPersianDigits(planLimits.projects)} پروژه استفاده شده`}
           </p>
         </div>
         <button
@@ -113,9 +113,9 @@ function ProjectCard({ project }: { project: Project }) {
           <p className="text-lg font-bold text-white persian-numbers font-vazirmatn-bold">{project.seoScore ? toPersianDigits(project.seoScore) : '—'}</p>
         </div>
         <div className="bg-surface/50 rounded-lg p-2.5">
-          <p className="text-[10px] text-slate-500 uppercase font-vazirmatn-medium">آخرین خزش</p>
+          <p className="text-[10px] text-slate-500 uppercase font-vazirmatn-medium">آخرین بررسی سایت</p>
           <p className="text-xs text-slate-300 mt-1 font-vazirmatn-light">
-            {project.lastCrawlAt ? formatPersianDate(project.lastCrawlAt, { format: 'short' }) : 'هرگز'}
+            {project.lastCrawlAt ? formatPersianDate(project.lastCrawlAt, { format: 'short' }) : 'هنوز انجام نشده'}
           </p>
         </div>
       </div>
@@ -131,7 +131,7 @@ function ProjectCard({ project }: { project: Project }) {
           to={`/projects/${project.id}/audit`}
           className="flex-1 px-3 py-1.5 bg-brand-600/20 hover:bg-brand-600/30 text-brand-400 text-xs font-medium rounded-lg text-center font-vazirmatn-medium"
         >
-          ممیزی
+          بررسی فنی
         </Link>
         <Link
           to={`/projects/${project.id}/keywords`}
@@ -280,8 +280,8 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
           <div className="bg-surface/50 border border-surface-3/30 rounded-lg p-3">
             <p className="text-xs text-slate-400 font-vazirmatn-light">
               <AlertCircle className="w-3.5 h-3.5 inline ml-1 text-accent-yellow" />
-              داده‌های سئو (کلمات کلیدی، رتبه‌ها، بک‌لینک) نیاز به پیکربندی سرویس‌دهنده دارد.
-              در <Link to="/integrations" className="text-brand-400">یکپارچه‌سازی‌ها</Link> پیکربندی کنید.
+              برای دیدن رتبه و آمار گوگل باید سرویس‌ها وصل باشند.
+              در <Link to="/integrations" className="text-brand-400">اتصال سرویس‌ها</Link> وضعیت را ببینید.
             </p>
           </div>
         </div>

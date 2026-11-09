@@ -121,11 +121,11 @@ export default function Alerts() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">هشدارها</h1>
-          <p className="text-sm text-slate-400 mt-1">هشدارها و اعلان‌های سئوی پروژه</p>
+          <p className="text-sm text-slate-400 mt-1">برنامه بعد از هر بررسی، افت رتبه و مشکل‌های مهم را اینجا خبر می‌دهد.</p>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={() => setShowRuleModal(true)} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2">
-            <Settings className="w-4 h-4" /> ایجاد هشدار
+            <Settings className="w-4 h-4" /> ثبت هشدار دستی
           </button>
         </div>
       </div>
@@ -148,7 +148,7 @@ export default function Alerts() {
             {f === 'all' ? 'همه' : f === 'unread' ? 'خوانده‌نشده' : 'بحرانی و زیاد'}
           </button>
         ))}
-        <span className="text-xs text-slate-500 ml-auto">{filteredAlerts.length} هشدار</span>
+        <span className="text-xs text-slate-500 ml-auto">{toPersianDigits(filteredAlerts.length)} هشدار</span>
       </div>
 
       {/* Alert List */}
@@ -191,18 +191,18 @@ export default function Alerts() {
       {showRuleModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg bg-surface-2 border border-surface-3/50 rounded-xl p-6">
-            <h2 className="text-lg font-bold text-white mb-4">ایجاد هشدار</h2>
+            <h2 className="text-lg font-bold text-white mb-4">ثبت هشدار دستی</h2>
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-medium text-slate-300 mb-1.5 block">نوع هشدار</label>
                 <select value={ruleForm.type} onChange={e => setRuleForm(f => ({ ...f, type: e.target.value as any }))} className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white">
                   <option value="rank_drop">افت جایگاه کلمه کلیدی</option>
                   <option value="traffic_drop">کاهش کلیک‌های ارگانیک</option>
-                  <option value="crawl_error">یک مشکل بحرانی سئو پیدا شد</option>
+                  <option value="crawl_error">مشکل در بررسی سایت</option>
                   <option value="broken_link">لینک شکسته پیدا شد</option>
                   <option value="critical_issue">مشکل بحرانی</option>
                   <option value="keyword_loss">از دست رفتن کلمه کلیدی</option>
-                  <option value="provider_failure">خطای سرویس‌دهنده</option>
+                  <option value="provider_failure">قطع‌شدن یک سرویس متصل</option>
                 </select>
               </div>
               <div>
@@ -225,16 +225,14 @@ export default function Alerts() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-300 mb-1.5 block">کانال‌ها</label>
+                  <label className="text-xs font-medium text-slate-300 mb-1.5 block">محل نمایش</label>
                   <select value={ruleForm.channels[0]} onChange={e => setRuleForm(f => ({ ...f, channels: [e.target.value as any] }))} className="w-full px-3 py-2.5 bg-surface border border-surface-3/50 rounded-lg text-sm text-white">
                     <option value="in_app">درون برنامه</option>
-                    <option value="email">ایمیل</option>
-                    <option value="webhook">وب‌هوک</option>
                   </select>
                 </div>
               </div>
               {ruleError && <p className="text-xs text-accent-red">{ruleError}</p>}
-              <p className="text-[11px] text-slate-500">فعلاً هشدارها فقط درون برنامه نمایش داده می‌شوند.</p>
+              <p className="text-[11px] text-slate-500">این فرم یک یادداشت هشدار برای خودتان و تیم ثبت می‌کند. هشدارهای خودکار نیازی به این فرم ندارند و فعلاً همه فقط درون برنامه نمایش داده می‌شوند.</p>
             </div>
             <div className="flex items-center justify-end gap-3 mt-6">
               <button onClick={() => setShowRuleModal(false)} disabled={ruleLoading} className="px-4 py-2 text-sm text-slate-400 hover:text-white disabled:opacity-50">انصراف</button>

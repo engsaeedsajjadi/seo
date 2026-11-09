@@ -64,7 +64,7 @@ function GoogleProperties() {
       : { propertyId: property, propertyName: selected?.displayName ?? selected?.propertyName });
     const synced = bound.success ? await api.syncGoogleProperty(project.id, provider) : bound;
     setMessage(synced.success
-      ? { ok: true, text: 'وصل شد و همگام‌سازی در صف قرار گرفت. نتیجه در صفحه‌ی اتوماسیون و رتبه‌بندی دیده می‌شود.' }
+      ? { ok: true, text: 'وصل شد و همگام‌سازی در صف قرار گرفت. پیشرفت کار در صفحهٔ «زمان‌بندی خودکار» و نتیجه در «رتبه در گوگل» دیده می‌شود.' }
       : { ok: false, text: 'وصل‌کردن انجام نشد. دسترسی حساب گوگل به این سایت را بررسی کنید.' });
     setBusy(false);
   }
@@ -108,26 +108,28 @@ export default function Integrations() {
       : null;
 
   const integrations: Integration[] = [
-    { key: 'dataForSeo', name: 'DataForSEO', description: 'خارج از ایران. برای ایران از ورود فایل و سرچ کنسول استفاده کنید. دادهٔ نتایج جست‌وجو، کلمات کلیدی، رتبه، بک‌لینک و رقبا', category: 'data', status: state.providerStatus.dataForSeo, envVars: ['DATAFORSEO_LOGIN', 'DATAFORSEO_PASSWORD'], icon: Search },
-    { key: 'openai', name: 'OpenAI', description: 'تولید و تحلیل محتوا', category: 'ai', status: state.providerStatus.openai, envVars: ['OPENAI_API_KEY'], icon: Bot },
-    { key: 'anthropic', name: 'Anthropic', description: 'تولید و تحلیل پیشرفتهٔ محتوا', category: 'ai', status: state.providerStatus.anthropic, envVars: ['ANTHROPIC_API_KEY'], icon: Bot },
-    { key: 'google', name: 'Google AI (Gemini)', description: 'تولید و تحلیل محتوا', category: 'ai', status: (state.providerStatus as unknown as Record<string, ProviderStatus>).google ?? 'not_configured', envVars: ['ANTHROPIC_API_KEY'], icon: Bot },
-    { key: 'googleSearchConsole', name: 'Google Search Console', description: 'دادهٔ عملکرد جست‌وجوی ارگانیک', category: 'analytics', status: state.providerStatus.googleSearchConsole, envVars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], icon: Search },
-    { key: 'googleAnalytics', name: 'Google Analytics 4', description: 'دادهٔ ترافیک، نشست و تبدیل', category: 'analytics', status: state.providerStatus.googleAnalytics, envVars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], icon: Database },
+    { key: 'dataForSeo', name: 'DataForSEO', description: 'رتبه، کلمات کلیدی، بک‌لینک و رقبا. این سرویس به ایران خدمات نمی‌دهد.', category: 'data', status: state.providerStatus.dataForSeo, envVars: ['DATAFORSEO_LOGIN', 'DATAFORSEO_PASSWORD'], icon: Search },
+    { key: 'kwrank', name: 'KWRank', description: 'رتبهٔ دقیق کلمات در گوگل و حجم جست‌وجو — سرویس ایرانی', category: 'data', status: state.providerStatus.kwrank ?? 'not_configured', envVars: ['KWRANK_CLIENT_ID', 'KWRANK_CLIENT_SECRET'], icon: Search },
+    { key: 'serpapi', name: 'SerpApi', description: 'رتبهٔ کلمات در گوگل. این سرویس به ایران خدمات نمی‌دهد.', category: 'data', status: state.providerStatus.serpapi ?? 'not_configured', envVars: ['SERPAPI_KEY'], icon: Search },
+    { key: 'openai', name: 'OpenAI', description: 'نوشتن طرح و متن مقاله، پیشنهاد اصلاح صفحه‌ها', category: 'ai', status: state.providerStatus.openai, envVars: ['OPENAI_API_KEY'], icon: Bot },
+    { key: 'anthropic', name: 'Anthropic', description: 'نوشتن طرح و متن مقاله، پیشنهاد اصلاح صفحه‌ها', category: 'ai', status: state.providerStatus.anthropic, envVars: ['ANTHROPIC_API_KEY'], icon: Bot },
+    { key: 'google', name: 'Google AI (Gemini)', description: 'نوشتن طرح و متن مقاله، پیشنهاد اصلاح صفحه‌ها (پیشنهادی)', category: 'ai', status: (state.providerStatus as unknown as Record<string, ProviderStatus>).google ?? 'not_configured', envVars: ['GOOGLE_AI_API_KEY'], icon: Bot },
+    { key: 'googleSearchConsole', name: 'Google Search Console', description: 'کلیک، نمایش و جایگاه سایت در نتایج گوگل', category: 'analytics', status: state.providerStatus.googleSearchConsole, envVars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], icon: Search },
+    { key: 'googleAnalytics', name: 'Google Analytics 4', description: 'تعداد بازدیدکننده و رفتار آن‌ها در سایت', category: 'analytics', status: state.providerStatus.googleAnalytics, envVars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], icon: Database },
   ];
 
   const categories = [
-    { key: 'data', label: 'سرویس‌های دادهٔ سئو', color: 'text-brand-400' },
+    { key: 'data', label: 'رتبه و کلمات کلیدی', color: 'text-brand-400' },
     { key: 'ai', label: 'سرویس‌های هوش مصنوعی', color: 'text-accent-purple' },
-    { key: 'analytics', label: 'تحلیل و جست‌وجو', color: 'text-accent-green' },
+    { key: 'analytics', label: 'گوگل', color: 'text-accent-green' },
   ];
 
   return (
     <div className="space-y-6" dir="rtl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">یکپارچه‌سازی‌ها</h1>
-          <p className="text-sm text-slate-400 mt-1">وضعیت سرویس‌های خارجی متصل</p>
+          <h1 className="text-2xl font-bold text-white">اتصال سرویس‌ها</h1>
+          <p className="text-sm text-slate-400 mt-1">سرویس‌هایی که برنامه از آن‌ها داده می‌گیرد. سرچ کنسول و آنالیتیکس را از همین‌جا وصل می‌کنید؛ بقیه را مدیر برنامه روی سرور فعال می‌کند.</p>
         </div>
       </div>
 
@@ -138,22 +140,22 @@ export default function Integrations() {
         <div className="bg-surface-2 border border-accent-green/30 rounded-xl p-4 flex items-center gap-3">
           <CheckCircle2 className="w-5 h-5 text-accent-green" />
           <div>
-            <p className="text-lg font-bold text-accent-green">{integrations.filter(i => i.status === 'connected').length}</p>
-            <p className="text-xs text-slate-400">متصل</p>
+            <p className="text-lg font-bold text-accent-green">{toPersianDigits(integrations.filter(i => i.status === 'connected').length)}</p>
+            <p className="text-xs text-slate-400">وصل</p>
           </div>
         </div>
         <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-4 flex items-center gap-3">
           <Clock className="w-5 h-5 text-accent-yellow" />
           <div>
-            <p className="text-lg font-bold text-accent-yellow">{integrations.filter(i => i.status === 'not_configured').length}</p>
+            <p className="text-lg font-bold text-accent-yellow">{toPersianDigits(integrations.filter(i => i.status === 'not_configured').length)}</p>
             <p className="text-xs text-slate-400">فعال نشده</p>
           </div>
         </div>
         <div className="bg-surface-2 border border-accent-red/30 rounded-xl p-4 flex items-center gap-3">
           <XCircle className="w-5 h-5 text-accent-red" />
           <div>
-            <p className="text-lg font-bold text-accent-red">{integrations.filter(i => i.status === 'error').length}</p>
-            <p className="text-xs text-slate-400">خطاها</p>
+            <p className="text-lg font-bold text-accent-red">{toPersianDigits(integrations.filter(i => i.status === 'error').length)}</p>
+            <p className="text-xs text-slate-400">دارای خطا</p>
           </div>
         </div>
       </div>

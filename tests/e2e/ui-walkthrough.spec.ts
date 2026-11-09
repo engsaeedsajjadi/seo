@@ -57,7 +57,7 @@ for (const [label, viewport] of [['desktop', { width: 1366, height: 850 }], ['ph
 
     await page.goto(`${WEB}/#/projects/${id}/automation`);
     await page.getByRole('button', { name: 'افزودن زمان‌بندی' }).click();
-    await expect(page.getByText('خزش و ممیزی سایت ·', { exact: false })).toBeVisible();
+    await expect(page.getByText('بررسی فنی سایت ·', { exact: false })).toBeVisible();
     await page.getByRole('button', { name: 'حذف' }).first().click();
     await expect(page.getByText('هنوز زمان‌بندی‌ای ندارید.')).toBeVisible();
 

@@ -15,7 +15,7 @@ export const reports = {
   scheduleReport: 'زمان‌بندی گزارش',
   // Types
   reportType: 'نوع گزارش',
-  typeAudit: 'ممیزی سئو',
+  typeAudit: 'بررسی فنی سئو',
   typeTechnical: 'فنی',
   typeRankings: 'رتبه‌بندی',
   typeKeywords: 'کلمات کلیدی',

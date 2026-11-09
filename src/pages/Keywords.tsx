@@ -149,9 +149,9 @@ export default function Keywords() {
     <div className="space-y-6" dir="rtl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">تحقیق کلمات کلیدی</h1>
+          <h1 className="text-2xl font-bold text-white">کلمات کلیدی</h1>
           <p className="text-sm text-slate-400 mt-1">
-            پیگیری و کشف کلمات کلیدی <span className="text-brand-400">{state.currentProject?.domain}</span> 
+            عبارت‌هایی که می‌خواهید با آن‌ها در گوگل دیده شوید — سایت <span className="text-brand-400">{state.currentProject?.domain}</span> 
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -200,10 +200,10 @@ export default function Keywords() {
           className="px-3 py-2 bg-surface-2 border border-surface-3/50 rounded-lg text-xs text-white focus:outline-none"
         >
           <option value="all">همهٔ هدف‌ها</option>
-          <option value="informational">اطلاعاتی</option>
-          <option value="navigational">ناوبری</option>
-          <option value="commercial">تجاری</option>
-          <option value="transactional">تراکنشی</option>
+          <option value="informational">دنبال اطلاعات</option>
+          <option value="navigational">دنبال یک سایت مشخص</option>
+          <option value="commercial">مقایسه پیش از خرید</option>
+          <option value="transactional">آمادهٔ خرید</option>
         </select>
         <button
           onClick={() => setSortBy(sortBy === 'position' ? 'volume' : sortBy === 'volume' ? 'difficulty' : 'position')}
@@ -311,7 +311,7 @@ export default function Keywords() {
                 </div>
               </div>
               {addError && <p className="text-xs text-accent-red">{addError}</p>}
-              <p className="text-[11px] text-slate-500">کشور و زبان به‌صورت پیش‌فرض از تنظیمات خود پروژه می‌آیند — همین‌ها برای چک رتبه و داده سرویس‌دهنده استفاده می‌شوند.</p>
+              <p className="text-[11px] text-slate-500">کشور و زبان به‌صورت پیش‌فرض از تنظیمات خود پروژه می‌آیند — همین‌ها برای بررسی رتبه در گوگل استفاده می‌شوند.</p>
             </div>
             <div className="flex items-center justify-end gap-3 mt-6">
               <button onClick={() => setShowAddModal(false)} disabled={addLoading} className="px-4 py-2 text-sm text-slate-400 hover:text-white disabled:opacity-50">انصراف</button>
@@ -356,7 +356,7 @@ function competitionLabel(value?: number | null) {
 
 const RESEARCH_ERRORS: Record<string, string> = {
   PROVIDER_NOT_CONFIGURED: 'سرویس تحقیق کلمهٔ کلیدی (KWRank) تنظیم نشده است.',
-  PROVIDER_ACCOUNT: 'حساب KWRank کلمه را نپذیرفت. اعتبار یا پلن API حساب را بررسی کنید.',
+  PROVIDER_ACCOUNT: 'حساب KWRank کلمه را نپذیرفت. اعتبار یا اشتراک حساب KWRank را بررسی کنید.',
   PROVIDER_ERROR: 'سرویس KWRank جواب نداد. چند دقیقه دیگر دوباره تلاش کنید.',
   RATE_LIMITED: 'در یک ساعت گذشته جست‌وجوی زیادی انجام شده است. کمی بعد دوباره تلاش کنید.',
   VALIDATION_ERROR: 'کلمه باید بین ۲ تا ۱۰۰ حرف باشد.',

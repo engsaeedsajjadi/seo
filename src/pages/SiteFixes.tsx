@@ -82,7 +82,7 @@ const TABS = [
 ] as const;
 
 const ERRORS: Record<string, string> = {
-  CRAWL_REQUIRED: 'اول یک خزش کامل از سایت انجام دهید تا صفحه‌ها برای پیشنهاد آماده باشند.',
+  CRAWL_REQUIRED: 'اول از صفحهٔ «بررسی فنی سایت» یک بار سایت را بررسی کنید تا صفحه‌ها برای پیشنهاد آماده باشند.',
   ALREADY_RUNNING: 'پیشنهادها در حال آماده‌شدن است. چند لحظه صبر کنید.',
   PROVIDER_NOT_CONFIGURED: 'سرویس هوش مصنوعی هنوز فعال نشده است.',
   LIMIT_REACHED: 'سهمیهٔ ماهانهٔ هوش مصنوعی این طرح تمام شده است.',
@@ -251,7 +251,7 @@ export default function SiteFixes() {
           className="px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50"
         >
           {busy.suggest || writing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-          {writing ? 'در حال نوشتن پیشنهادها…' : 'پیشنهاد اصلاح از آخرین خزش'}
+          {writing ? 'در حال نوشتن پیشنهادها…' : 'پیشنهاد اصلاح از آخرین بررسی سایت'}
         </button>
       </div>
 
@@ -353,7 +353,7 @@ function PluginCard({ connection, plugin, projectId, apiUrl, copied, onCopy }: {
         <ol className="mt-3 space-y-2 text-sm text-slate-300 list-decimal pr-5">
           <li>فایل افزونه را دانلود کنید و در وردپرس از «افزونه‌ها › افزودن › بارگذاری افزونه» نصب و فعال کنید.</li>
           <li>
-            در صفحهٔ <Link to="/api" className="text-brand-400 underline">API و MCP</Link> یک کلید با دسترسی «خواندن و نوشتن» بسازید.
+            در صفحهٔ <Link to="/api" className="text-brand-400 underline">کلیدهای API</Link> یک کلید با دسترسی «خواندن و نوشتن» بسازید.
           </li>
           <li>در وردپرس به «تنظیمات › سئویار» بروید و این مقادیر را وارد کنید:</li>
         </ol>
@@ -474,7 +474,7 @@ function FixCard({ fix, draft, busy, onDraft, onAction }: {
 
 function EmptyState({ tab, hasAny }: { tab: string; hasAny: boolean }) {
   const text: Record<string, string> = {
-    review: hasAny ? 'پیشنهادی منتظر تأیید نیست.' : 'هنوز پیشنهادی نیست. «پیشنهاد اصلاح از آخرین خزش» را بزنید یا افزونه را نصب کنید تا تصاویر بدون متن جایگزین پیدا شوند.',
+    review: hasAny ? 'پیشنهادی منتظر تأیید نیست.' : 'هنوز پیشنهادی نیست. «پیشنهاد اصلاح از آخرین بررسی سایت» را بزنید یا افزونه را نصب کنید تا تصاویر بدون متن جایگزین پیدا شوند.',
     queue: 'تغییری در صف اعمال نیست.',
     applied: 'هنوز تغییری روی سایت اعمال نشده است.',
     other: 'موردی نیست.',

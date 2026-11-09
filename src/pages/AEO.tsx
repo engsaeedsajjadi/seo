@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../lib/store';
 import { t } from '../i18n';
+import { findingTitle, SEVERITY_LABELS } from '../lib/labels';
 import { toPersianDigits, formatPersianDate, formatPersianNumber, formatCurrency, formatRelativePersianTime } from '../lib/persian';
 
 interface AEOData {
@@ -51,7 +52,7 @@ export default function AEO() {
       <div className="flex flex-col items-center justify-center h-[60vh] text-center" dir="rtl">
         <Radio className="w-12 h-12 text-slate-500 mb-4" />
         <h2 className="text-xl font-bold text-white mb-2">پروژه‌ای انتخاب نشده</h2>
-        <p className="text-slate-400">برای تحلیل AEO یک پروژه انتخاب یا ایجاد کنید.</p>
+        <p className="text-slate-400">برای دیدن این بخش یک پروژه انتخاب یا ایجاد کنید.</p>
       </div>
     );
   }
@@ -60,8 +61,8 @@ export default function AEO() {
     return (
       <div className="space-y-6" dir="rtl">
         <div>
-          <h1 className="text-2xl font-bold text-white">بهینه‌سازی برای موتورهای پاسخ (AEO)</h1>
-          <p className="text-sm text-slate-400 mt-1">بهینه‌سازی برای پاسخ‌های هوش مصنوعی، نتایج ویژه و جست‌وجوهای پرسشی</p>
+          <h1 className="text-2xl font-bold text-white">آمادگی برای پاسخ مستقیم گوگل (AEO)</h1>
+          <p className="text-sm text-slate-400 mt-1">گوگل برای بعضی پرسش‌ها جواب را مستقیم بالای نتایج نشان می‌دهد. این صفحه نشان می‌دهد سایت چقدر برای آن آماده است.</p>
         </div>
         <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-8 text-center">
           <AlertCircle className="w-12 h-12 text-accent-yellow mx-auto mb-4" />
@@ -73,7 +74,7 @@ export default function AEO() {
             <p className="text-xs font-semibold text-slate-300 mb-2">این بخش پس از فعال‌شدن سرویس هوش مصنوعی در دسترس است:</p>
             <ul className="text-xs text-slate-400 space-y-1">
               <li>• با فعال‌شدن سرویس، تحلیل به‌طور خودکار انجام می‌شود</li>
-              <li>• نتیجه از صفحات خزش‌شده و یافته‌های داده ساختاریافته به‌دست می‌آید</li>
+              <li>• نتیجه از صفحه‌های بررسی‌شده و یافته‌های داده ساختاریافته به‌دست می‌آید</li>
               <li>• پرسش‌ها از محتوای واقعی سایت شما استخراج می‌شوند</li>
               <li>• پوشش اسکیماهای FAQ، HowTo، Article و BreadcrumbList بررسی می‌شود</li>
             </ul>
@@ -88,7 +89,7 @@ export default function AEO() {
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-slate-400">در حال بارگذاری تحلیل AEO…</p>
+          <p className="text-sm text-slate-400">در حال بارگذاری…</p>
         </div>
       </div>
     );
@@ -98,8 +99,8 @@ export default function AEO() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">بهینه‌سازی برای موتورهای پاسخ (AEO)</h1>
-          <p className="text-sm text-slate-400 mt-1">بهینه‌سازی برای پاسخ‌های هوش مصنوعی و نتایج ویژه</p>
+          <h1 className="text-2xl font-bold text-white">آمادگی برای پاسخ مستقیم گوگل (AEO)</h1>
+          <p className="text-sm text-slate-400 mt-1 max-w-2xl">گوگل برای بعضی پرسش‌ها جواب را مستقیم بالای نتایج نشان می‌دهد. صفحه‌ای شانس دارد که عنوان و توضیح روشن داشته باشد و «دادهٔ ساختاریافته» (برچسب‌هایی که نوع محتوا را به گوگل می‌گویند) در آن درست باشد. اینجا هر دو را از آخرین بررسی سایت می‌بینید.</p>
         </div>
       </div>
 
@@ -107,9 +108,10 @@ export default function AEO() {
         <>
           {/* Real Pages */}
           <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-white mb-4">صفحات خزش‌شده</h3>
+            <h3 className="text-sm font-semibold text-white mb-1">عنوان و توضیح صفحه‌ها</h3>
+            <p className="text-xs text-slate-400 mb-4">همان متنی که گوگل از هر صفحه می‌خواند. صفحه‌ای که عنوان یا توضیح ندارد شانس کمی برای پاسخ مستقیم دارد.</p>
             {data.pages.length === 0 ? (
-              <p className="text-xs text-slate-500 text-center py-4">هنوز صفحه‌ای خزش نشده است. برای شروع تحلیل، خزش سایت را اجرا کنید.</p>
+              <p className="text-xs text-slate-500 text-center py-4">هنوز سایت بررسی نشده است. از صفحهٔ «بررسی فنی سایت» یک بررسی اجرا کنید.</p>
             ) : (
               <div className="space-y-2">
                 {data.pages.map((page, i) => (
@@ -117,35 +119,33 @@ export default function AEO() {
                     <MessageSquare className="w-4 h-4 text-brand-400 mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
                       <p dir="ltr" className="text-xs text-slate-400 font-mono text-right break-all">{page.url}</p>
-                      <p className="text-sm text-slate-200 mt-0.5">{page.title || 'No title'}</p>
-                      <p className="text-xs text-slate-500 mt-1">{page.metaDescription || 'No meta description'}</p>
+                      <p className="text-sm text-slate-200 mt-0.5">{page.title || <span className="text-accent-yellow">عنوان ندارد</span>}</p>
+                      <p className="text-xs text-slate-500 mt-1">{page.metaDescription || <span className="text-accent-yellow">توضیحات متا ندارد</span>}</p>
                     </div>
                   </div>
                 ))}
               </div>
             )}
-            <p className="text-[11px] text-slate-500 mt-3">{data.message}</p>
           </div>
 
           {/* Structured Data Findings */}
           <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-white mb-4">پوشش داده ساختاریافته</h3>
+            <h3 className="text-sm font-semibold text-white mb-4">مشکل‌های دادهٔ ساختاریافته</h3>
             {data.structuredDataFindings.length === 0 ? (
-              <p className="text-xs text-slate-500 text-center py-4">هنوز یافته‌ای دربارهٔ داده ساختاریافته ثبت نشده است.</p>
+              <p className="text-xs text-slate-500 text-center py-4">در آخرین بررسی، مشکلی در دادهٔ ساختاریافته پیدا نشد.</p>
             ) : (
               <div className="space-y-2">
                 {data.structuredDataFindings.map((finding, i) => (
                   <div key={i} className="flex items-center justify-between p-2 rounded bg-surface/50">
-                    <span className="text-xs text-slate-300">{finding.ruleId}</span>
+                    <span className="text-xs text-slate-300">{findingTitle({ ruleId: finding.ruleId, title: finding.ruleId })}</span>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs text-slate-400">{finding.severity}</span>
-                      <span className="text-xs text-slate-500">{finding.category}</span>
+                      <span className="text-xs text-slate-400">اهمیت: {SEVERITY_LABELS[finding.severity] ?? finding.severity}</span>
                     </div>
                   </div>
                 ))}
               </div>
             )}
-            <p className="text-[11px] text-slate-500 mt-3">این نتایج از آخرین ممیزی سایت به‌دست آمده‌اند.</p>
+            <p className="text-[11px] text-slate-500 mt-3">این نتایج از آخرین بررسی سایت در صفحهٔ «بررسی فنی سایت» گرفته شده است.</p>
           </div>
         </>
       )}

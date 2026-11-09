@@ -77,7 +77,7 @@ export const projects = {
   indexedPages: 'صفحات ایندکس شده',
   issuesFound: 'مشکلات یافت شده',
   averageScore: 'میانگین امتیاز',
-  lastCrawlDate: 'تاریخ آخرین خزش',
+  lastCrawlDate: 'تاریخ آخرین بررسی سایت',
   lastAuditDate: 'تاریخ آخرین ممیزی',
   createdDate: 'تاریخ ایجاد',
   updatedDate: 'تاریخ بروزرسانی',

@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Globe, Search, BarChart3, Target, Link2, FileText,
   Bot, Brain, Radio, Bell, Settings, CreditCard, Users, Building2,
   Shield, Zap, Wand2, ChevronDown, ChevronRight, Menu, X, LogOut, User,
-  AlertTriangle, CheckCircle2, XCircle, Clock, ExternalLink
+  AlertTriangle, CheckCircle2, XCircle, Clock, ExternalLink, HelpCircle
 } from 'lucide-react';
 import { COUNTRY_LABELS, LANGUAGE_LABELS } from '../lib/labels';
 import { useAppState, getProviderLabel, getStatusColor, getStatusLabel } from '../lib/store';
@@ -22,13 +22,13 @@ const navSections = [
     ],
   },
   {
-    title: 'موتور سئو',
+    title: 'سئوی سایت',
     titleKey: 'common.seoAudit',
     items: [
-      { path: '/audit', icon: Shield, label: 'ممیزی سایت', labelKey: 'common.siteAudit' },
+      { path: '/audit', icon: Shield, label: 'بررسی فنی سایت', labelKey: 'common.siteAudit' },
       { path: '/fixes', icon: Wand2, label: 'اصلاح خودکار سایت', labelKey: 'common.siteAudit' },
       { path: '/keywords', icon: Search, label: 'کلمات کلیدی', labelKey: 'common.keywords' },
-      { path: '/rankings', icon: BarChart3, label: 'رتبه‌بندی', labelKey: 'common.rankings' },
+      { path: '/rankings', icon: BarChart3, label: 'رتبه در گوگل', labelKey: 'common.rankings' },
       { path: '/competitors', icon: Target, label: 'رقبا', labelKey: 'common.competitors' },
       { path: '/backlinks', icon: Link2, label: 'بک‌لینک‌ها', labelKey: 'common.backlinks' },
     ],
@@ -39,27 +39,27 @@ const navSections = [
     items: [
       { path: '/content', icon: FileText, label: 'محتوا', labelKey: 'common.content' },
       { path: '/geo', icon: Brain, label: 'GEO / دیده‌شدن در هوش مصنوعی', labelKey: 'common.geo' },
-      { path: '/aeo', icon: Radio, label: 'AEO', labelKey: 'common.aeo' },
+      { path: '/aeo', icon: Radio, label: 'AEO / پاسخ مستقیم گوگل', labelKey: 'common.aeo' },
     ],
   },
   {
-    title: 'عملیات',
+    title: 'گزارش و پیگیری',
     titleKey: 'common.reports',
     items: [
       { path: '/reports', icon: FileText, label: 'گزارش‌ها', labelKey: 'common.reports' },
-      { path: '/automation', icon: Zap, label: 'اتوماسیون', labelKey: 'common.alerts' },
+      { path: '/automation', icon: Zap, label: 'زمان‌بندی خودکار', labelKey: 'common.alerts' },
       { path: '/alerts', icon: Bell, label: 'هشدارها', labelKey: 'common.alerts' },
-      { path: '/integrations', icon: ExternalLink, label: 'یکپارچه‌سازی‌ها', labelKey: 'common.integrations' },
+      { path: '/integrations', icon: ExternalLink, label: 'اتصال سرویس‌ها', labelKey: 'common.integrations' },
     ],
   },
   {
-    title: 'کسب‌وکار',
+    title: 'حساب و تیم',
     titleKey: 'common.billing',
     items: [
       { path: '/billing', icon: CreditCard, label: 'صورتحساب', labelKey: 'common.billing' },
       { path: '/team', icon: Users, label: 'تیم', labelKey: 'common.team' },
-      { path: '/agency', icon: Building2, label: 'آژانس', labelKey: 'common.team' },
-      { path: '/api', icon: Shield, label: 'API و MCP', labelKey: 'common.apiKeys' },
+      { path: '/agency', icon: Building2, label: 'برند و مشتریان', labelKey: 'common.team' },
+      { path: '/api', icon: Shield, label: 'کلیدهای API', labelKey: 'common.apiKeys' },
       { path: '/settings', icon: Settings, label: 'تنظیمات', labelKey: 'common.settings' },
     ],
   },
@@ -68,6 +68,11 @@ const navSections = [
 import { Outlet } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAppConfig } from '../lib/app-config';
+import { NAV_HELP, useMenuHelp } from '../lib/nav-help';
+
+const ROLE_LABELS: Record<string, string> = {
+  Owner: 'مالک', Admin: 'مدیر سازمان', Manager: 'مدیر پروژه', SEO_Manager: 'مدیر سئو', Analyst: 'تحلیلگر', Editor: 'ویراستار', Client: 'مشتری', Viewer: 'مشاهده‌گر',
+};
 
 // Sidebar items that live under a project (/projects/:id/...) — linking to the
 // bare path used to bounce back to the dashboard via the catch-all route.
@@ -86,6 +91,15 @@ export default function Layout() {
   const location = useLocation();
   const { state } = useAppState();
   const appConfig = useAppConfig();
+  const [helpOn, toggleHelp] = useMenuHelp();
+  // The tooltip sits beside the hovered or focused item, outside the scrolling menu.
+  const [tip, setTip] = useState<{ path: string; label: string; top: number; right: number } | null>(null);
+  const showTip = (path: string, label: string, el: HTMLElement) => {
+    if (!helpOn || !NAV_HELP[path]) return;
+    const box = el.getBoundingClientRect();
+    setTip({ path, label, top: Math.min(box.top, window.innerHeight - 140), right: window.innerWidth - box.left + 8 });
+  };
+  useEffect(() => { if (!helpOn) setTip(null); }, [helpOn]);
 
   const toggleSection = (title: string) => {
     setExpandedSections(prev => ({ ...prev, [title]: !prev[title] }));
@@ -166,7 +180,12 @@ export default function Layout() {
                         key={item.path}
                         to={to}
                         aria-label={item.label}
-                        onClick={() => { if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                        aria-describedby={helpOn && tip?.path === item.path ? 'menu-help-tip' : undefined}
+                        onMouseEnter={(e) => showTip(item.path, item.label, e.currentTarget)}
+                        onMouseLeave={() => setTip(null)}
+                        onFocus={(e) => showTip(item.path, item.label, e.currentTarget)}
+                        onBlur={() => setTip(null)}
+                        onClick={() => { setTip(null); if (window.innerWidth < 1024) setSidebarOpen(false); }}
                         aria-current={isActive(to, item.path) ? 'page' : undefined}
                         className={`flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-colors font-vazirmatn-regular ${
                           isActive(to, item.path)
@@ -175,7 +194,11 @@ export default function Layout() {
                         }`}
                       >
                         <item.icon className="w-4 h-4 flex-shrink-0" />
-                        {sidebarOpen && <span>{item.label}</span>}
+                        {sidebarOpen && <span className="min-w-0">
+                          {item.label}
+                          {/* Touch screens have no hover, so the help text sits under the name there. */}
+                          {helpOn && NAV_HELP[item.path] && <span className="hidden [@media(hover:none)]:block text-[11px] leading-5 text-slate-400 mt-0.5">{NAV_HELP[item.path]}</span>}
+                        </span>}
                       </Link>
                     );
                   })}
@@ -186,7 +209,24 @@ export default function Layout() {
         </nav>
 
         {/* Sidebar Footer */}
-        <div className="p-3 border-t border-surface-3/50">
+        <div className="p-3 border-t border-surface-3/50 space-y-1">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={helpOn}
+            onClick={toggleHelp}
+            aria-label="راهنمای منو"
+            title={helpOn ? 'خاموش کردن راهنمای منو' : 'روشن کردن راهنمای منو'}
+            className="w-full flex items-center justify-center gap-2 px-2 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-surface-3/50 text-sm font-vazirmatn-regular"
+          >
+            <HelpCircle className={`w-4 h-4 ${helpOn ? 'text-brand-400' : ''}`} />
+            {sidebarOpen && <>
+              <span className="flex-1 text-right">راهنمای منو</span>
+              <span aria-hidden="true" className={`relative inline-block w-8 h-4 rounded-full transition-colors ${helpOn ? 'bg-brand-600' : 'bg-surface-3'}`}>
+                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${helpOn ? 'right-0.5' : 'right-[18px]'}`} />
+              </span>
+            </>}
+          </button>
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             aria-label={sidebarOpen ? t('common.closeMenu') : t('common.openMenu')}
@@ -197,6 +237,14 @@ export default function Layout() {
           </button>
         </div>
       </aside>
+
+      {helpOn && tip && (
+        <div id="menu-help-tip" role="tooltip" style={{ top: tip.top, right: tip.right }}
+          className="fixed z-50 w-64 pointer-events-none bg-surface-2 border border-brand-600/40 rounded-lg shadow-2xl p-3 [@media(hover:none)]:hidden">
+          <p className="text-xs font-semibold text-white mb-1">{tip.label}</p>
+          <p className="text-xs leading-5 text-slate-300">{NAV_HELP[tip.path]}</p>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -261,7 +309,7 @@ export default function Layout() {
               </div>
               <div className="hidden md:block">
                 <p className="text-xs font-medium text-slate-200 font-vazirmatn-medium">{identity.name}</p>
-                <p className="text-[10px] text-slate-500 font-vazirmatn-light">{identity.role}</p>
+                <p className="text-[10px] text-slate-500 font-vazirmatn-light">{ROLE_LABELS[identity.role] ?? identity.role}</p>
               </div>
               <button
                 onClick={handleLogout}
@@ -296,7 +344,7 @@ export default function Layout() {
               to="/integrations"
               className="mt-3 block text-center text-xs text-brand-400 hover:text-brand-300 py-2 rounded-lg bg-brand-600/10 hover:bg-brand-600/20 font-vazirmatn-regular"
             >
-              پیکربندی یکپارچه‌سازی‌ها ←
+              صفحهٔ اتصال سرویس‌ها ←
             </Link>
           </div>
         )}

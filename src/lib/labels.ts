@@ -17,7 +17,7 @@ export const FINDING_STATUS_LABELS: Record<string, string> = {
 };
 
 export const CATEGORY_LABELS: Record<string, string> = {
-  crawlability: 'قابلیت خزش',
+  crawlability: 'دسترسی گوگل به صفحه‌ها',
   indexability: 'قابلیت ایندکس',
   metadata: 'متادیتا',
   content: 'محتوا',
@@ -32,8 +32,8 @@ export const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export const JOB_TYPE_LABELS: Record<string, string> = {
-  SITE_CRAWL: 'خزش و ممیزی سایت',
-  SEO_AUDIT: 'ممیزی سئو',
+  SITE_CRAWL: 'بررسی فنی سایت',
+  SEO_AUDIT: 'بررسی فنی سئو',
   RANK_CHECK: 'بررسی رتبه',
   BACKLINK_SYNC: 'همگام‌سازی بک‌لینک',
   GSC_SYNC: 'همگام‌سازی سرچ کنسول',
@@ -46,6 +46,12 @@ export const JOB_TYPE_LABELS: Record<string, string> = {
   REPORT_GENERATION: 'ساخت گزارش',
   WEBHOOK_DELIVERY: 'ارسال وب‌هوک',
   FIX_SUGGESTIONS: 'نوشتن پیشنهاد اصلاح سایت',
+  CONTENT_DRAFT: 'نوشتن پیش‌نویس مقاله',
+  BACKLINK_DISCOVERY: 'جست‌وجوی بک‌لینک‌ها',
+  KEYWORD_REFRESH: 'به‌روزرسانی کلمات کلیدی',
+  BACKLINK_REFRESH: 'به‌روزرسانی بک‌لینک‌ها',
+  AUDIT: 'بررسی فنی سئو',
+  ALERT_PROCESSING: 'بررسی هشدارها',
 };
 
 export const JOB_STATUS_LABELS: Record<string, string> = {
@@ -143,11 +149,11 @@ export function alertText(alert: { title?: string | null; message?: string | nul
     const score = data.seoScore ?? (lowScore ? Number(lowScore[1]) : undefined);
     return {
       title: score === undefined ? 'امتیاز سئو پایین است' : `امتیاز سئو پایین است: ${toPersianDigits(score)}`,
-      message: 'نتیجهٔ آخرین خزش این پروژه زیر ۵۰ است. یافته‌های ممیزی را بررسی کنید.',
+      message: 'نتیجهٔ آخرین بررسی سایت این پروژه زیر ۵۰ است. مشکل‌های پیداشده را بررسی کنید.',
     };
   }
   if (alert.rule === 'critical_issues') {
-    return { title: 'مشکل بحرانی سئو پیدا شد', message: 'در این پروژه مشکل بحرانی باز وجود دارد. یافته‌های ممیزی را بررسی کنید.' };
+    return { title: 'مشکل بحرانی سئو پیدا شد', message: 'در این پروژه مشکل بحرانی باز وجود دارد. مشکل‌های پیداشده را بررسی کنید.' };
   }
   if (alert.rule === 'job_dead_letter') {
     return { title: 'یک کار پس‌زمینه ناموفق شد', message: 'این کار پس از چند تلاش انجام نشد. دوباره آن را اجرا کنید یا با پشتیبانی تماس بگیرید.' };
@@ -160,11 +166,11 @@ const API_MESSAGES: Record<string, string> = {
   'Competitor already exists': 'این رقیب قبلاً اضافه شده است.',
   'Rank provider not configured': 'بررسی خودکار رتبه هنوز فعال نشده است. از سرچ کنسول یا فایل CSV استفاده کنید.',
   'Backlink provider not configured': 'همگام‌سازی خودکار بک‌لینک هنوز فعال نشده است. از فایل CSV استفاده کنید.',
-  'Insufficient credits for crawl': 'اعتبار کافی برای خزش ندارید.',
+  'Insufficient credits for crawl': 'سهمیهٔ کافی برای بررسی سایت ندارید.',
   'Too many requests, please try again later': 'تعداد درخواست‌ها زیاد بوده است. چند دقیقه دیگر دوباره تلاش کنید.',
   'Rate limit exceeded. Please try again later.': 'تعداد درخواست‌ها زیاد بوده است. چند دقیقه دیگر دوباره تلاش کنید.',
   'Too many auth attempts, please try again later': 'تعداد تلاش‌ها زیاد بوده است. چند دقیقه دیگر دوباره تلاش کنید.',
-  'A crawl is already running for this project': 'یک خزش برای این پروژه در حال اجراست. پس از پایان آن دوباره تلاش کنید.',
+  'A crawl is already running for this project': 'بررسی این سایت همین حالا در حال انجام است. پس از پایان آن دوباره تلاش کنید.',
   'Project not found': 'پروژه پیدا نشد.',
   'Validation failed': 'اطلاعات واردشده معتبر نیست.',
 };

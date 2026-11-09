@@ -43,7 +43,7 @@ export default function Automation() {
       <div className="flex flex-col items-center justify-center h-[60vh] text-center" dir="rtl">
         <Zap className="w-12 h-12 text-slate-500 mb-4" />
         <h2 className="text-xl font-bold text-white mb-2">پروژه‌ای انتخاب نشده</h2>
-        <p className="text-slate-400">برای مدیریت اتوماسیون یک پروژه انتخاب یا ایجاد کنید.</p>
+        <p className="text-slate-400">برای زمان‌بندی کارها یک پروژه انتخاب یا ایجاد کنید.</p>
       </div>
     );
   }
@@ -63,8 +63,8 @@ export default function Automation() {
     <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">اتوماسیون</h1>
-          <p className="text-sm text-slate-400 mt-1">کارهای زمان‌بندی‌شده و پس‌زمینه</p>
+          <h1 className="text-2xl font-bold text-white">زمان‌بندی خودکار</h1>
+          <p className="text-sm text-slate-400 mt-1">کارهایی که برنامه خودش سر وقت انجام می‌دهد، و سابقهٔ کارهای انجام‌شده</p>
         </div>
         
       </div>
@@ -75,19 +75,19 @@ export default function Automation() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
           <p className="text-xs text-slate-400">کل کارها</p>
-          <p className="text-2xl font-bold text-white mt-1">{jobs.length}</p>
+          <p className="text-2xl font-bold text-white mt-1">{toPersianDigits(jobs.length)}</p>
         </div>
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
           <p className="text-xs text-slate-400">در حال اجرا</p>
-          <p className="text-2xl font-bold text-brand-400 mt-1">{jobs.filter(j => j.status === 'running').length}</p>
+          <p className="text-2xl font-bold text-brand-400 mt-1">{toPersianDigits(jobs.filter(j => j.status === 'running').length)}</p>
         </div>
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
           <p className="text-xs text-slate-400">تکمیل‌شده</p>
-          <p className="text-2xl font-bold text-accent-green mt-1">{jobs.filter(j => j.status === 'completed').length}</p>
+          <p className="text-2xl font-bold text-accent-green mt-1">{toPersianDigits(jobs.filter(j => j.status === 'completed').length)}</p>
         </div>
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4">
           <p className="text-xs text-slate-400">ناموفق</p>
-          <p className="text-2xl font-bold text-accent-red mt-1">{jobs.filter(j => isFailed(j.status)).length}</p>
+          <p className="text-2xl font-bold text-accent-red mt-1">{toPersianDigits(jobs.filter(j => isFailed(j.status)).length)}</p>
         </div>
       </div>
 
@@ -100,7 +100,7 @@ export default function Automation() {
           <div className="p-12 text-center">
             <Activity className="w-12 h-12 text-slate-500 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-white mb-2">هنوز کاری اجرا نشده است</h3>
-            <p className="text-sm text-slate-400">با اجرای ممیزی، خزش یا عملیات دیگر، کارها اینجا نمایش داده می‌شوند.</p>
+            <p className="text-sm text-slate-400">با بررسی سایت، بررسی رتبه یا کارهای دیگر، کارها اینجا نمایش داده می‌شوند.</p>
           </div>
         ) : (
           <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
@@ -109,8 +109,8 @@ export default function Automation() {
                 <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">کار</th>
                 <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">وضعیت</th>
                 <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">شروع</th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">تکمیل‌شده</th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">تلاش‌ها</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">پایان</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">دفعات اجرا</th>
               </tr>
             </thead>
             <tbody>

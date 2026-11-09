@@ -13,7 +13,7 @@ export default function SessionSettings() {
     authenticatedFetch(`${base}/api/v1/auth/sessions`).then(async response=>{
       if (!response.ok) throw new Error();
       const json=await response.json(); if(active) setSessions(json.data);
-    }).catch(()=>{if(active)setMessage('دریافت نشست‌ها انجام نشد.');});
+    }).catch(()=>{if(active)setMessage('فهرست دستگاه‌های واردشده دریافت نشد.');});
     return ()=>{active=false;};
   },[base]);
   async function revoke(id:string) {
@@ -21,8 +21,8 @@ export default function SessionSettings() {
     try {
       const response=await authenticatedFetch(`${base}/api/v1/auth/sessions/${encodeURIComponent(id)}`,{method:'DELETE'});
       if(!response.ok)throw new Error();
-      setSessions(previous=>previous.filter(s=>s.id!==id));setMessage('نشست باطل شد.');
-    } catch {setMessage('ابطال نشست انجام نشد.');} finally {setBusy(false);}
+      setSessions(previous=>previous.filter(s=>s.id!==id));setMessage('آن دستگاه از حساب خارج شد.');
+    } catch {setMessage('خروج از آن دستگاه انجام نشد.');} finally {setBusy(false);}
   }
   async function changePassword(event:FormEvent) {
     event.preventDefault();setBusy(true);setMessage('');
@@ -34,15 +34,16 @@ export default function SessionSettings() {
   }
   return <div className="bg-surface-2 rounded-xl p-5 space-y-4">
     <h2 className="text-white font-bold">امنیت حساب</h2>
+    <p className="text-sm text-slate-400">دستگاه‌هایی که الان با این حساب وارد شده‌اند:</p>
     <p role="status">{message}</p>
     {sessions.map(session=><div key={session.id} className="flex justify-between gap-3">
-      <span>{new Date(session.createdAt).toLocaleString('fa-IR')} {session.current?'(نشست فعلی)':''}</span>
-      {!session.current && <button disabled={busy} onClick={()=>revoke(session.id)} className="text-red-400">ابطال نشست</button>}
+      <span>ورود در {new Date(session.createdAt).toLocaleString('fa-IR')} {session.current?'(همین دستگاه)':''}</span>
+      {!session.current && <button disabled={busy} onClick={()=>revoke(session.id)} className="text-red-400">خروج از این دستگاه</button>}
     </div>)}
     <form onSubmit={changePassword} className="space-y-3 border-t border-surface-3 pt-4">
       <label className="block">رمز فعلی<input required type="password" autoComplete="current-password" value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)} className="block bg-surface rounded p-2" /></label>
       <label className="block">رمز جدید (حداقل ۱۲ نویسه)<input required type="password" autoComplete="new-password" minLength={12} maxLength={128} value={password} onChange={e=>setPassword(e.target.value)} className="block bg-surface rounded p-2" /></label>
-      <p className="text-sm">با تغییر رمز، همهٔ نشست‌ها بسته می‌شوند و باید دوباره وارد شوید.</p>
+      <p className="text-sm">با تغییر رمز، همهٔ دستگاه‌ها از حساب خارج می‌شوند و باید دوباره وارد شوید.</p>
       <button disabled={busy} className="bg-brand-600 p-3 rounded text-white disabled:opacity-50">تغییر رمز</button>
     </form>
   </div>;

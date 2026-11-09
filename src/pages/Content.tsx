@@ -55,7 +55,7 @@ export default function Content() {
           setBriefs(json.data);
           setProviderError(null);
         } else if (json.error?.code === 'PROVIDER_NOT_CONFIGURED') {
-          setProviderError(json.error.message);
+          setProviderError('سرویس هوش مصنوعی هنوز فعال نشده است.');
         }
       } catch (e) {
         console.error(e);
@@ -94,14 +94,14 @@ export default function Content() {
       const json = await res.json();
       if (json.success) {
         setBriefs(prev => [json.data.brief, ...prev]);
-        setCreateSuccess('بریف در صف تولید قرار گرفت.');
+        setCreateSuccess('طرح محتوا در صف تولید قرار گرفت.');
         setShowCreateBrief(false);
         setForm({ title: '', targetKeyword: '', intent: 'informational', wordCount: 2000 });
       } else {
         if (json.error?.code === 'PROVIDER_NOT_CONFIGURED') {
-          setProviderError(json.error.message);
+          setProviderError('سرویس هوش مصنوعی هنوز فعال نشده است.');
         }
-        setCreateError(json.error?.message || 'انجام نشد');
+        setCreateError('ساخت طرح محتوا انجام نشد. دوباره تلاش کنید.');
       }
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : String(e));
@@ -124,7 +124,7 @@ export default function Content() {
     return (
       <div className="space-y-6" dir="rtl">
         <div>
-          <h1 className="text-2xl font-bold text-white">موتور محتوا</h1>
+          <h1 className="text-2xl font-bold text-white">تولید محتوا</h1>
           <p className="text-sm text-slate-400 mt-1">تولید و بهینه‌سازی محتوا با کمک هوش مصنوعی</p>
         </div>
         <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-8 text-center">
@@ -153,7 +153,7 @@ export default function Content() {
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-slate-400">در حال بارگذاری بریف‌ها…</p>
+          <p className="text-sm text-slate-400">در حال بارگذاری طرح‌های محتوا…</p>
         </div>
       </div>
     );
@@ -163,11 +163,11 @@ export default function Content() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">موتور محتوا</h1>
-          <p className="text-sm text-slate-400 mt-1">تولید محتوا با کمک هوش مصنوعی</p>
+          <h1 className="text-2xl font-bold text-white">تولید محتوا</h1>
+          <p className="text-sm text-slate-400 mt-1">اول طرح مقاله (عنوان‌ها و نکته‌ها) ساخته می‌شود، بعد از روی آن متن کامل مقاله.</p>
         </div>
         <button onClick={() => setShowCreateBrief(true)} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2">
-          <Sparkles className="w-4 h-4" /> ایجاد بریف
+          <Sparkles className="w-4 h-4" /> ایجاد طرح محتوا
         </button>
       </div>
 
@@ -179,10 +179,10 @@ export default function Content() {
       {briefs.length === 0 ? (
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-12 text-center">
           <FileText className="w-12 h-12 text-slate-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-white mb-2">هنوز بریفی ایجاد نشده است</h3>
-          <p className="text-sm text-slate-400 mb-4">اولین بریف محتوای خود را بسازید.</p>
+          <h3 className="text-lg font-semibold text-white mb-2">هنوز طرح محتوایی ایجاد نشده است</h3>
+          <p className="text-sm text-slate-400 mb-4">اولین طرح محتوای خود را بسازید.</p>
           <button onClick={() => setShowCreateBrief(true)} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2">
-            <Sparkles className="w-4 h-4" /> ایجاد بریف
+            <Sparkles className="w-4 h-4" /> ایجاد طرح محتوا
           </button>
         </div>
       ) : (
@@ -218,7 +218,7 @@ export default function Content() {
       {showCreateBrief && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg bg-surface-2 border border-surface-3/50 rounded-xl p-6">
-            <h2 className="text-lg font-bold text-white mb-4">ایجاد بریف محتوا</h2>
+            <h2 className="text-lg font-bold text-white mb-4">ایجاد طرح محتوا</h2>
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-medium text-slate-300 mb-1.5 block">عنوان</label>
@@ -246,7 +246,7 @@ export default function Content() {
               <div className="bg-surface/50 rounded-lg p-3">
                 <p className="text-xs text-slate-400">
                   <Bot className="w-3.5 h-3.5 inline me-1 text-accent-purple" />
-                  بریف با هوش مصنوعی ساخته می‌شود و یکی از سهمیهٔ ماهانهٔ هوش مصنوعی شما کم می‌کند.
+                  طرح محتوا با هوش مصنوعی ساخته می‌شود و یکی از سهمیهٔ ماهانهٔ هوش مصنوعی شما کم می‌کند.
                 </p>
               </div>
             </div>
@@ -286,7 +286,7 @@ function StatusBadge({ status }: { status: string }) {
 
 const DRAFT_ERRORS: Record<string, string> = {
   PROVIDER_NOT_CONFIGURED: 'سرویس هوش مصنوعی فعال نیست.',
-  BRIEF_NOT_READY: 'این بریف هنوز ساختار ندارد.',
+  BRIEF_NOT_READY: 'این طرح محتوا هنوز ساختار ندارد.',
   ALREADY_RUNNING: 'پیش‌نویس در حال نوشته‌شدن است.',
   LIMIT_REACHED: 'سقف ماهانهٔ استفاده از هوش مصنوعی پر شده است.',
   DRAFT_NOT_READY: 'اول پیش‌نویس را بنویسید.',

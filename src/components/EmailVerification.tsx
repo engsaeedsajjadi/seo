@@ -33,7 +33,7 @@ export function VerifyEmailBanner({ visible }: { visible: boolean }) {
   }
   return (
     <div role="status" className="mb-4 p-3 rounded-lg bg-accent-yellow/10 border border-accent-yellow/30 text-sm text-slate-200 flex flex-wrap items-center gap-3">
-      <span>برای اجرای خزش و بررسی‌ها، ایمیل خود را تأیید کنید.</span>
+      <span>برای بررسی سایت، ایمیل خود را تأیید کنید.</span>
       {sent === 'sent' && <span className="text-slate-400">لینک تازه ارسال شد.</span>}
       {sent === 'failed' && <span className="text-accent-red">ارسال انجام نشد. کمی بعد دوباره تلاش کنید.</span>}
       {sent !== 'sent' && <button onClick={resend} disabled={sent === 'sending'} className="text-brand-400 hover:underline">ارسال دوبارهٔ لینک</button>}

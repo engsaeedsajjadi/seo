@@ -107,7 +107,7 @@ export const crawl = {
   crawlDeleted: 'خزش حذف شد',
   crawlQueued: 'خزش در صف قرار گرفت',
   noCrawls: 'خزشی یافت نشد',
-  noCrawlsDescription: 'هنوز خزشی انجام نشده است. اولین خزش خود را شروع کنید.',
+  noCrawlsDescription: 'سایت هنوز بررسی نشده است. اولین خزش خود را شروع کنید.',
   createFirstCrawl: 'ایجاد اولین خزش',
   confirmCancel: 'آیا از لغو خزش مطمئن هستید؟',
   confirmDelete: 'آیا از حذف این خزش مطمئن هستید؟',

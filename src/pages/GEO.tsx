@@ -101,8 +101,8 @@ export default function GEO() {
     return (
       <div className="space-y-6" dir="rtl">
         <div>
-          <h1 className="text-2xl font-bold text-white">GEO / دیده‌شدن در هوش مصنوعی</h1>
-          <p className="text-sm text-slate-400 mt-1">دیده‌شدن برند خود را در پاسخ‌های هوش مصنوعی پیگیری کنید</p>
+          <h1 className="text-2xl font-bold text-white">دیده‌شدن در هوش مصنوعی (GEO)</h1>
+          <p className="text-sm text-slate-400 mt-1">ببینید وقتی کسی از هوش مصنوعی دربارهٔ حوزهٔ کار شما می‌پرسد، نام برند شما در پاسخ می‌آید یا نه.</p>
         </div>
         <div className="bg-surface-2 border border-accent-yellow/30 rounded-xl p-8 text-center">
           <AlertCircle className="w-12 h-12 text-accent-yellow mx-auto mb-4" />
@@ -113,7 +113,7 @@ export default function GEO() {
           <div className="bg-surface/50 rounded-lg p-4 max-w-sm mx-auto text-right">
             <p className="text-xs font-semibold text-slate-300 mb-2">برای فعال‌سازی:</p>
             <ul className="text-xs text-slate-400 space-y-1">
-              <li>• مدیر سیستم باید یک سرویس هوش مصنوعی را فعال کند</li>
+              <li>• مدیر برنامه باید کلید یک سرویس هوش مصنوعی (مثل Gemini) را روی سرور وارد کند</li>
               <li>• نام برند را در تنظیمات پروژه وارد کنید</li>
             </ul>
           </div>
@@ -142,8 +142,8 @@ export default function GEO() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">GEO / دیده‌شدن در هوش مصنوعی</h1>
-          <p className="text-sm text-slate-400 mt-1">دیده‌شدن برند در پاسخ‌های هوش مصنوعی</p>
+          <h1 className="text-2xl font-bold text-white">دیده‌شدن در هوش مصنوعی (GEO)</h1>
+          <p className="text-sm text-slate-400 mt-1">ببینید وقتی کسی از هوش مصنوعی دربارهٔ حوزهٔ کار شما می‌پرسد، نام برند شما در پاسخ می‌آید یا نه.</p>
         </div>
         <button onClick={handleCheck} disabled={checkLoading} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50">
           {checkLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}

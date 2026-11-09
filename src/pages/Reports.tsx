@@ -23,7 +23,7 @@ export default function Reports(){
     event.preventDefault();if(!projectId)return;setBusy(true);setError('');setNotice('');
     const result=await api.generateReport(projectId,'seo',format);
     if(result.success){setReports(previous=>[result.data,...previous]);setNotice('گزارش در صف آماده‌سازی قرار گرفت.');}
-    else setError(result.error.code==='LIMIT_REACHED'?'سقف گزارش ماهانهٔ پلن تکمیل شده است.':'ساخت گزارش انجام نشد. دسترسی و اتصال را بررسی کنید.');
+    else setError(result.error.code==='LIMIT_REACHED'?'سقف گزارش این ماه پر شده است.':'ساخت گزارش انجام نشد. دسترسی و اتصال را بررسی کنید.');
     setBusy(false);
   }
   async function download(report:Report){
@@ -37,14 +37,14 @@ export default function Reports(){
       window.setTimeout(()=>URL.revokeObjectURL(url),1000);
     }catch{setError('دریافت فایل انجام نشد. گزارش باید آماده شده باشد.');}finally{setBusy(false);}
   }
-  if(!projectId)return <p>ابتدا پروژه را انتخاب کنید.</p>;
+  if(!projectId)return <p>ابتدا از صفحهٔ پروژه‌ها یک سایت را انتخاب کنید.</p>;
   return <section dir="rtl" className="space-y-6 text-slate-300">
     <h1 className="text-2xl font-bold text-white">گزارش‌های سئو</h1>
-    <p>گزارش از داده‌های ذخیره‌شدهٔ همین پروژه تهیه می‌شود. خروجی HTML قابل چاپ است.</p>
+    <p>گزارش از داده‌های ذخیره‌شدهٔ همین پروژه تهیه می‌شود. برای تحویل به مشتری «صفحهٔ قابل چاپ» را انتخاب کنید؛ می‌توانید آن را از مرورگر به PDF تبدیل کنید.</p>
     {error&&<p role="alert" className="text-red-400">{error}</p>}{notice&&<p role="status" className="text-green-400">{notice}</p>}
     <form onSubmit={generate} className="flex flex-wrap items-end gap-3 bg-surface-2 border border-surface-3/50 rounded-xl p-5">
       <label>قالب خروجی<select value={format} onChange={e=>setFormat(e.target.value)} className="block bg-surface border border-surface-3/50 px-3 py-2 rounded-lg mt-2 text-sm text-white">
-        <option value="html">HTML قابل چاپ</option><option value="csv">CSV</option><option value="json">JSON</option>
+        <option value="html">صفحهٔ قابل چاپ (برای مشتری)</option><option value="csv">جدول اکسل (CSV)</option><option value="json">دادهٔ خام برای برنامه‌نویس (JSON)</option>
       </select></label>
       <button disabled={busy} className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg disabled:opacity-50">ساخت گزارش</button>
       <button type="button" onClick={()=>void load()} disabled={busy} className="px-4 py-2.5 text-sm text-slate-300 hover:text-white">تازه‌سازی</button>

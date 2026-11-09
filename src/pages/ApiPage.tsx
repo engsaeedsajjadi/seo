@@ -92,7 +92,7 @@ export default function ApiPage() {
         setNewKeyName('');
         setKeyError(null);
       } else {
-        setKeyError(json.error?.message || 'انجام نشد');
+        setKeyError('ساخت کلید انجام نشد. دوباره تلاش کنید.');
       }
     } catch (e) {
       setKeyError(e instanceof Error ? e.message : String(e));
@@ -180,8 +180,8 @@ export default function ApiPage() {
     <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">API و MCP</h1>
-          <p className="text-sm text-slate-400 mt-1">دسترسی برنامه‌نویسی با کلید API، سرور MCP و وب‌هوک‌های امضاشده</p>
+          <h1 className="text-2xl font-bold text-white">کلیدهای API</h1>
+          <p className="text-sm text-slate-400 mt-1">برای وصل‌کردن افزونهٔ وردپرس یا برنامه‌های دیگر به سئویار. اگر فقط افزونهٔ وردپرس را می‌خواهید، ساختن یک کلید کافی است.</p>
         </div>
       </div>
 
@@ -232,12 +232,12 @@ export default function ApiPage() {
                       <div className="flex items-center gap-2">
                         <p className="text-sm text-white font-medium">{apiKey.name}</p>
                         {apiKey.scopes.map(s => (
-                          <span key={s} className="px-1.5 py-0.5 rounded text-[10px] bg-brand-500/20 text-brand-400">{s}</span>
+                          <span key={s} className="px-1.5 py-0.5 rounded text-[10px] bg-brand-500/20 text-brand-400">{s === 'read' ? 'خواندن' : s === 'write' ? 'نوشتن' : s}</span>
                         ))}
                       </div>
                       <p className="text-xs text-slate-400 mt-1 font-mono"><span dir="ltr">{apiKey.keyPrefix}...</span> · ساخته‌شده: {formatDateOnly(apiKey.createdAt)} · آخرین استفاده: {apiKey.lastUsedAt ? formatDateOnly(apiKey.lastUsedAt) : 'هنوز استفاده نشده'}</p>
                     </div>
-                    <button onClick={() => handleRevokeKey(apiKey.id)} className="p-1.5 rounded hover:bg-surface-3/50 text-accent-red text-xs flex items-center gap-1"><Trash2 className="w-3 h-3" /> لغو</button>
+                    <button onClick={() => handleRevokeKey(apiKey.id)} className="p-1.5 rounded hover:bg-surface-3/50 text-accent-red text-xs flex items-center gap-1"><Trash2 className="w-3 h-3" /> حذف کلید</button>
                   </div>
                 ))}
               </div>
@@ -252,8 +252,8 @@ export default function ApiPage() {
               {[
                 { method: 'GET', path: '/api/v1/projects', desc: 'فهرست پروژه‌ها' },
                 { method: 'POST', path: '/api/v1/projects', desc: 'ایجاد پروژه' },
-                { method: 'GET', path: '/api/v1/projects/:id/audit', desc: 'نتایج ممیزی' },
-                { method: 'POST', path: '/api/v1/projects/:id/crawl', desc: 'شروع خزش سایت' },
+                { method: 'GET', path: '/api/v1/projects/:id/audit', desc: 'نتایج بررسی فنی' },
+                { method: 'POST', path: '/api/v1/projects/:id/crawl', desc: 'شروع بررسی سایت' },
                 { method: 'GET', path: '/api/v1/projects/:id/keywords', desc: 'فهرست کلمات کلیدی' },
                 { method: 'POST', path: '/api/v1/projects/:id/keywords', desc: 'افزودن کلمات کلیدی' },
                 { method: 'GET', path: '/api/v1/projects/:id/rankings', desc: 'دریافت رتبه‌ها' },
@@ -307,8 +307,8 @@ export default function ApiPage() {
             <div className="space-y-2">
               {[
                 { tool: 'list_projects', desc: 'فهرست پروژه‌های سازمان' },
-                { tool: 'run_audit', desc: 'شروع ممیزی سایت' },
-                { tool: 'get_audit_results', desc: 'دریافت یافته‌های ممیزی' },
+                { tool: 'run_audit', desc: 'شروع بررسی سایت' },
+                { tool: 'get_audit_results', desc: 'دریافت مشکل‌های پیداشده' },
                 { tool: 'search_keywords', desc: 'تحقیق کلمات کلیدی' },
                 { tool: 'get_rankings', desc: 'دریافت رتبه‌های فعلی' },
                 { tool: 'analyze_competitors', desc: 'مقایسه با رقبا' },
@@ -362,7 +362,7 @@ export default function ApiPage() {
                           <span key={e} className="px-1.5 py-0.5 rounded text-[10px] bg-surface-3/50 text-slate-400">{e}</span>
                         ))}
                         <span className="text-[10px] text-slate-500">کلید مخفی {webhook.secretPrefix}...</span>
-                        <span className="text-[10px] text-slate-500">وضعیت {webhook.status}</span>
+                        <span className="text-[10px] text-slate-500">{webhook.status === 'active' ? 'فعال' : 'غیرفعال'}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">

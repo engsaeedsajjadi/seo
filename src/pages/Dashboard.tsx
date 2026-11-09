@@ -8,9 +8,15 @@ import {
 import { useAppState, getProviderLabel } from '../lib/store';
 import { api } from '../lib/api';
 import { t } from '../i18n';
-import { scoreBand, JOB_TYPE_LABELS, findingTitle, CATEGORY_LABELS } from '../lib/labels';
+import { scoreBand, JOB_TYPE_LABELS, findingTitle, CATEGORY_LABELS, jobFailureReason } from '../lib/labels';
 
-const CUSTOMER_PROVIDERS = ['googleSearchConsole', 'googleAnalytics', 'openai', 'anthropic'];
+// What a customer cares about: is Google connected, is there an AI service, is there a rank service.
+const SERVICE_GROUPS: Array<{ label: string; keys: string[] }> = [
+  { label: 'سرچ کنسول گوگل', keys: ['googleSearchConsole'] },
+  { label: 'آنالیتیکس گوگل', keys: ['googleAnalytics'] },
+  { label: 'هوش مصنوعی', keys: ['google', 'openai', 'anthropic', 'openrouter', 'perplexity'] },
+  { label: 'رتبهٔ گوگل', keys: ['kwrank', 'serpapi', 'dataForSeo'] },
+];
 import { toPersianDigits, formatPersianNumber, formatPersianDate, formatRelativePersianTime } from '../lib/persian';
 import type { AuditFinding, Job } from '../lib/types';
 
@@ -62,6 +68,12 @@ export default function Dashboard() {
   }
 
   const seoScore = state.currentProject?.seoScore ?? null;
+  // Pages of a project live under /projects/:id/…; the bare path leads nowhere.
+  const projectPath = (page: string) => (state.currentProject ? `/projects/${state.currentProject.id}/${page}` : '/projects');
+  const serviceGroups = SERVICE_GROUPS.map((g) => {
+    const statuses = g.keys.map((k) => (state.providerStatus as Record<string, string>)[k]);
+    return { label: g.label, status: statuses.includes('connected') ? 'connected' : statuses.includes('error') ? 'error' : 'not_configured' };
+  });
   const countBySeverity = (severity: string) => auditFindings.filter(f => f.severity === severity).length;
 
   return (
@@ -78,11 +90,11 @@ export default function Dashboard() {
           <span className="text-xs text-slate-500 flex items-center gap-1 font-vazirmatn-light">
             <Clock className="w-3 h-3" />
             {state.currentProject?.lastCrawlAt 
-              ? `آخرین خزش: ${formatPersianDate(state.currentProject.lastCrawlAt, { format: 'short' })}`
-              : 'هنوز خزشی انجام نشده'}
+              ? `آخرین بررسی سایت: ${formatPersianDate(state.currentProject.lastCrawlAt, { format: 'short' })}`
+              : 'سایت هنوز بررسی نشده'}
           </span>
           <Link
-            to="/audit"
+            to={projectPath('audit')}
             aria-label={t('dashboard.runAudit')}
             className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 font-vazirmatn-medium"
           >
@@ -102,39 +114,39 @@ export default function Dashboard() {
                 <span className="text-5xl font-bold text-white persian-numbers">{toPersianDigits(seoScore)}</span>
                 <span className="text-sm text-slate-400 mb-2">/۱۰۰ · {scoreBand(seoScore).label}</span>
               </div>
-              <p className="text-xs text-slate-400 mt-2 font-vazirmatn-light">بر اساس {toPersianDigits(auditFindings.length)} یافته ممیزی</p>
+              <p className="text-xs text-slate-400 mt-2 font-vazirmatn-light">بر اساس {toPersianDigits(auditFindings.length)} مشکل پیداشده در آخرین بررسی</p>
             </>
           ) : (
             <>
               <div className="mt-3">
                 <span className="text-2xl font-bold text-slate-400 font-vazirmatn-bold">{t('common.noData')}</span>
               </div>
-              <p className="text-xs text-slate-400 mt-2 font-vazirmatn-light">برای محاسبه امتیاز، ممیزی اجرا کنید</p>
+              <p className="text-xs text-slate-400 mt-2 font-vazirmatn-light">برای محاسبهٔ امتیاز، یک بار سایت را بررسی کنید</p>
             </>
           )}
-          <Link to="/audit" className="mt-4 inline-flex items-center gap-1 text-xs text-brand-400 hover:text-brand-300 font-vazirmatn-regular">
-            مشاهده جزئیات ممیزی <ArrowRight className="w-3 h-3 rotate-180" />
+          <Link to={projectPath('audit')} className="mt-4 inline-flex items-center gap-1 text-xs text-brand-400 hover:text-brand-300 font-vazirmatn-regular">
+            دیدن جزئیات بررسی <ArrowRight className="w-3 h-3 rotate-180" />
           </Link>
         </div>
 
         <StatCard
-          title="یافته‌های ممیزی"
+          title="مشکل‌های پیداشده"
           value={toPersianDigits(auditFindings.length)}
           subtitle={`${toPersianDigits(countBySeverity('critical'))} بحرانی، ${toPersianDigits(countBySeverity('high'))} مهم`}
           icon={Shield}
-          link="/audit"
+          link={projectPath('audit')}
         />
         <StatCard
-          title="کارهای فعال"
+          title="کارهای در حال انجام"
           value={toPersianDigits(recentJobs.filter(j => j.status === 'running' || j.status === 'pending').length)}
-          subtitle={`${toPersianDigits(recentJobs.filter(j => j.status === 'completed').length)} اخیراً تکمیل شده`}
+          subtitle={`${toPersianDigits(recentJobs.filter(j => j.status === 'completed').length)} کار اخیراً تمام شده`}
           icon={Activity}
-          link="/automation"
+          link={projectPath('automation')}
         />
         <StatCard
           title="وضعیت سرویس‌ها"
-          value={`${toPersianDigits(CUSTOMER_PROVIDERS.filter(key => state.providerStatus[key as keyof typeof state.providerStatus] === 'connected').length)}/${toPersianDigits(CUSTOMER_PROVIDERS.length)}`}
-          subtitle="یکپارچه‌سازی متصل"
+          value={toPersianDigits(serviceGroups.filter(g => g.status === 'connected').length)}
+          subtitle={`از ${toPersianDigits(serviceGroups.length)} سرویس وصل است`}
           icon={CheckCircle2}
           link="/integrations"
         />
@@ -143,14 +155,14 @@ export default function Dashboard() {
       {/* Recent Audit Findings */}
       <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-white font-vazirmatn-bold">یافته‌های اخیر ممیزی</h3>
-          <Link to="/audit" className="text-xs text-brand-400 hover:text-brand-300 font-vazirmatn-regular">مشاهده همه ←</Link>
+          <h3 className="text-sm font-semibold text-white font-vazirmatn-bold">آخرین مشکل‌های پیداشده</h3>
+          <Link to={projectPath('audit')} className="text-xs text-brand-400 hover:text-brand-300 font-vazirmatn-regular">مشاهده همه ←</Link>
         </div>
         {auditFindings.length === 0 ? (
           <div className="text-center py-8">
             <Shield className="w-12 h-12 text-slate-500 mx-auto mb-3" />
-            <p className="text-sm text-slate-400 font-vazirmatn-regular">هنوز یافته‌ای وجود ندارد</p>
-            <p className="text-xs text-slate-500 mt-1 font-vazirmatn-light">برای شناسایی مشکلات سئو، ممیزی سایت را اجرا کنید</p>
+            <p className="text-sm text-slate-400 font-vazirmatn-regular">هنوز مشکلی ثبت نشده است</p>
+            <p className="text-xs text-slate-500 mt-1 font-vazirmatn-light">برای پیدا کردن مشکل‌های سئو، از صفحهٔ «بررسی فنی سایت» یک بررسی اجرا کنید</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -172,13 +184,13 @@ export default function Dashboard() {
       <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-white font-vazirmatn-bold">کارهای اخیر</h3>
-          <Link to="/automation" className="text-xs text-brand-400 hover:text-brand-300 font-vazirmatn-regular">مشاهده همه ←</Link>
+          <Link to={projectPath('automation')} className="text-xs text-brand-400 hover:text-brand-300 font-vazirmatn-regular">مشاهده همه ←</Link>
         </div>
         {recentJobs.length === 0 ? (
           <div className="text-center py-8">
             <Activity className="w-12 h-12 text-slate-500 mx-auto mb-3" />
             <p className="text-sm text-slate-400 font-vazirmatn-regular">هنوز کاری وجود ندارد</p>
-            <p className="text-xs text-slate-500 mt-1 font-vazirmatn-light">کارها هنگام اجرای ممیزی، خزش یا عملیات دیگر اینجا نمایش داده می‌شوند</p>
+            <p className="text-xs text-slate-500 mt-1 font-vazirmatn-light">بررسی سایت، بررسی رتبه و کارهای دیگری که شروع می‌کنید اینجا نمایش داده می‌شوند</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -190,7 +202,7 @@ export default function Dashboard() {
                   <p className="text-[10px] text-slate-500 font-vazirmatn-light">
                     {job.status === 'running' && 'در حال اجرا...'}
                     {job.status === 'completed' && `تکمیل شده ${job.completedAt ? formatRelativePersianTime(job.completedAt) : ''}`}
-                    {job.status === 'failed' && `ناموفق: ${job.error || 'خطای ناشناخته'}`}
+                    {(job.status === 'failed' || job.status === 'dead_letter') && `انجام نشد: ${jobFailureReason(job.error)}`}
                     {job.status === 'pending' && 'در صف'}
                   </p>
                 </div>
@@ -202,28 +214,28 @@ export default function Dashboard() {
 
       {/* Provider Status Banner */}
       <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-white mb-3 font-vazirmatn-bold">وضعیت یکپارچه‌سازی‌ها</h3>
+        <h3 className="text-sm font-semibold text-white mb-3 font-vazirmatn-bold">سرویس‌های متصل</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-3">
-          {CUSTOMER_PROVIDERS.map((key) => [key, state.providerStatus[key as keyof typeof state.providerStatus]] as const).map(([key, status]) => (
+          {serviceGroups.map(({ label: key, status }) => (
             <div key={key} className="flex flex-col items-center gap-2 p-3 rounded-lg bg-surface/50">
               <div className={`w-3 h-3 rounded-full ${
                 status === 'connected' ? 'bg-accent-green' :
                 status === 'error' ? 'bg-accent-red' :
                 'bg-accent-yellow'
               }`} />
-              <span className="text-[10px] text-slate-400 text-center font-vazirmatn-light">{getProviderLabel(key)}</span>
+              <span className="text-[10px] text-slate-400 text-center font-vazirmatn-light">{key}</span>
               <span className={`text-[10px] font-vazirmatn-regular ${
                 status === 'connected' ? 'text-accent-green' :
                 status === 'error' ? 'text-accent-red' :
                 'text-accent-yellow'
               }`}>
-                {status === 'connected' ? 'فعال' : 'نیاز به تنظیم'}
+                {status === 'connected' ? 'متصل' : status === 'error' ? 'خطا' : 'وصل نشده'}
               </span>
             </div>
           ))}
         </div>
         <p className="mt-3 text-xs text-slate-500 font-vazirmatn-light">
-          برای فعال‌سازی جمع‌آوری داده، سرویس‌ها را در <Link to="/integrations" className="text-brand-400 hover:text-brand-300">یکپارچه‌سازی‌ها</Link> پیکربندی کنید.
+          هر سرویس که وصل نباشد، بخش مربوط به آن داده‌ای نشان نمی‌دهد. جزئیات و اتصال حساب گوگل در صفحهٔ <Link to="/integrations" className="text-brand-400 hover:text-brand-300">اتصال سرویس‌ها</Link>.
         </p>
       </div>
     </div>
@@ -300,7 +312,7 @@ function EmptyState() {
       <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl">
         {[
           { step: '۱', title: 'ایجاد پروژه', desc: 'دامنه وب‌سایت خود را اضافه و تنظیمات را پیکربندی کنید' },
-          { step: '۲', title: 'اجرای ممیزی اولیه', desc: 'سایت خود را خزش کنید و مشکلات سئو را شناسایی کنید' },
+          { step: '۲', title: 'اولین بررسی سایت', desc: 'سایت را بررسی کنید و مشکلات سئو را شناسایی کنید' },
           { step: '۳', title: 'ردیابی و بهینه‌سازی', desc: 'رتبه‌ها را نظارت کنید و سئو خود را بهبود دهید' },
         ].map(item => (
           <div key={item.step} className="bg-surface-2 border border-surface-3/50 rounded-xl p-4 text-right">

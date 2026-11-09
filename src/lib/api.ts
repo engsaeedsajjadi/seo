@@ -204,7 +204,7 @@ export interface PlatformOrganization {
 /** Customers see Persian text chosen from the error code. The API's English text stays for API clients. */
 const PERSIAN_ERRORS: Record<string, string> = {
   VALIDATION_ERROR: 'اطلاعات واردشده معتبر نیست. لطفاً بررسی و دوباره تلاش کنید.',
-  LIMIT_REACHED: 'به سقف پلن فعلی رسیده‌اید. برای ادامه، پلن خود را ارتقا دهید.',
+  LIMIT_REACHED: 'به سقف مجاز این ماه رسیده‌اید.',
   INSUFFICIENT_CREDITS: 'اعتبار کافی ندارید.',
   EMAIL_NOT_VERIFIED: 'ابتدا ایمیل خود را تأیید کنید.',
   ACCOUNT_SUSPENDED: 'این سازمان معلق شده است. با پشتیبانی تماس بگیرید.',

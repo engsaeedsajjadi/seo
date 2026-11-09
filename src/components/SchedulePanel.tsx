@@ -3,7 +3,7 @@ import { CalendarClock, Pause, Play, Trash2 } from 'lucide-react';
 import { api, type Schedule } from '../lib/api';
 
 const TYPES: Array<[string, string]> = [
-  ['SITE_CRAWL', 'خزش و ممیزی سایت'], ['RANK_CHECK', 'بررسی رتبه'], ['BACKLINK_SYNC', 'همگام‌سازی بک‌لینک'],
+  ['SITE_CRAWL', 'بررسی فنی سایت'], ['RANK_CHECK', 'بررسی رتبه'], ['BACKLINK_SYNC', 'همگام‌سازی بک‌لینک'],
   ['REPORT_GENERATION', 'تهیهٔ گزارش'], ['ALERT_EVALUATION', 'بررسی هشدارها'], ['GSC_SYNC', 'همگام‌سازی سرچ کنسول'], ['GA4_SYNC', 'همگام‌سازی آنالیتیکس'],
 ];
 const FREQUENCIES: Array<[string, string]> = [['0 3 * * *', 'هر روز، ساعت ۳'], ['0 3 * * 6', 'هر هفته، شنبه ساعت ۳'], ['0 3 1 * *', 'هر ماه، روز اول']];
