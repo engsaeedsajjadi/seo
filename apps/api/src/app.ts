@@ -20,6 +20,7 @@ import { paymentService } from './services/payment.service.js';
 import { passwordRecoveryService } from './services/password-recovery.service.js';
 import { teamService } from './services/team.service.js';
 import { invitationService } from './services/invitation.service.js';
+import { markdownToHtml } from './lib/markdown.js';
 import { kwRankSuggestConfigured, suggestKeywords, KwRankApiError } from './lib/kwrank.js';
 import { sessionService } from './services/session.service.js';
 import { checkDatabaseHealth } from './db/client.js';
@@ -1938,7 +1939,13 @@ export function createApp() {
       if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
 
       const { query } = await import('./db/client.js');
-      const result = await query(`SELECT id, title, target_keyword as "targetKeyword", intent, status, word_count as "wordCount", outline, created_at as "createdAt" FROM content_briefs WHERE project_id = $1 AND organization_id = $2 ORDER BY created_at DESC`, [project.id, req.organizationId!]);
+      // A draft whose job ended without writing (dead letter) is shown as failed, not as still writing.
+      const result = await query(`SELECT b.id, b.title, b.target_keyword as "targetKeyword", b.intent, b.status, b.word_count as "wordCount", b.outline,
+          CASE WHEN b.draft_status = 'writing' AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.organization_id = b.organization_id
+            AND j.type = 'CONTENT_DRAFT' AND j.payload->>'briefId' = b.id::text AND j.status IN ('pending', 'running')) THEN 'failed' ELSE b.draft_status END AS "draftStatus",
+          b.draft_markdown as "draftMarkdown", b.draft_word_count as "draftWordCount", b.draft_error as "draftError", b.draft_updated_at as "draftUpdatedAt",
+          b.wp_status as "wpStatus", b.wp_edit_url as "wpEditUrl", b.wp_error as "wpError", b.created_at as "createdAt"
+        FROM content_briefs b WHERE b.project_id = $1 AND b.organization_id = $2 ORDER BY b.created_at DESC`, [project.id, req.organizationId!]);
       res.json({ success: true, data: result.rows });
     } catch (error) {
       next(error);
@@ -2119,7 +2126,12 @@ export function createApp() {
       const fixes = await query(`SELECT id, kind, page_url AS "pageUrl", target, proposed_value AS "value", previous_value AS "previousValue", status
         FROM site_fixes WHERE project_id = $1 AND organization_id = $2 AND status IN ('approved', 'rollback_requested')
         ORDER BY updated_at LIMIT 100`, [project.id, req.organizationId!]);
-      res.json({ success: true, data: { domain: project.domain, fixes: fixes.rows } });
+      const posts = await query(`SELECT id, title, target_keyword AS "keyword", outline->>'metaTitle' AS "metaTitle",
+          outline->>'metaDescription' AS "metaDescription", draft_markdown AS "markdown"
+        FROM content_briefs WHERE project_id = $1 AND organization_id = $2 AND wp_status = 'requested' AND draft_markdown IS NOT NULL
+        ORDER BY updated_at LIMIT 5`, [project.id, req.organizationId!]);
+      res.json({ success: true, data: { domain: project.domain, fixes: fixes.rows,
+        posts: posts.rows.map(({ markdown, ...p }: any) => ({ ...p, html: markdownToHtml(markdown) })) } });
     } catch (error) { next(error); }
   });
 
@@ -2169,6 +2181,84 @@ export function createApp() {
         created += result.rowCount ?? 0;
       }
       res.json({ success: true, data: { created } });
+    } catch (error) { next(error); }
+  });
+
+  // ---------------------------------------------------------------- article drafts
+  async function briefFor(req: AuthRequest) {
+    const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+    if (!project) throw new ApiError(404, 'NOT_FOUND', 'Project not found');
+    const brief = (await query(`SELECT id, status, outline, draft_status, draft_markdown, wp_status FROM content_briefs
+      WHERE id = $1 AND project_id = $2 AND organization_id = $3`, [z.string().uuid().parse(req.params.briefId), project.id, req.organizationId!])).rows[0];
+    if (!brief) throw new ApiError(404, 'NOT_FOUND', 'Brief not found');
+    return { project, brief };
+  }
+
+  app.post('/api/v1/projects/:projectId/content/briefs/:briefId/draft', authMiddleware, requireVerifiedEmail, async (req: AuthRequest, res, next) => {
+    try {
+      rejectApiKey(req);
+      const { project, brief } = await briefFor(req);
+      if (!(config.providers.openai || config.providers.anthropic || config.providers.googleAi)) {
+        return res.status(503).json({ success: false, error: { code: 'PROVIDER_NOT_CONFIGURED', message: 'AI provider not configured' } });
+      }
+      if (brief.status !== 'completed' || !Array.isArray(brief.outline?.sections) || !brief.outline.sections.length) {
+        return res.status(400).json({ success: false, error: { code: 'BRIEF_NOT_READY', message: 'The brief has no outline yet' } });
+      }
+      const running = await query(`SELECT 1 FROM jobs WHERE organization_id = $1 AND type = 'CONTENT_DRAFT' AND payload->>'briefId' = $2 AND status IN ('pending', 'running')`,
+        [req.organizationId!, brief.id]);
+      if (running.rows.length) return res.status(409).json({ success: false, error: { code: 'ALREADY_RUNNING', message: 'The draft is being written' } });
+      await remainingMonthlyQuota(req.organizationId!, 'aiOperations', USED_AI_OPERATIONS);
+      await query(`UPDATE content_briefs SET draft_status = 'writing', draft_error = NULL, updated_at = NOW() WHERE id = $1 AND organization_id = $2`, [brief.id, req.organizationId!]);
+      const job = await jobRepository.create({ organizationId: req.organizationId!, projectId: project.id, type: 'CONTENT_DRAFT',
+        payload: { briefId: brief.id }, idempotencyKey: `draft_${brief.id}_${Date.now()}` });
+      res.status(201).json({ success: true, data: { job } });
+    } catch (error) { next(error); }
+  });
+
+  // Edits from the editor. Any HTML is removed: the post is built from the Markdown only.
+  app.put('/api/v1/projects/:projectId/content/briefs/:briefId/draft', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      rejectApiKey(req);
+      const { brief } = await briefFor(req);
+      const { markdown } = z.object({ markdown: z.string().max(100000) }).parse(req.body || {});
+      if (brief.draft_status === 'writing') return res.status(409).json({ success: false, error: { code: 'ALREADY_RUNNING', message: 'The draft is being written' } });
+      const clean = markdown.replace(/<[^>]*>/g, '').trim();
+      if (clean.length < 50) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Draft is too short' } });
+      const words = clean.replace(/[#*\-_>`]/g, ' ').split(/\s+/).filter(Boolean).length;
+      await query(`UPDATE content_briefs SET draft_markdown = $3, draft_word_count = $4, draft_status = 'ready', draft_updated_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND organization_id = $2`, [brief.id, req.organizationId!, clean, words]);
+      res.json({ success: true, data: { words } });
+    } catch (error) { next(error); }
+  });
+
+  // A person decides to send the draft; the plugin creates an unpublished post.
+  app.post('/api/v1/projects/:projectId/content/briefs/:briefId/wordpress', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      rejectApiKey(req);
+      const { brief } = await briefFor(req);
+      if (brief.draft_status !== 'ready' || !brief.draft_markdown) return res.status(400).json({ success: false, error: { code: 'DRAFT_NOT_READY', message: 'Write the draft first' } });
+      await query(`UPDATE content_briefs SET wp_status = 'requested', wp_error = NULL, updated_at = NOW() WHERE id = $1 AND organization_id = $2`, [brief.id, req.organizationId!]);
+      res.json({ success: true, data: { wpStatus: 'requested' } });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/v1/projects/:projectId/wp/posts', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const body = z.object({ results: z.array(z.object({
+        id: z.string().uuid(),
+        status: z.enum(['sent', 'failed']),
+        postId: z.number().int().positive().optional(),
+        editUrl: z.string().url().max(2048).optional(),
+        error: z.string().max(500).optional(),
+      })).max(20) }).parse(req.body || {});
+      let updated = 0;
+      for (const r of body.results) {
+        const result = await query(`UPDATE content_briefs SET wp_status = $4, wp_post_id = COALESCE($5, wp_post_id), wp_edit_url = COALESCE($6, wp_edit_url),
+            wp_error = $7, updated_at = NOW() WHERE id = $1 AND project_id = $2 AND organization_id = $3 AND wp_status = 'requested'`,
+          [r.id, req.params.projectId, req.organizationId!, r.status, r.postId ?? null, r.editUrl ?? null, r.status === 'failed' ? (r.error ?? 'Unknown error') : null]);
+        updated += result.rowCount ?? 0;
+      }
+      res.json({ success: true, data: { updated } });
     } catch (error) { next(error); }
   });
 

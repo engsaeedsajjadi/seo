@@ -19,6 +19,7 @@ export function routeAllowed(role: string, method: string, path: string): boolea
   if (/\/alerts\/[^/]+\/read$/.test(path)) return true;
   // Changes to a customer's live site: staff only (the plugin's API key acts as SEO_Manager).
   if (/^\/api\/v1\/projects\/[^/]+\/(fixes|wp)(\/|$)/.test(path)) return staff.includes(role);
+  if (/^\/api\/v1\/projects\/[^/]+\/content\/briefs\/[^/]+\/wordpress$/.test(path)) return staff.includes(role);
   if (path.includes('/integrations/')) return staff.includes(role);
   if (method === 'DELETE') return ['Owner','Admin'].includes(role);
   if (/\/(crawl|rankings\/check|backlinks\/sync|pagespeed\/check|geo\/check|reports)$/.test(path)) return [...staff,'Analyst'].includes(role);

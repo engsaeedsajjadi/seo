@@ -11,7 +11,7 @@ const fixes = async () => (await call('GET', `/projects/${ctx.pid}/fixes`)).fixe
 
 let r = sync('reset-scan');
 check('nothing is applied before approval', /^0 تغییر/.test(r.message), r);
-check('the plugin check-in shows in the app', (await call('GET', `/projects/${ctx.pid}/fixes`)).plugin?.version === '1.1.0');
+check('the plugin check-in shows in the app', (await call('GET', `/projects/${ctx.pid}/fixes`)).plugin?.version === '1.2.0');
 let images = (await fixes()).filter((f) => f.kind === 'image_alt');
 check('images without alt are proposed from the plugin', images.length === 2, images);
 const beach = images.find((f) => /beach-sunset/.test(f.target));
@@ -73,6 +73,30 @@ r = sync();
 check('rolling back removes the redirect', (await fetch('http://127.0.0.1:8088/old-tours/', { redirect: 'manual' })).status === 404);
 check('rolling back removes the schema', !(await (await fetch('http://127.0.0.1:8088/')).text()).includes('application/ld+json'));
 check('both rollbacks are reported', (await fixes()).filter((f) => (f.kind === 'redirect' || f.kind === 'local_business_schema') && f.status === 'rolled_back').length === 2);
+
+// Article draft → unpublished WordPress post.
+const briefId = execFileSync('psql', ['-qAt', DB, '-c', `INSERT INTO content_briefs (organization_id, project_id, title, target_keyword, status, outline, draft_status, draft_markdown, draft_word_count)
+  VALUES ('${ctx.org}', '${ctx.pid}', 'راهنمای سفر به کیش', 'سفر کیش', 'completed', '{"sections":[{"heading":"مقدمه"}],"metaTitle":"راهنمای کامل سفر به کیش","metaDescription":"هر آنچه برای سفر به کیش باید بدانید."}',
+  'ready', E'## مقدمه\nکیش جزیره‌ای **زیبا** است & دیدنی.\n\n- ساحل\n- خرید', 8) RETURNING id`], { encoding: 'utf8' }).trim().split('\n')[0];
+check('a person sends the article', (await call('POST', `/projects/${ctx.pid}/content/briefs/${briefId}/wordpress`))?.wpStatus === 'requested');
+r = sync();
+check('the plugin reports one draft article', r.message.includes('1 مقاله'), r.message);
+const wpPost = JSON.parse(execFileSync('php', [`${S}/wp-post.php`, `${S}/wpsite`, briefId], { encoding: 'utf8' }).trim());
+check('WordPress has an unpublished draft with the article', wpPost.status === 'draft' && wpPost.title === 'راهنمای سفر به کیش' && wpPost.content.includes('<h2>مقدمه</h2>') && wpPost.content.includes('<strong>زیبا</strong>') && wpPost.content.includes('<li>ساحل</li>'), wpPost);
+check('the article carries its meta title and description', wpPost.metaTitle === 'راهنمای کامل سفر به کیش' && wpPost.metaDescription.startsWith('هر آنچه'), wpPost);
+check('the draft is not visible on the site', (await fetch(`http://127.0.0.1:8088/?p=${wpPost.id}`)).status === 404);
+const briefRow = ((await call('GET', `/projects/${ctx.pid}/content/briefs`)) ?? []).find((b) => b.id === briefId);
+check('the app links to the WordPress draft', briefRow?.wpStatus === 'sent' && briefRow?.wpEditUrl?.includes(`post=${wpPost.id}`), briefRow);
+await call('PUT', `/projects/${ctx.pid}/content/briefs/${briefId}/draft`, { markdown: '## مقدمه\nمتن ویرایش‌شده برای سفر به کیش که حالا کامل‌تر است و چند جملهٔ تازه دارد.' });
+await call('POST', `/projects/${ctx.pid}/content/briefs/${briefId}/wordpress`);
+sync();
+const updatedPost = JSON.parse(execFileSync('php', [`${S}/wp-post.php`, `${S}/wpsite`, briefId], { encoding: 'utf8' }).trim());
+check('sending again updates the same draft', updatedPost.id === wpPost.id && updatedPost.content.includes('ویرایش‌شده') && updatedPost.count === 1, updatedPost);
+execFileSync('php', [`${S}/wp-post.php`, `${S}/wpsite`, briefId, 'publish']);
+await call('POST', `/projects/${ctx.pid}/content/briefs/${briefId}/wordpress`);
+sync();
+const afterPublish = ((await call('GET', `/projects/${ctx.pid}/content/briefs`)) ?? []).find((b) => b.id === briefId);
+check('a published post is never overwritten', afterPublish?.wpStatus === 'failed' && /منتشر شده/.test(afterPublish?.wpError ?? ''), afterPublish);
 
 check('a read-only key is refused with a clear message', /read و write/.test(sync('', ctx.roKey).message));
 check('a wrong key is refused with a clear message', /نامعتبر/.test(sync('', 'rf_' + 'x'.repeat(40)).message));

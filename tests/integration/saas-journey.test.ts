@@ -250,6 +250,30 @@ try {
   const pendingKinds = ((await call('GET', `/projects/${pid}/wp/pending`, pluginKey)).data?.fixes ?? []).map((f: any) => f.kind);
   check('the plugin receives the redirect and the schema', pendingKinds.includes('redirect') && pendingKinds.includes('local_business_schema'), pendingKinds);
 
+  console.log('--- Article drafts');
+  const briefs = async () => (await call('GET', `/projects/${pid}/content/briefs`, T)).data ?? [];
+  check('the brief outline is written', await waitFor(async () => (await briefs()).some((b: any) => b.status === 'completed'), 20000));
+  const brief = (await briefs()).find((b: any) => b.status === 'completed');
+  check('nothing is sent before a draft exists', (await call('POST', `/projects/${pid}/content/briefs/${brief.id}/wordpress`, T, {})).code === 'DRAFT_NOT_READY');
+  check('a draft is queued', (await call('POST', `/projects/${pid}/content/briefs/${brief.id}/draft`, T, {})).status === 201);
+  check('a second draft request waits', (await call('POST', `/projects/${pid}/content/briefs/${brief.id}/draft`, T, {})).code === 'ALREADY_RUNNING');
+  check('the AI writes the draft', await waitFor(async () => (await briefs()).find((b: any) => b.id === brief.id)?.draftStatus === 'ready', 20000));
+  const written = (await briefs()).find((b: any) => b.id === brief.id);
+  check('the draft is clean Markdown (no fence, no title line, no HTML)', !/```|<script|^# /m.test(written.draftMarkdown) && written.draftMarkdown.startsWith('## Intro') && written.draftWordCount > 80, written.draftMarkdown?.slice(0, 120));
+  const editedDraft = `${written.draftMarkdown}\n\n## Edited by a person\nA checked sentence with <b>markup</b> & an ampersand.`;
+  check('the editor saves changes and drops HTML', (await call('PUT', `/projects/${pid}/content/briefs/${brief.id}/draft`, T, { markdown: editedDraft })).status === 200
+    && !(await briefs()).find((b: any) => b.id === brief.id).draftMarkdown.includes('<b>'));
+  check('the plugin key cannot send articles', (await call('POST', `/projects/${pid}/content/briefs/${brief.id}/wordpress`, pluginKey, {})).status === 403);
+  check('nothing reaches WordPress before sending', !((await call('GET', `/projects/${pid}/wp/pending`, pluginKey)).data?.posts ?? []).length);
+  check('a person sends the draft', (await call('POST', `/projects/${pid}/content/briefs/${brief.id}/wordpress`, T, {})).data?.wpStatus === 'requested');
+  const post = ((await call('GET', `/projects/${pid}/wp/pending`, pluginKey)).data?.posts ?? [])[0];
+  check('the plugin receives safe HTML', post?.id === brief.id && post.html.startsWith('<h2>Intro</h2>') && post.html.includes('<ul><li>first point</li><li><strong>second</strong> point</li></ul>')
+    && post.html.includes('&amp; an ampersand') && !/<script|<b>/.test(post.html), post?.html?.slice(0, 200));
+  check('the plugin reports the WordPress draft', (await call('POST', `/projects/${pid}/wp/posts`, pluginKey, { results: [{ id: brief.id, status: 'sent', postId: 42, editUrl: 'https://fixture.rankforge.test/wp-admin/post.php?post=42&action=edit' }] })).data?.updated === 1);
+  const sent = (await briefs()).find((b: any) => b.id === brief.id);
+  check('the app shows where the draft is', sent.wpStatus === 'sent' && sent.wpEditUrl.includes('post=42'), sent);
+  check('a report for an article not requested changes nothing', (await call('POST', `/projects/${pid}/wp/posts`, pluginKey, { results: [{ id: brief.id, status: 'failed', error: 'x' }] })).data?.updated === 0);
+
   console.log('--- Quotas');
   const orgId = a.data.user.organizationId as string;
   await owner.query(`INSERT INTO ai_usage (organization_id, provider, model, input_tokens, output_tokens, operation, idempotency_key) SELECT $1, 'x', 'x', 1, 1, 'x', 'q' || g || $2 FROM generate_series(1, 200) g`, [orgId, tag]);

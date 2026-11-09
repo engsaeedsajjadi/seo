@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       سئویار
  * Plugin URI:        https://github.com/engsaeedsajjadi/seo
- * Description:       اصلاح‌هایی را که در سئویار تأیید کرده‌اید روی سایت اعمال می‌کند: عنوان صفحه، توضیحات متا، متن جایگزین تصاویر، اطلاعات کسب‌وکار محلی (Schema) و ریدایرکت ۳۰۱. هر تغییر قابل بازگشت است.
- * Version:           1.1.0
+ * Description:       اصلاح‌هایی را که در سئویار تأیید کرده‌اید روی سایت اعمال می‌کند: عنوان صفحه، توضیحات متا، متن جایگزین تصاویر، اطلاعات کسب‌وکار محلی (Schema) و ریدایرکت ۳۰۱؛ مقاله‌های آماده را هم به‌صورت پیش‌نویس منتشرنشده می‌سازد. هر تغییر قابل بازگشت است.
+ * Version:           1.2.0
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            SeoYar
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('SEOYAR_VERSION', '1.1.0');
+define('SEOYAR_VERSION', '1.2.0');
 define('SEOYAR_CRON_HOOK', 'seoyar_sync_event');
 
 // ---------------------------------------------------------------- settings
@@ -238,8 +238,12 @@ function seoyar_sync()
             return seoyar_record_sync('تغییرها اعمال شد ولی گزارش به سئویار نرسید: ' . $sent->get_error_message());
         }
     }
+    $drafts = seoyar_create_drafts(isset($pending['posts']) && is_array($pending['posts']) ? $pending['posts'] : array());
     $images = seoyar_report_images();
     $message = sprintf('%s تغییر انجام شد، %s ناموفق.', number_format_i18n($applied), number_format_i18n($failed));
+    if ($drafts > 0) {
+        $message .= sprintf(' %s مقاله به‌صورت پیش‌نویس ساخته شد.', number_format_i18n($drafts));
+    }
     if ($images > 0) {
         $message .= sprintf(' %s تصویر بدون متن جایگزین برای بررسی فرستاده شد.', number_format_i18n($images));
     }
@@ -278,6 +282,56 @@ function seoyar_handle_fix($fix)
     } catch (Exception $e) {
         return array('id' => $id, 'status' => 'failed', 'error' => mb_substr($e->getMessage(), 0, 500));
     }
+}
+
+// ---------------------------------------------------------------- article drafts
+
+/**
+ * Creates an unpublished post for each article sent from SeoYar; someone publishes it in WordPress.
+ * A second send of the same article updates the draft while it is still unpublished.
+ */
+function seoyar_create_drafts($posts)
+{
+    $results = array();
+    $created = 0;
+    foreach (array_slice($posts, 0, 5) as $post) {
+        $id = isset($post['id']) ? (string) $post['id'] : '';
+        if (!preg_match('/^[0-9a-f-]{36}$/', $id)) {
+            continue;
+        }
+        $existing = get_posts(array('post_type' => 'post', 'post_status' => 'any', 'numberposts' => 1, 'meta_key' => '_seoyar_brief_id', 'meta_value' => $id, 'fields' => 'ids'));
+        if ($existing && get_post_status($existing[0]) !== 'draft') {
+            $results[] = array('id' => $id, 'status' => 'failed', 'error' => 'این مقاله در وردپرس منتشر شده است و پیش‌نویس جدید جای آن را نمی‌گیرد.');
+            continue;
+        }
+        $data = array(
+            'post_title' => sanitize_text_field((string) (isset($post['title']) ? $post['title'] : '')),
+            'post_content' => wp_kses_post((string) (isset($post['html']) ? $post['html'] : '')),
+            'post_status' => 'draft',
+            'post_type' => 'post',
+        );
+        if ($existing) {
+            $data['ID'] = $existing[0];
+        }
+        $postId = $existing ? wp_update_post(wp_slash($data), true) : wp_insert_post(wp_slash($data), true);
+        if (is_wp_error($postId)) {
+            $results[] = array('id' => $id, 'status' => 'failed', 'error' => mb_substr($postId->get_error_message(), 0, 500));
+            continue;
+        }
+        update_post_meta($postId, '_seoyar_brief_id', $id);
+        foreach (array('meta_title' => 'metaTitle', 'meta_description' => 'metaDescription') as $kind => $field) {
+            $value = sanitize_text_field((string) (isset($post[$field]) ? $post[$field] : ''));
+            if ($value !== '') {
+                update_post_meta($postId, seoyar_meta_key($kind), $value);
+            }
+        }
+        $results[] = array('id' => $id, 'status' => 'sent', 'postId' => (int) $postId, 'editUrl' => admin_url('post.php?post=' . (int) $postId . '&action=edit'));
+        $created++;
+    }
+    if ($results) {
+        seoyar_request('POST', '/wp/posts', array('results' => $results));
+    }
+    return $created;
 }
 
 // ---------------------------------------------------------------- redirects

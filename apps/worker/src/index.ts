@@ -46,6 +46,9 @@ import {
   analyzeGeoResponse,
   buildBriefPrompt,
   parseBriefOutline,
+  buildDraftPrompt,
+  cleanDraft,
+  DRAFT_PROMPT_VERSION,
   recordAiUsage,
   BRIEF_PROMPT_VERSION,
   buildFixPrompt,
@@ -1303,6 +1306,8 @@ class Worker {
         return this.handleContentBrief(job, signal);
       case 'FIX_SUGGESTIONS':
         return this.handleFixSuggestions(job, signal);
+      case 'CONTENT_DRAFT':
+        return this.handleContentDraft(job, signal);
       case 'REPORT_GENERATION':
         return this.handleReportGeneration(job, signal);
       case 'ALERT_EVALUATION':
@@ -2311,6 +2316,57 @@ class Worker {
     });
     console.log(JSON.stringify({ level: 'info', msg: 'Fix suggestions created', job_id: job.id, created, redirects, candidates: candidates.length, prompt: FIX_PROMPT_VERSION }));
     return { created: created + redirects, redirects, candidates: candidates.length, ai: true };
+  }
+
+  private async handleContentDraft(job: Job, signal: AbortSignal): Promise<any> {
+    const briefId = job.payload?.briefId;
+    if (!briefId || !job.projectId) throw new JobError('Brief missing in payload — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
+    const brief = (await query(
+      `SELECT id, project_id, title, target_keyword, target_word_count, word_count, outline, status FROM content_briefs WHERE id = $1 AND organization_id = $2`,
+      [briefId, job.organizationId]
+    )).rows[0];
+    if (!brief) throw new JobError(`Content brief not found: ${briefId}`, 'NON_RETRYABLE', false);
+    const fail = async (message: string) => query(
+      `UPDATE content_briefs SET draft_status = 'failed', draft_error = $2, draft_updated_at = NOW() WHERE id = $1`, [brief.id, message.slice(0, 500)]);
+    if (brief.status !== 'completed' || !Array.isArray(brief.outline?.sections) || brief.outline.sections.length === 0) {
+      await fail('Brief has no outline');
+      throw new JobError('Brief has no outline — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
+    }
+    const project = (await query(`SELECT language FROM projects WHERE id = $1 AND organization_id = $2`, [brief.project_id, job.organizationId])).rows[0];
+    const aiProviders = createWorkerAiProviders();
+    let provider = pickAiProvider(aiProviders, job.payload?.provider);
+    if (!provider) {
+      await fail('AI provider not configured');
+      throw new JobError(AI_NOT_CONFIGURED_MESSAGE, 'PROVIDER_NOT_CONFIGURED', false);
+    }
+    let ai;
+    try {
+      ({ ai, provider } = await completeWithFallback(aiProviders, job.payload?.provider, buildDraftPrompt({
+        title: brief.title, targetKeyword: brief.target_keyword, targetWordCount: brief.target_word_count || brief.word_count,
+        language: project?.language, outline: brief.outline,
+      }), { maxTokens: 8000, temperature: 0.6 }));
+    } catch (error) {
+      const jobError = aiErrorToJobError(error, `${provider.name} article draft request`);
+      if (!jobError.retryable) await fail(jobError.message);
+      throw jobError;
+    }
+    if (signal.aborted) throw new JobError('Article draft aborted', 'TIMEOUT', true);
+    const { markdown, words } = cleanDraft(ai.content);
+    if (words < 100) {
+      await fail('The AI returned too little text');
+      throw new JobError('Draft too short', 'RETRYABLE', true);
+    }
+    await query(
+      `UPDATE content_briefs SET draft_status = 'ready', draft_markdown = $2, draft_word_count = $3, draft_error = NULL, draft_updated_at = NOW() WHERE id = $1`,
+      [brief.id, markdown, words]
+    );
+    await recordAiUsage(query, {
+      organizationId: job.organizationId, projectId: brief.project_id, provider: ai.provider, model: ai.model,
+      inputTokens: ai.inputTokens, outputTokens: ai.outputTokens, estimatedCostUsd: ai.estimatedCostUsd,
+      operation: 'content_draft', idempotencyKey: `draft_${job.id}`, referenceType: 'content_brief', referenceId: brief.id,
+    });
+    console.log(JSON.stringify({ level: 'info', msg: 'Article draft written', job_id: job.id, brief_id: brief.id, words, prompt: DRAFT_PROMPT_VERSION }));
+    return { words, provider: ai.provider };
   }
 
   private async handleContentBrief(job: Job, signal: AbortSignal): Promise<any> {

@@ -581,3 +581,55 @@ export function selectFixCandidates(
   }
   return out;
 }
+
+// ============================================================
+// ARTICLE DRAFTS — a full article from a completed brief. A person
+// edits it and decides when it goes to WordPress (as a draft post).
+// ============================================================
+
+export const DRAFT_PROMPT_VERSION = 'worker-draft-v1';
+
+export interface DraftInput {
+  title: string;
+  targetKeyword?: string | null;
+  targetWordCount?: number | null;
+  language?: string | null;
+  outline: any;
+}
+
+export function buildDraftPrompt(input: DraftInput): string {
+  const sections = Array.isArray(input.outline?.sections) ? input.outline.sections : [];
+  const words = Math.min(4000, Math.max(600, Number(input.targetWordCount) || 1200));
+  const lines = [
+    'You are an experienced SEO writer. Write the full article below in Markdown only: "## " and "### " headings,',
+    'paragraphs, "- " or "1. " lists and **bold**. No title line (the title is set separately), no HTML, no tables,',
+    'no images, no links, no code fences, no notes to the editor.',
+    `Language: ${input.language || 'fa'} — write naturally for native readers of that language.`,
+    `Article title: ${input.title}`,
+  ];
+  if (input.targetKeyword) lines.push(`Main keyword: ${input.targetKeyword} — use it in the first paragraph and a few times naturally, never stuffed.`);
+  lines.push(`Length: about ${words} words.`);
+  lines.push('Follow this outline in order (headings may be lightly rephrased):');
+  for (const s of sections.slice(0, 20)) {
+    lines.push(`- ${String(s?.heading ?? '').slice(0, 200)}`);
+    for (const sub of (Array.isArray(s?.subheadings) ? s.subheadings : []).slice(0, 8)) lines.push(`  - ${String(sub).slice(0, 200)}`);
+    for (const p of (Array.isArray(s?.keyPoints) ? s.keyPoints : []).slice(0, 8)) lines.push(`  * cover: ${String(p).slice(0, 300)}`);
+  }
+  const faq = Array.isArray(input.outline?.faqQuestions) ? input.outline.faqQuestions.slice(0, 8) : [];
+  if (faq.length) lines.push(`End with a "## " FAQ section answering: ${faq.map((q: unknown) => String(q).slice(0, 200)).join(' | ')}`);
+  lines.push('Be accurate and practical. Do not invent statistics, prices, studies, quotes, dates or company facts; when a number is needed, describe it in general terms.');
+  return lines.join('\n');
+}
+
+/** Markdown the editor and the WordPress post can trust: fences and any HTML removed, size bounded. */
+export function cleanDraft(content: string): { markdown: string; words: number } {
+  const markdown = (content || '')
+    .replace(/^```(?:markdown|md)?\s*/i, '').replace(/\s*```\s*$/, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/^#\s+.*\n+/, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 100000);
+  const words = markdown.replace(/[#*\-_>`]/g, ' ').split(/\s+/).filter(Boolean).length;
+  return { markdown, words };
+}
