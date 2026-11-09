@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { Link2, AlertCircle, Plus, RefreshCw, ExternalLink } from 'lucide-react';
 import { useAppState } from '../lib/store';
 import CsvImport from '../components/CsvImport';
+import LinkDiscovery from '../components/LinkDiscovery';
 import { toBacklinkRows } from '../lib/csv-parse';
 import { formatPersianNumber as formatImportCount } from '../lib/persian';
 import { t } from '../i18n';
@@ -125,6 +126,8 @@ export default function Backlinks() {
           </button>}
         </div>
       </div>
+
+      {state.currentProject && <LinkDiscovery projectId={state.currentProject.id} domain={state.currentProject.domain} />}
 
       {syncResult && (
         <div className="bg-surface-2 border border-surface-3/50 rounded-xl p-4 text-sm text-slate-300">{syncResult}</div>

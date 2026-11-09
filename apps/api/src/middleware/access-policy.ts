@@ -22,7 +22,7 @@ export function routeAllowed(role: string, method: string, path: string): boolea
   if (/^\/api\/v1\/projects\/[^/]+\/content\/briefs\/[^/]+\/wordpress$/.test(path)) return staff.includes(role);
   if (path.includes('/integrations/')) return staff.includes(role);
   if (method === 'DELETE') return ['Owner','Admin'].includes(role);
-  if (/\/(crawl|rankings\/check|backlinks\/sync|pagespeed\/check|geo\/check|reports)$/.test(path)) return [...staff,'Analyst'].includes(role);
+  if (/\/(crawl|rankings\/check|backlinks\/sync|backlinks\/discover|pagespeed\/check|geo\/check|reports)$/.test(path)) return [...staff,'Analyst'].includes(role);
   if (path.startsWith('/api/v1/projects')) return [...staff,'Editor'].includes(role);
   if (path.startsWith('/api/v1/scheduler/')) return staff.includes(role);
   return false;

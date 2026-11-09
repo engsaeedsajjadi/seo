@@ -1767,6 +1767,68 @@ export function createApp() {
     }
   });
 
+  // ---------------------------------------------------------------- referring domains (Common Crawl web graph)
+  app.post('/api/v1/projects/:projectId/backlinks/discover', authMiddleware, requireVerifiedEmail, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      // One run covers every project and competitor of the organization.
+      const running = await query(`SELECT id FROM jobs WHERE organization_id = $1 AND type = 'BACKLINK_DISCOVERY' AND status IN ('pending', 'running', 'retrying')`, [req.organizationId!]);
+      if (running.rows.length) return res.status(409).json({ success: false, error: { code: 'ALREADY_RUNNING', message: 'Backlink discovery is already running' } });
+      const job = await jobRepository.create({ organizationId: req.organizationId!, projectId: project.id, type: 'BACKLINK_DISCOVERY',
+        payload: {}, idempotencyKey: `discovery_${req.organizationId}_${Date.now()}` });
+      res.status(201).json({ success: true, data: { job } });
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/v1/projects/:projectId/backlinks/referring-domains', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      const rows = await query(`SELECT referring_domain AS "domain", status, first_release AS "firstRelease", last_release AS "lastRelease"
+        FROM link_domains WHERE project_id = $1 AND organization_id = $2 AND competitor_id IS NULL
+        ORDER BY status, referring_domain LIMIT 5000`, [project.id, req.organizationId!]);
+      const summary = await query(`SELECT MAX(last_release) AS release, COUNT(*) FILTER (WHERE status = 'active')::int AS active,
+          COUNT(*) FILTER (WHERE status = 'lost')::int AS lost FROM link_domains WHERE project_id = $1 AND organization_id = $2 AND competitor_id IS NULL`,
+        [project.id, req.organizationId!]);
+      const lastJob = await query(`SELECT status, result, error, created_at AS "createdAt", completed_at AS "completedAt" FROM jobs
+        WHERE organization_id = $1 AND type = 'BACKLINK_DISCOVERY' ORDER BY created_at DESC LIMIT 1`, [req.organizationId!]);
+      res.json({ success: true, data: { ...summary.rows[0], domains: rows.rows, lastRun: lastJob.rows[0] ?? null } });
+    } catch (error) { next(error); }
+  });
+
+  // Domains that link to competitors but not to the project, most shared first.
+  app.get('/api/v1/projects/:projectId/backlinks/prospects', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const project = await projectRepository.findById(req.params.projectId, req.organizationId!);
+      if (!project) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+      const rows = await query(`SELECT p.id, p.referring_domain AS "domain", p.status, p.note, p.updated_at AS "updatedAt",
+          COUNT(DISTINCT d.competitor_id)::int AS "competitorCount", array_agg(DISTINCT d.target_domain) AS "competitors",
+          EXISTS (SELECT 1 FROM link_domains o WHERE o.project_id = p.project_id AND o.competitor_id IS NULL
+            AND o.referring_domain = p.referring_domain AND o.status = 'active') AS "linksToUs"
+        FROM link_prospects p
+        JOIN link_domains d ON d.project_id = p.project_id AND d.referring_domain = p.referring_domain AND d.competitor_id IS NOT NULL AND d.status = 'active'
+        WHERE p.project_id = $1 AND p.organization_id = $2
+        GROUP BY p.id ORDER BY CASE p.status WHEN 'to_contact' THEN 0 WHEN 'contacted' THEN 1 WHEN 'new' THEN 2 ELSE 3 END,
+          "competitorCount" DESC, p.referring_domain LIMIT 1000`, [project.id, req.organizationId!]);
+      res.json({ success: true, data: rows.rows });
+    } catch (error) { next(error); }
+  });
+
+  app.patch('/api/v1/projects/:projectId/backlinks/prospects/:prospectId', authMiddleware, async (req: AuthRequest, res, next) => {
+    try {
+      const body = z.object({
+        status: z.enum(['new', 'to_contact', 'contacted', 'won', 'rejected']).optional(),
+        note: z.string().trim().max(1000).optional(),
+      }).parse(req.body || {});
+      const updated = await query(`UPDATE link_prospects SET status = COALESCE($4, status), note = COALESCE($5, note), updated_at = NOW()
+        WHERE id = $1 AND project_id = $2 AND organization_id = $3 RETURNING id, referring_domain AS "domain", status, note`,
+        [z.string().uuid().parse(req.params.prospectId), req.params.projectId, req.organizationId!, body.status ?? null, body.note ?? null]);
+      if (!updated.rows.length) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Prospect not found' } });
+      res.json({ success: true, data: updated.rows[0] });
+    } catch (error) { next(error); }
+  });
+
   app.post('/api/v1/projects/:projectId/backlinks/sync', authMiddleware, requireVerifiedEmail, async (req: AuthRequest, res, next) => {
     try {
       const project = await projectRepository.findById(req.params.projectId, req.organizationId!);

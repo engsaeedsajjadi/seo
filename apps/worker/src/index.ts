@@ -60,6 +60,11 @@ import {
 import { SerpApiClient, SerpApiError, rankDepth } from './serpapi.js';
 import { runLocalIntlAudit } from './local-intl-audit.js';
 import { proposeRedirects } from './redirects.js';
+import { referringDomains, graphDomain } from './commoncrawl.js';
+
+// Common Crawl domain graph used when none is configured (COMMONCRAWL_GRAPH_RELEASE); releases come out every few months.
+const DEFAULT_GRAPH_RELEASE = 'cc-main-2025-26-nov-dec-jan';
+const GRAPH_JOB_TIMEOUT_MS = parseInt(process.env.COMMONCRAWL_TIMEOUT || String(6 * 3600_000), 10);
 import { KwRankClient, KwRankError, KWRANK_COUNTRY_IDS, KWRANK_COMPETITION, kwRankDevice, matchKwRankKeywords } from './kwrank.js';
 
 // ============================================================
@@ -1157,11 +1162,13 @@ class Worker {
 
     const abortController = new AbortController();
     let timeoutId: NodeJS.Timeout | null = null;
+    // Streaming the link graph takes hours; that job extends its own lease while it works.
+    const jobTimeout = job.type === 'BACKLINK_DISCOVERY' ? GRAPH_JOB_TIMEOUT_MS : this.timeout;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
         abortController.abort();
-        reject(new JobError(`Job timeout after ${this.timeout}ms`, 'TIMEOUT', true));
-      }, this.timeout);
+        reject(new JobError(`Job timeout after ${jobTimeout}ms`, 'TIMEOUT', true));
+      }, jobTimeout);
     });
 
     try {
@@ -1308,6 +1315,8 @@ class Worker {
         return this.handleFixSuggestions(job, signal);
       case 'CONTENT_DRAFT':
         return this.handleContentDraft(job, signal);
+      case 'BACKLINK_DISCOVERY':
+        return this.handleBacklinkDiscovery(job, signal);
       case 'REPORT_GENERATION':
         return this.handleReportGeneration(job, signal);
       case 'ALERT_EVALUATION':
@@ -2316,6 +2325,71 @@ class Worker {
     });
     console.log(JSON.stringify({ level: 'info', msg: 'Fix suggestions created', job_id: job.id, created, redirects, candidates: candidates.length, prompt: FIX_PROMPT_VERSION }));
     return { created: created + redirects, redirects, candidates: candidates.length, ai: true };
+  }
+
+  /**
+   * Referring domains for every project and competitor of the organization from one pass over the
+   * Common Crawl domain graph, then link-building prospects: domains that link to competitors only.
+   */
+  private async handleBacklinkDiscovery(job: Job, signal: AbortSignal): Promise<any> {
+    const release = String(job.payload?.release || process.env.COMMONCRAWL_GRAPH_RELEASE || DEFAULT_GRAPH_RELEASE);
+    if (!/^cc-main-[a-z0-9-]{4,60}$/.test(release)) throw new JobError('Invalid web graph release — VALIDATION_ERROR', 'VALIDATION_ERROR', false);
+    const projects = (await query(
+      `SELECT id, domain, normalized_domain FROM projects WHERE organization_id = $1 AND deleted_at IS NULL`, [job.organizationId])).rows;
+    const competitors = (await query(
+      `SELECT id, project_id, domain, normalized_domain FROM competitors WHERE organization_id = $1`, [job.organizationId])).rows;
+    const targets = [
+      ...projects.map((p: any) => ({ projectId: p.id, competitorId: null as string | null, domain: graphDomain(p.normalized_domain || p.domain) })),
+      ...competitors.map((c: any) => ({ projectId: c.project_id, competitorId: c.id as string | null, domain: graphDomain(c.normalized_domain || c.domain) })),
+    ].filter((t) => t.domain.includes('.'));
+    if (targets.length === 0) return { release, targets: 0 };
+
+    let lastBeat = Date.now();
+    const graph = await referringDomains([...new Set(targets.map((t) => t.domain))], {
+      baseUrl: process.env.COMMONCRAWL_GRAPH_URL || 'https://data.commoncrawl.org/projects/hyperlinkgraph',
+      release, signal,
+      onProgress: async (stage, count) => {
+        if (Date.now() - lastBeat < 60_000) return;
+        lastBeat = Date.now();
+        await query('SELECT rf_worker_extend_lease($1, $2, 900)', [job.id, job.executionId]);
+        console.log(JSON.stringify({ level: 'info', msg: 'Web graph progress', job_id: job.id, stage, lines: count }));
+      },
+    });
+
+    let stored = 0;
+    for (const t of targets) {
+      const domains = graph.referring.get(t.domain) ?? [];
+      for (let i = 0; i < domains.length; i += 500) {
+        const chunk = domains.slice(i, i + 500);
+        const result = await query(
+          `INSERT INTO link_domains (organization_id, project_id, competitor_id, target_domain, referring_domain, first_release, last_release)
+           SELECT $1, $2, $3, $4, d, $5, $5 FROM unnest($6::text[]) AS d
+           ON CONFLICT (project_id, COALESCE(competitor_id, '00000000-0000-0000-0000-000000000000'::uuid), referring_domain)
+           DO UPDATE SET last_release = EXCLUDED.last_release, status = 'active', target_domain = EXCLUDED.target_domain, updated_at = NOW()`,
+          [job.organizationId, t.projectId, t.competitorId, t.domain, release, chunk]);
+        stored += result.rowCount ?? 0;
+      }
+      // Seen before but not in this release: the link is gone, or the page was not crawled this time.
+      if (!graph.missing.includes(t.domain)) {
+        await query(
+          `UPDATE link_domains SET status = 'lost', updated_at = NOW()
+           WHERE organization_id = $1 AND project_id = $2 AND competitor_id IS NOT DISTINCT FROM $3 AND last_release <> $4 AND status = 'active'`,
+          [job.organizationId, t.projectId, t.competitorId, release]);
+      }
+    }
+
+    // Prospects: active links to a competitor, none to the project.
+    const prospects = await query(
+      `INSERT INTO link_prospects (organization_id, project_id, referring_domain)
+       SELECT DISTINCT c.organization_id, c.project_id, c.referring_domain FROM link_domains c
+       WHERE c.organization_id = $1 AND c.competitor_id IS NOT NULL AND c.status = 'active'
+         AND NOT EXISTS (SELECT 1 FROM link_domains p WHERE p.project_id = c.project_id AND p.competitor_id IS NULL
+           AND p.referring_domain = c.referring_domain AND p.status = 'active')
+       ON CONFLICT (project_id, referring_domain) DO NOTHING`, [job.organizationId]);
+
+    console.log(JSON.stringify({ level: 'info', msg: 'Backlink discovery completed', job_id: job.id, release, targets: targets.length,
+      stored, prospects: prospects.rowCount ?? 0, missing: graph.missing.length, truncated: graph.truncated.length }));
+    return { release, targets: targets.length, stored, newProspects: prospects.rowCount ?? 0, missing: graph.missing, truncated: graph.truncated };
   }
 
   private async handleContentDraft(job: Job, signal: AbortSignal): Promise<any> {
