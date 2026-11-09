@@ -2,7 +2,7 @@
 // Core Type Definitions
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'notice';
-export type AuditCategory = 'crawlability' | 'indexability' | 'metadata' | 'content' | 'links' | 'images' | 'performance' | 'security' | 'structured-data' | 'international';
+export type AuditCategory = 'crawlability' | 'indexability' | 'metadata' | 'content' | 'links' | 'images' | 'performance' | 'security' | 'structured-data' | 'international' | 'local';
 export type JobType = 'SITE_CRAWL' | 'RANK_CHECK' | 'KEYWORD_REFRESH' | 'BACKLINK_REFRESH' | 'GSC_SYNC' | 'GA4_SYNC' | 'PAGESPEED_CHECK' | 'COMPETITOR_CHECK' | 'AI_VISIBILITY_CHECK' | 'REPORT_GENERATION' | 'ALERT_PROCESSING';
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'dead_letter';
 export type PlanTier = 'FREE' | 'STARTER' | 'PRO' | 'AGENCY' | 'ENTERPRISE';

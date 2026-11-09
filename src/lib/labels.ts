@@ -28,6 +28,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   structured_data: 'داده ساختاریافته',
   'structured-data': 'داده ساختاریافته',
   international: 'سئوی بین‌المللی',
+  local: 'سئوی محلی',
 };
 
 export const JOB_TYPE_LABELS: Record<string, string> = {
@@ -79,7 +80,7 @@ export const LANGUAGE_LABELS: Record<string, string> = {
   tr: 'ترکی',
 };
 
-const RULES: Record<string, { title: string; recommendation: string }> = {
+const RULES: Record<string, { title: string; recommendation: string; siteWide?: string }> = {
   missing_title: { title: 'عنوان صفحه وجود ندارد', recommendation: 'برای هر صفحه یک عنوان یکتا بنویسید.' },
   duplicate_title: { title: 'عنوان تکراری', recommendation: 'برای هر صفحه عنوانی متفاوت و متناسب با محتوای همان صفحه بنویسید.' },
   title_too_long: { title: 'عنوان طولانی', recommendation: 'عنوان را کوتاه کنید تا در نتایج جست‌وجو بریده نشود.' },
@@ -95,6 +96,28 @@ const RULES: Record<string, { title: string; recommendation: string }> = {
   insecure_links: { title: 'لینک ناامن', recommendation: 'لینک‌های HTTP را به HTTPS تغییر دهید.' },
   missing_robots_txt: { title: 'فایل robots.txt وجود ندارد', recommendation: 'فایل robots.txt را در ریشهٔ سایت قرار دهید.' },
   missing_sitemap: { title: 'نقشهٔ سایت وجود ندارد', recommendation: 'نقشهٔ سایت بسازید و نشانی آن را در robots.txt بنویسید.' },
+  missing_local_business_schema: {
+    title: 'دادهٔ ساختاریافتهٔ کسب‌وکار محلی (LocalBusiness) وجود ندارد',
+    recommendation: 'اگر کسب‌وکار در یک شهر یا محدودهٔ مشخص خدمت می‌دهد، Schema از نوع LocalBusiness (یا نوع دقیق‌تر مثل GeneralContractor) با نام، نشانی و تلفن اضافه کنید.',
+    siteWide: 'در هیچ صفحه‌ای از سایت پیدا نشد. اگر سایت کسب‌وکار محلی نیست، این مورد را نادیده بگیرید.',
+  },
+  local_business_schema_incomplete: { title: 'اطلاعات LocalBusiness ناقص است', recommendation: 'نام، نشانی (خیابان و شهر) و تلفن را در Schema کامل کنید.' },
+  local_phone_mismatch: {
+    title: 'تلفن Schema با تلفن سایت یکی نیست',
+    recommendation: 'یک شمارهٔ تلفن را همه‌جا یکسان بنویسید: در Schema، در سایت و در Google Business Profile.',
+  },
+  missing_contact_phone: {
+    title: 'شمارهٔ تلفن قابل کلیک وجود ندارد',
+    recommendation: 'تلفن کسب‌وکار را به‌صورت لینک tel: در صفحهٔ تماس و پایین صفحه‌ها قرار دهید.',
+    siteWide: 'در هیچ صفحه‌ای لینک tel: پیدا نشد.',
+  },
+  missing_html_lang: { title: 'زبان صفحه مشخص نشده', recommendation: 'در تگ <html> ویژگی lang را بنویسید، مثلاً lang="fa-IR" یا lang="en-US".' },
+  hreflang_invalid: { title: 'hreflang نامعتبر', recommendation: 'از کد زبان استاندارد (مثل en، en-GB، fa-IR یا x-default) و نشانی کامل با https استفاده کنید.' },
+  hreflang_missing_self: { title: 'hreflang بدون ارجاع به خود صفحه', recommendation: 'در فهرست hreflang هر صفحه، خود آن صفحه را هم با زبان خودش بیاورید.' },
+  hreflang_missing_return: {
+    title: 'hreflang بدون لینک برگشت',
+    recommendation: 'هر نسخهٔ زبانی باید به همهٔ نسخه‌های دیگر لینک دهد؛ گوگل لینکی را که برگشت ندارد نادیده می‌گیرد.',
+  },
 };
 
 export function findingTitle(finding: Pick<AuditFinding, 'ruleId' | 'title'>): string {
@@ -106,7 +129,9 @@ export function findingRecommendation(finding: Pick<AuditFinding, 'ruleId' | 're
 }
 
 export function findingDescription(finding: Pick<AuditFinding, 'ruleId' | 'description' | 'affectedUrls'>): string {
-  if (!RULES[finding.ruleId]) return finding.description;
+  const rule = RULES[finding.ruleId];
+  if (!rule) return finding.description;
+  if (rule.siteWide) return rule.siteWide;
   return `این مورد در ${toPersianDigits(finding.affectedUrls.length)} صفحه دیده شد.`;
 }
 

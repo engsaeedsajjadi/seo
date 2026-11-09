@@ -259,6 +259,7 @@ export default function SiteAudit() {
               <option value="security">امنیت</option>
               <option value="structured_data">داده ساختاریافته</option>
               <option value="international">سئوی بین‌المللی</option>
+              <option value="local">سئوی محلی</option>
             </select>
             <span className="text-xs text-slate-500 ms-auto">
               نمایش {toPersianDigits(filteredFindings.length)} از {toPersianDigits(findings.length)} یافته

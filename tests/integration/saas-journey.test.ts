@@ -18,7 +18,14 @@ const owner = new Pool({ connectionString: OWNER_URL, max: 3 });
 const tag = randomBytes(4).toString('hex');
 const secret = randomBytes(32).toString('hex');
 const ORIGIN = 'https://app.rankforge.test';
-const PORT = 3900 + Math.floor(Math.random() * 50);
+// fetch() refuses some ports (4045 and 4190 fall in the ranges below), so those offsets are skipped.
+const FETCH_BLOCKED_PORTS = new Set([4045, 4190]);
+const PORT = (() => {
+  for (;;) {
+    const port = 3900 + Math.floor(Math.random() * 50);
+    if (![0, 50, 100, 150, 200, 250].some((offset) => FETCH_BLOCKED_PORTS.has(port + offset))) return port;
+  }
+})();
 const PROD_PORT = PORT + 50;
 const MAIL_PORT = PORT + 100;
 const SMTP_PORT = PORT + 150;

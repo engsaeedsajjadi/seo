@@ -55,6 +55,7 @@ import {
   type AIProvider,
 } from './ai.js';
 import { SerpApiClient, SerpApiError, rankDepth } from './serpapi.js';
+import { runLocalIntlAudit } from './local-intl-audit.js';
 import { KwRankClient, KwRankError, KWRANK_COUNTRY_IDS, kwRankDevice, matchKwRankKeywords } from './kwrank.js';
 
 // ============================================================
@@ -269,6 +270,10 @@ interface CrawlPage {
   robotsMeta?: string;
   hreflang: Array<{ lang: string; href: string }>;
   structuredData: any[];
+  /** lang attribute of <html>. */
+  htmlLang?: string;
+  /** tel: links on the page. */
+  phones?: string[];
   images: Array<{ src: string; alt?: string; width?: number; height?: number }>;
   links: Array<{ href: string; text: string; isInternal: boolean; rel?: string }>;
   headers: Record<string, string>;
@@ -499,6 +504,8 @@ class Crawler {
         lang: $(el).attr('hreflang') || '',
         href: $(el).attr('href') || '',
       })).get();
+      const htmlLang = $('html').attr('lang')?.trim() || undefined;
+      const phones = [...new Set($('a[href^="tel:"]').map((_, el) => ($(el).attr('href') || '').slice(4).trim()).get().filter(Boolean))].slice(0, 20);
       const structuredData: any[] = [];
       $('script[type="application/ld+json"]').each((_, el) => {
         try {
@@ -554,6 +561,8 @@ class Crawler {
         robotsMeta,
         hreflang,
         structuredData,
+        htmlLang,
+        phones,
         images,
         links,
         headers: Object.fromEntries(response.headers.entries()),
@@ -575,7 +584,7 @@ class Crawler {
 // ============================================================
 
 type Severity = 'critical' | 'high' | 'medium' | 'low' | 'notice';
-type Category = 'crawlability' | 'indexability' | 'metadata' | 'content' | 'links' | 'images' | 'performance' | 'security' | 'structured_data' | 'international';
+type Category = 'crawlability' | 'indexability' | 'metadata' | 'content' | 'links' | 'images' | 'performance' | 'security' | 'structured_data' | 'international' | 'local';
 
 interface AuditFinding {
   ruleId: string;
@@ -839,13 +848,14 @@ function runAudit(context: AuditContext): AuditFinding[] {
     });
   }
 
+  findings.push(...runLocalIntlAudit(context.pages));
   return findings;
 }
 
 const PAGE_PENALTY: Record<Severity, number> = { critical: 100, high: 100, medium: 10, low: 3, notice: 0 };
 const SITE_WIDE_PENALTY: Record<Severity, number> = { critical: 10, high: 5, medium: 3, low: 2, notice: 0 };
 const MAX_WARNING_PENALTY = 30;
-const ALL_SCORE_CATEGORIES = ['crawlability','indexability','metadata','content','links','images','performance','security','structured_data','international'];
+const ALL_SCORE_CATEGORIES = ['crawlability','indexability','metadata','content','links','images','performance','security','structured_data','international','local'];
 
 function calculateSeoScore(findings: AuditFinding[], pageUrls?: string[]): { overall: number; categories: Record<string, number> } {
   // Site health, in the style of the market leaders: the average health of the crawled pages.
