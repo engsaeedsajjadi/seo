@@ -268,6 +268,9 @@ export default function Dashboard() {
               }`}>
                 {status === 'connected' ? 'متصل' : status === 'error' ? 'خطا' : 'وصل نشده'}
               </span>
+              {status !== 'connected' && key.includes('گوگل') && key !== 'رتبهٔ گوگل' && (
+                <Link to="/integrations" className="text-[10px] text-brand-400 hover:text-brand-300">وصل کنید ←</Link>
+              )}
             </div>
           ))}
         </div>
