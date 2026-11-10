@@ -456,7 +456,8 @@ export function buildBriefPrompt(brief: BriefInput): string {
   if (brief.contentType) lines.push(`Content type: ${brief.contentType}`);
   if (brief.targetWordCount) lines.push(`Target total word count: ${brief.targetWordCount}`);
   if (brief.projectDomain) lines.push(`Website: ${brief.projectDomain}`);
-  if (brief.language) lines.push(`Write the outline in language: ${brief.language}`);
+  // Every string a person reads must be in the article's language — models otherwise answer the key points in English.
+  lines.push(`Write every text value (headings, subheadings, keyPoints, metaTitle, metaDescription, faqQuestions) in ${brief.language ? `this language: ${brief.language}` : 'the same language as the article title'}. Keep only the JSON keys in English.`);
   lines.push('Base every section on the title and keyword above. Do not invent statistics, studies, or facts.');
   return lines.join('\n');
 }

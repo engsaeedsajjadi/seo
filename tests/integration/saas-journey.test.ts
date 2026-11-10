@@ -273,6 +273,14 @@ try {
   const sent = (await briefs()).find((b: any) => b.id === brief.id);
   check('the app shows where the draft is', sent.wpStatus === 'sent' && sent.wpEditUrl.includes('post=42'), sent);
   check('a report for an article not requested changes nothing', (await call('POST', `/projects/${pid}/wp/posts`, pluginKey, { results: [{ id: brief.id, status: 'failed', error: 'x' }] })).data?.updated === 0);
+  // A failed article job must leave the outline usable (migration 025).
+  const failing = (await owner.query(`INSERT INTO jobs (organization_id, project_id, type, status, payload, idempotency_key)
+    SELECT organization_id, project_id, 'CONTENT_DRAFT', 'running', jsonb_build_object('briefId', id), 'draft_fail_test_' || id FROM content_briefs WHERE id = $1 RETURNING id`, [brief.id])).rows[0];
+  await owner.query(`UPDATE content_briefs SET draft_status = 'writing' WHERE id = $1`, [brief.id]);
+  await owner.query(`SELECT rf__dead_letter($1, 'AI provider not configured', 'PROVIDER_NOT_CONFIGURED')`, [failing.id]);
+  const afterFail = (await owner.query(`SELECT status, draft_status FROM content_briefs WHERE id = $1`, [brief.id])).rows[0];
+  check('a failed article job keeps the outline and marks only the draft as failed', afterFail.status === 'completed' && afterFail.draft_status === 'failed', afterFail);
+  check('the article can be requested again after a failure', (await call('POST', `/projects/${pid}/content/briefs/${brief.id}/draft`, T, {})).status === 201);
 
   console.log('--- Quotas');
   const orgId = a.data.user.organizationId as string;
