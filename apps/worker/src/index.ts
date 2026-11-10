@@ -2426,7 +2426,9 @@ class Worker {
     }
     if (signal.aborted) throw new JobError('Article draft aborted', 'TIMEOUT', true);
     const { markdown, words } = cleanDraft(ai.content);
-    if (words < 100) {
+    // A reply far below the requested length is a cut-off answer, not an article.
+    const wantedWords = Math.min(4000, Math.max(600, Number(brief.target_word_count || brief.word_count) || 1200));
+    if (words < Math.max(100, Math.round(wantedWords * 0.5))) {
       await fail('The AI returned too little text');
       throw new JobError('Draft too short', 'RETRYABLE', true);
     }

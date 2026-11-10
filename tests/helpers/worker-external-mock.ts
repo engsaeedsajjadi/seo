@@ -72,9 +72,9 @@ let hookCalls = 0;
       return json({ model: 'mock-model', choices: [{ message: { content: JSON.stringify(items) } }], usage: { prompt_tokens: 11, completion_tokens: 22 } });
     }
     if (body.includes('experienced SEO writer')) {
-      // A Markdown article with a stray HTML tag and a fence, which the worker must strip.
+      // A Markdown article of realistic length, with a stray HTML tag and a fence which the worker must strip.
       const paragraph = Array.from({ length: 40 }, (_, i) => `word${i}`).join(' ');
-      const article = ['```markdown', '# Title the worker drops', '## Intro', `${paragraph} <script>alert(1)</script>`, '', '- first point', '- **second** point', '', '## FAQ', paragraph, paragraph, '```'].join('\n');
+      const article = ['```markdown', '# Title the worker drops', '## Intro', `${paragraph} <script>alert(1)</script>`, '', '- first point', '- **second** point', '', '## FAQ', ...Array.from({ length: 16 }, () => `${paragraph}\n`), '```'].join('\n');
       return json({ model: 'mock-model', choices: [{ message: { content: article } }], usage: { prompt_tokens: 11, completion_tokens: 222 } });
     }
     return json({ model: 'mock-model', choices: [{ message: { content: '{"sections":[{"heading":"Intro"}]}' } }], usage: { prompt_tokens: 11, completion_tokens: 22 } });

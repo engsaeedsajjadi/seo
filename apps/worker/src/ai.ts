@@ -221,7 +221,10 @@ export class GoogleAIProvider extends BaseAiProvider {
       'Google AI',
     );
 
-    const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    // A reply can arrive in several parts; reading only the first one cuts the text mid-sentence.
+    const content = (data.candidates?.[0]?.content?.parts ?? [])
+      .filter((part: any) => !part?.thought && typeof part?.text === 'string')
+      .map((part: any) => part.text).join('');
     if (!content) throw new AiProviderError(`Google AI returned no text (${data.candidates?.[0]?.finishReason || 'unknown'})`);
     const usage = data.usageMetadata || {};
     const inputTokens = usage.promptTokenCount ?? estimateTokens(prompt);
